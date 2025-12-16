@@ -1,0 +1,975 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+@{
+    ViewData["Title"] = "OEE Detail - " + Model.MachineName;
+    var shiftDateStr = Model.ShiftDate.ToString("yyyy-MM-dd");
+    var shiftStartStr = Model.ShiftStart.ToString("HH:mm");
+    var shiftEndStr = Model.ShiftEnd.ToString("HH:mm");
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-1">
+            <i class="fa-solid fa-microchip me-2"></i>@Model.MachineName
+        </h2>
+        <div class="text-secondary small">
+            <i class="fa-solid fa-layer-group me-1"></i>@Model.LineId
+            <span class="ms-3">
+                <i class="fa-solid fa-calendar-day me-1"></i>@(string.IsNullOrEmpty(Model.ShiftName) ? $"Shift {Model.ShiftCode}" : Model.ShiftName) (@shiftStartStr - @shiftEndStr)
+            </span>
+            <span class="ms-3">
+                <i class="fa-solid fa-clock me-1"></i>Standar Cycle Time Product: @Model.StandarCycleTime.ToString("F1")s
+            </span>
+        </div>
+    </div>
+    <div>
+        @{
+            var statusClass = Model.Status switch
+            {
+                OeeSystem.Models.MachineStatus.Aktif => "status-running",
+                OeeSystem.Models.MachineStatus.TidakAktif => "status-down",
+                _ => "status-idle"
+            };
+            var statusText = Model.Status == OeeSystem.Models.MachineStatus.Aktif ? "Aktif" : "Tidak Aktif";
+        }
+        <span class="status-badge @statusClass">@statusText</span>
+        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm ms-2">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div id="shift-meta"
+     data-shift-key="@Model.ShiftKey"
+     data-shift-date="@shiftDateStr"
+     data-shift-code="@Model.ShiftCode"
+     data-shift-id="@(Model.ShiftId?.ToString() ?? "")"></div>
+
+<!-- OEE KPI Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card kpi-card border-primary" style="margin-bottom: 0;">
+            <div class="card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">OEE</div>
+                        <div class="kpi-value text-primary">@Model.Oee.ToString("F1")%</div>
+                    </div>
+                    <i class="fa-solid fa-chart-line fa-2x text-primary opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card border-success" style="margin-bottom: 0;">
+            <div class="card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">Availability</div>
+                        <div class="kpi-value text-success">@Model.Availability.ToString("F1")%</div>
+                    </div>
+                    <i class="fa-solid fa-clock fa-2x text-success opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card border-warning" style="margin-bottom: 0;">
+            <div class="card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">Performance</div>
+                        <div class="kpi-value text-warning">@Model.Performance.ToString("F1")%</div>
+                    </div>
+                    <i class="fa-solid fa-gauge-high fa-2x text-warning opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card border-info" style="margin-bottom: 0;">
+            <div class="card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">Quality</div>
+                        <div class="kpi-value text-info">@Model.Quality.ToString("F1")%</div>
+                    </div>
+                    <i class="fa-solid fa-check-circle fa-2x text-info opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- Time Metrics -->
+    <div class="col-md-4">
+        <div class="card h-100" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-clock me-2"></i>Time Metrics
+            </div>
+            <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-secondary">Planned Production</span>
+                        <span class="fw-semibold" id="planned-production-time">@Model.PlannedProductionTime.ToString(@"hh\:mm\:ss")</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-primary" style="width: 100%"></div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-secondary">Operating Time</span>
+                        <span class="fw-semibold text-success" id="operating-time">@Model.OperatingTime.ToString(@"hh\:mm\:ss")</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        @{
+                            var operatingPercent = Model.PlannedProductionTime.TotalSeconds > 0 
+                                ? (Model.OperatingTime.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
+                                : 0;
+                        }
+                        <div class="progress-bar bg-success" id="operating-progress-bar" style="width: @operatingPercent.ToString("F1")%"></div>
+                    </div>
+                </div>
+                <div class="mt-auto">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-secondary">Downtime</span>
+                        <span class="fw-semibold text-danger" id="downtime-total">@Model.DowntimeTotal.ToString(@"hh\:mm\:ss")</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        @{
+                            var downtimePercent = Model.PlannedProductionTime.TotalSeconds > 0 
+                                ? (Model.DowntimeTotal.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
+                                : 0;
+                        }
+                        <div class="progress-bar bg-danger" id="downtime-progress-bar" style="width: @downtimePercent.ToString("F1")%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Production Metrics -->
+    <div class="col-md-4">
+        <div class="card h-100" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-boxes me-2"></i>Production Metrics
+            </div>
+            <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-primary">
+                            <i class="fa-solid fa-box me-1"></i>Total Produced
+                        </span>
+                        <span class="fw-semibold text-primary">@Model.TotalCount</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-primary" style="width: 100%"></div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="fw-semibold" style="color: #28a745 !important;">
+                            <i class="fa-solid fa-check-circle me-1"></i>Good
+                        </span>
+                        <span class="fw-bold" style="color: #28a745 !important;">@Model.GoodCount</span>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        @{
+                            var goodPercent = Model.TotalCount > 0 ? (Model.GoodCount * 100.0 / Model.TotalCount) : 0;
+                        }
+                        <div class="progress-bar bg-success" style="width: @goodPercent.ToString("F1")%"></div>
+                    </div>
+                </div>
+                <div class="mt-auto">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="fw-semibold" style="color: #dc3545 !important;">
+                            <i class="fa-solid fa-times-circle me-1"></i>Reject
+                        </span>
+                        <span class="fw-bold" style="color: #dc3545 !important;">@Model.RejectCount</span>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        @{
+                            var rejectPercent = Model.TotalCount > 0 ? (Model.RejectCount * 100.0 / Model.TotalCount) : 0;
+                        }
+                        <div class="progress-bar bg-danger" style="width: @rejectPercent.ToString("F1")%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Current Job -->
+    <div class="col-md-4">
+        <div class="card h-100" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-clipboard-list me-2"></i>Current Job
+            </div>
+            <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
+                @if (Model.ActiveJob != null)
+                {
+                    <div class="row g-2 h-100">
+                        <!-- Left Section: Product Image/Name -->
+                        <div class="col-5 d-flex flex-column">
+                            <div class="mb-2">
+                                @if (!string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl))
+                                {
+                                    <div class="text-center mb-2" style="min-height: 100px; display: flex; align-items: center; justify-content: center;">
+                                        <img src="@Model.ActiveJob.ProductImageUrl" alt="@Model.ActiveJob.ProductName" 
+                                             class="img-fluid rounded" style="max-height: 100px; object-fit: contain;" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="text-center mb-2" style="min-height: 100px; display: flex; align-items: center; justify-content: center;">
+                                        <span class="text-secondary">@Model.ActiveJob.ProductName</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="mt-auto">
+                                <div class="fw-semibold small">@Model.ActiveJob.ProductName</div>
+                                <div class="text-secondary small">@Model.ActiveJob.WorkOrderNumber</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right Section: Progress & Info -->
+                        <div class="col-7 d-flex flex-column">
+                            <div class="mb-2">
+                                <div class="small mb-1">Progress</div>
+                                <div class="progress" style="height: 8px;">
+                                    @{
+                                        var progressPercent = Model.ActiveJob.TargetQuantity > 0 
+                                            ? (Model.ActiveJob.CurrentQuantity * 100.0 / Model.ActiveJob.TargetQuantity) 
+                                            : 0;
+                                        if (progressPercent > 100) progressPercent = 100;
+                                    }
+                                    <div class="progress-bar bg-primary" style="width: @progressPercent.ToString("F1")%"></div>
+                                </div>
+                                <div class="small text-secondary mt-1">@Model.ActiveJob.CurrentQuantity / @Model.ActiveJob.TargetQuantity</div>
+                            </div>
+                            <div class="mt-auto small text-secondary">
+                                <div class="mb-1"><i class="fa-solid fa-user me-1"></i>Operator: @Model.ActiveJob.OperatorName</div>
+                                <div class="mb-1"><i class="fa-solid fa-play me-1"></i>Started: @Model.ActiveJob.StartTime.ToString("MM/dd HH:mm")</div>
+                                <div><i class="fa-solid fa-clock me-1"></i>Durasi sejak status terakhir: <span id="since-last-status">00:00:00</span></div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center text-secondary py-5 my-auto">
+                        <i class="fa-solid fa-inbox fa-3x mb-3 opacity-50"></i>
+                        <div class="fw-semibold">No active job</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- Recent Downtimes -->
+    <div class="col-md-6">
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-triangle-exclamation me-2"></i>Recent Downtimes
+            </div>
+            <div class="card-body" style="padding: 1.25rem;">
+                @if (Model.RecentDowntimes.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-dark table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Reason</th>
+                                    <th>Start</th>
+                                    <th>Duration</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var dt in Model.RecentDowntimes)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="small">@dt.ReasonDescription</div>
+                                            <div class="text-secondary" style="font-size: 0.7rem;">@dt.ReasonCategory</div>
+                                        </td>
+                                        <td class="small">@dt.StartTime.ToString("MM/dd HH:mm")</td>
+                                        <td>
+                                            @if (dt.EndTime.HasValue)
+                                            {
+                                                <span class="text-success">@TimeSpan.FromSeconds(dt.DurationSeconds).ToString(@"hh\:mm\:ss")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-danger">Ongoing</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (dt.EndTime.HasValue)
+                                            {
+                                                <span class="badge bg-success">Closed</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-danger">Active</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center text-secondary py-3">
+                        <i class="fa-solid fa-check-circle fa-2x mb-2"></i>
+                        <div>No downtime recorded</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Production Counts -->
+    <div class="col-md-6">
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-chart-column me-2"></i>Recent Production Counts
+            </div>
+            <div class="card-body" style="padding: 1.25rem;">
+                @if (Model.RecentProductionCounts.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-dark table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th class="text-end">Good</th>
+                                    <th class="text-end">Reject</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var pc in Model.RecentProductionCounts)
+                                {
+                                    <tr>
+                                        <td class="small">@pc.Timestamp.ToString("MM/dd HH:mm")</td>
+                                        <td class="text-end text-success">@pc.GoodCount</td>
+                                        <td class="text-end text-danger">@pc.RejectCount</td>
+                                        <td class="small text-secondary">@(pc.RejectReason ?? "-")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center text-secondary py-3">
+                        <i class="fa-solid fa-inbox fa-2x mb-2"></i>
+                        <div>No production counts</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="row g-4 mb-4">
+    <!-- Machine Run Time Donut Chart -->
+    <div class="col-md-4">
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-clock me-2"></i>Machine Run Time (min)
+            </div>
+            <div class="card-body" style="padding: 1.25rem;">
+                <canvas id="runTimeDonutChart" style="max-height: 300px;"></canvas>
+                <div class="text-center mt-3">
+                    <div class="fw-bold">Total @((Model.ChartData.RunTimeMinutes + Model.ChartData.IdleTimeMinutes + Model.ChartData.OffTimeMinutes).ToString("F0"))</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OEE Analysis Bar Chart -->
+    <div class="col-md-4">
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-chart-bar me-2"></i>OEE Analysis
+            </div>
+            <div class="card-body" style="padding: 1.25rem;">
+                <canvas id="oeeBarChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Machine Operation Trend -->
+    <div class="col-md-4">
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-chart-line me-2"></i>Machine Operation Trend
+            </div>
+            <div class="card-body" style="padding: 1.25rem;">
+                <canvas id="weeklyTrendChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Donut Chart: Machine Run Time
+        const runTimeCtx = document.getElementById('runTimeDonutChart').getContext('2d');
+        new Chart(runTimeCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Run Time', 'Idle Time', 'Off Time'],
+                datasets: [{
+                    data: [
+                        @Model.ChartData.RunTimeMinutes.ToString("F0"),
+                        @Model.ChartData.IdleTimeMinutes.ToString("F0"),
+                        @Model.ChartData.OffTimeMinutes.ToString("F0")
+                    ],
+                    backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#e4e6eb',
+                            padding: 10
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + context.parsed + ' min';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Bar Chart: OEE Analysis
+        const oeeBarCtx = document.getElementById('oeeBarChart').getContext('2d');
+        new Chart(oeeBarCtx, {
+            type: 'bar',
+            data: {
+                labels: ['OEE', 'Availability', 'Performance', 'Quality'],
+                datasets: [{
+                    label: 'Percentage (%)',
+                    data: [
+                        @Model.ChartData.OeeValue.ToString("F1"),
+                        @Model.ChartData.AvailabilityValue.ToString("F1"),
+                        @Model.ChartData.PerformanceValue.ToString("F1"),
+                        @Model.ChartData.QualityValue.ToString("F1")
+                    ],
+                    backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#06b6d4'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            color: '#9ca3af',
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        },
+                        grid: {
+                            color: '#23293a'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#9ca3af'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y.toFixed(1) + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Stacked Bar Chart: Weekly Trend
+        const weeklyTrendCtx = document.getElementById('weeklyTrendChart').getContext('2d');
+        const weeklyLabels = [@Html.Raw(string.Join(", ", Model.ChartData.WeeklyTrend.Select(t => $"'{t.DateLabel}'")))];
+        const weeklyRunTime = [@Html.Raw(string.Join(", ", Model.ChartData.WeeklyTrend.Select(t => t.RunTimeMinutes.ToString("F0"))))];
+        const weeklyIdleTime = [@Html.Raw(string.Join(", ", Model.ChartData.WeeklyTrend.Select(t => t.IdleTimeMinutes.ToString("F0"))))];
+        const weeklyOffTime = [@Html.Raw(string.Join(", ", Model.ChartData.WeeklyTrend.Select(t => t.OffTimeMinutes.ToString("F0"))))];
+
+        new Chart(weeklyTrendCtx, {
+            type: 'bar',
+            data: {
+                labels: weeklyLabels,
+                datasets: [
+                    {
+                        label: 'Run Time',
+                        data: weeklyRunTime,
+                        backgroundColor: '#3b82f6',
+                        borderWidth: 0
+                    },
+                    {
+                        label: 'Idle Time',
+                        data: weeklyIdleTime,
+                        backgroundColor: '#22c55e',
+                        borderWidth: 0
+                    },
+                    {
+                        label: 'Off Time',
+                        data: weeklyOffTime,
+                        backgroundColor: '#ef4444',
+                        borderWidth: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    x: {
+                        stacked: true,
+                        ticks: {
+                            color: '#9ca3af'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: {
+                            color: '#9ca3af',
+                            callback: function(value) {
+                                return value + ' min';
+                            }
+                        },
+                        grid: {
+                            color: '#23293a'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#e4e6eb',
+                            padding: 10
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y + ' min';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+
+    <script>
+        // ========== REAL-TIME TIME METRICS UPDATE ==========
+        const machineId = '@Model.MachineId';
+        let timeMetricsInterval = null;
+        let realTimeCounter = 0; // Counter yang bertambah setiap detik
+        let basePlannedSeconds = @Model.PlannedProductionTime.TotalSeconds;
+        let baseOperatingSeconds = @Model.OperatingTime.TotalSeconds;
+        let baseDowntimeSeconds = @Model.DowntimeTotal.TotalSeconds;
+        const shiftMetaEl = document.getElementById('shift-meta');
+        const shiftDate = shiftMetaEl?.dataset.shiftDate || '';
+        const shiftCode = shiftMetaEl?.dataset.shiftCode || '';
+        const shiftId = shiftMetaEl?.dataset.shiftId || '';
+        let lastShiftKey = shiftMetaEl?.dataset.shiftKey || '';
+
+        // Format seconds to HH:mm:ss
+        function formatTime(seconds) {
+            // Handle NaN, undefined, or invalid values
+            if (isNaN(seconds) || seconds === null || seconds === undefined) {
+                return "00:00:00";
+            }
+            
+            // Ensure seconds is a valid number
+            seconds = Math.max(0, Math.floor(Number(seconds)));
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Start real-time counter
+        function startTimeCounter() {
+            // Clear existing interval
+            if (timeMetricsInterval) {
+                clearInterval(timeMetricsInterval);
+                timeMetricsInterval = null;
+            }
+
+            // Update every second - PASTIKAN selalu dipanggil
+            timeMetricsInterval = setInterval(() => {
+                try {
+                    realTimeCounter++; // Increment counter setiap detik
+                    updateTimeDisplay(); // Update display setiap detik
+                } catch (error) {
+                    console.error('❌ Error in real-time counter:', error);
+                }
+            }, 1000);
+            
+            console.log('✅ Real-time counter started - akan update setiap detik');
+            console.log('⏱️ Interval ID:', timeMetricsInterval);
+            
+            // Verify interval is running
+            setTimeout(() => {
+                if (timeMetricsInterval) {
+                    console.log('✅ Real-time counter verified - running correctly');
+                } else {
+                    console.error('❌ Real-time counter failed to start!');
+                }
+            }, 2000);
+        }
+
+        // Store active job/downtime info - Initialize dari server-side data
+        let hasActiveJob = @(Model.ActiveJob != null ? "true" : "false");
+        @{
+            var hasActiveDowntimeValue = Model.RecentDowntimes != null && Model.RecentDowntimes.Any(d => !d.EndTime.HasValue);
+        }
+        let hasActiveDowntime = @(hasActiveDowntimeValue ? "true" : "false");
+        let previousHasActiveJob = hasActiveJob;
+        let previousHasActiveDowntime = hasActiveDowntime;
+
+        // Fetch time metrics from server
+        function fetchTimeMetrics() {
+            const params = new URLSearchParams({
+                id: machineId
+            });
+            if (shiftId) {
+                params.append('shiftId', shiftId);
+            }
+            if (shiftDate) {
+                params.append('shiftDate', shiftDate);
+            }
+            if (shiftCode) {
+                params.append('shiftCode', shiftCode);
+            }
+
+            return fetch(`/Machine/GetTimeMetrics?${params.toString()}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const newShiftKey = data.ShiftKey || '';
+                    // Store active job/downtime info
+                    const newHasActiveJob = data.HasActiveJob || false;
+                    const newHasActiveDowntime = data.HasActiveDowntime || false;
+
+                    // Update base values dengan nilai baru dari server (sudah termasuk waktu saat fetch)
+                    basePlannedSeconds = Number(data.PlannedProductionTimeSeconds) || 0;
+                    baseOperatingSeconds = Number(data.OperatingTimeSeconds) || 0;
+                    baseDowntimeSeconds = Number(data.DowntimeTotalSeconds) || 0;
+
+                    // Jika shift berubah, reset counter dan simpan shiftKey baru
+                    const shiftChanged = newShiftKey && newShiftKey !== lastShiftKey;
+                    if (shiftChanged) {
+                        lastShiftKey = newShiftKey;
+                    }
+
+                    // Reset counter karena base sudah mengandung waktu terkini
+                    realTimeCounter = 0;
+
+                    // Update status
+                    hasActiveJob = newHasActiveJob;
+                    hasActiveDowntime = newHasActiveDowntime;
+                    previousHasActiveJob = hasActiveJob;
+                    previousHasActiveDowntime = hasActiveDowntime;
+
+                    // Update display immediately
+                    updateTimeDisplay();
+                    
+                    // ✅ PERUBAHAN: Update durasi sejak status terakhir menggunakan SinceLastChangeSeconds (sama seperti Operator View)
+                    if (data.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
+                        updateSinceLastChange(data.SinceLastChangeSeconds);
+                    } else if (data.LastStatusChangeTime) {
+                        // Fallback untuk backward compatibility
+                        const lastChangeTime = new Date(data.LastStatusChangeTime);
+                        const now = new Date();
+                        const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
+                        updateSinceLastChange(diffSeconds);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching time metrics:', error);
+                    // Use current values if fetch fails
+                    updateTimeDisplay();
+                });
+        }
+        
+        // ========== DURASI SEJAK STATUS TERAKHIR ==========
+        // ✅ PERUBAHAN: Gunakan fungsi yang sama dengan Operator View untuk sinkronisasi
+        let sinceLastChangeInterval = null;
+        let lastChangeTimestamp = null;
+
+        function updateSinceLastChange(initialTimeSeconds) {
+            const sinceLastStatusEl = document.getElementById('since-last-status');
+            if (!sinceLastStatusEl) return;
+            
+            // Clear existing interval
+            if (sinceLastChangeInterval) {
+                clearInterval(sinceLastChangeInterval);
+            }
+            
+            // Calculate the timestamp when last change occurred
+            // initialTimeSeconds is the duration in seconds since last change
+            const now = new Date();
+            lastChangeTimestamp = new Date(now.getTime() - (initialTimeSeconds * 1000));
+            
+            // Update immediately
+            updateTimerDisplay();
+            
+            // Update every second
+            sinceLastChangeInterval = setInterval(() => {
+                updateTimerDisplay();
+            }, 1000);
+        }
+        
+        function updateTimerDisplay() {
+            const sinceLastStatusEl = document.getElementById('since-last-status');
+            if (!sinceLastStatusEl || !lastChangeTimestamp) return;
+            
+            const now = new Date();
+            const diffMs = now.getTime() - lastChangeTimestamp.getTime();
+            const totalSeconds = Math.floor(diffMs / 1000);
+            
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            sinceLastStatusEl.textContent = timeString;
+        }
+        
+        // Initialize durasi sejak status terakhir
+        @if (Model.ActiveJob != null)
+        {
+            <text>
+            // ✅ PERUBAHAN: Gunakan SinceLastChangeSeconds seperti Operator View
+            const initialSeconds = @Model.ActiveJob.SinceLastChangeSeconds;
+            updateSinceLastChange(initialSeconds);
+            </text>
+        }
+
+        // Update time display with real-time calculation
+        function updateTimeDisplay() {
+            // Ensure base values are valid numbers
+            const baseOperating = Number(baseOperatingSeconds) || 0;
+            const baseDowntime = Number(baseDowntimeSeconds) || 0;
+
+            // Calculate current values dengan real-time increment
+            // Operating Time bertambah jika ada active job DAN tidak ada active downtime (running)
+            let currentOperatingSeconds = baseOperating;
+            if (hasActiveJob && !hasActiveDowntime) {
+                // Operating time bertambah setiap detik jika running
+                currentOperatingSeconds = baseOperating + realTimeCounter;
+            }
+
+            // Downtime bertambah jika ada active downtime
+            let currentDowntimeSeconds = baseDowntime;
+            if (hasActiveDowntime) {
+                // Downtime bertambah setiap detik jika ada downtime aktif
+                currentDowntimeSeconds = baseDowntime + realTimeCounter;
+            }
+
+            // Planned Production Time = Operating Time + Downtime
+            // Selalu hitung dari current values (sudah termasuk real-time increment jika ada aktivitas)
+            let currentPlannedSeconds = currentOperatingSeconds + currentDowntimeSeconds;
+            
+            // PASTIKAN: Jika tidak ada aktivitas, Planned Production Time tetap dihitung dari base values
+            // Ini memastikan waktu selalu ter-display, meskipun tidak bertambah
+            if (currentPlannedSeconds === 0 && baseOperating === 0 && baseDowntime === 0) {
+                // Jika belum ada data sama sekali, tetap tampilkan 00:00:00
+                currentPlannedSeconds = 0;
+            }
+
+            // Update Planned Production Time
+            const plannedEl = document.getElementById('planned-production-time');
+            if (plannedEl) {
+                plannedEl.textContent = formatTime(currentPlannedSeconds);
+            }
+
+            // Update Operating Time
+            const operatingEl = document.getElementById('operating-time');
+            if (operatingEl) {
+                operatingEl.textContent = formatTime(currentOperatingSeconds);
+            }
+
+            // Update Downtime
+            const downtimeEl = document.getElementById('downtime-total');
+            if (downtimeEl) {
+                downtimeEl.textContent = formatTime(currentDowntimeSeconds);
+            }
+
+            // Update progress bars
+            const operatingProgressBar = document.getElementById('operating-progress-bar');
+            const downtimeProgressBar = document.getElementById('downtime-progress-bar');
+            
+            if (operatingProgressBar && currentPlannedSeconds > 0) {
+                const operatingPercent = (currentOperatingSeconds / currentPlannedSeconds * 100);
+                operatingProgressBar.style.width = operatingPercent.toFixed(1) + '%';
+            }
+
+            if (downtimeProgressBar && currentPlannedSeconds > 0) {
+                const downtimePercent = (currentDowntimeSeconds / currentPlannedSeconds * 100);
+                downtimeProgressBar.style.width = downtimePercent.toFixed(1) + '%';
+            }
+        }
+
+        // Initialize function - bisa dipanggil langsung atau saat DOM ready
+        function initializeTimeMetrics() {
+            console.log('🚀 Initializing Time Metrics real-time update...');
+            console.log('📊 Initial state:', {
+                hasActiveJob: hasActiveJob,
+                hasActiveDowntime: hasActiveDowntime,
+                baseOperating: baseOperatingSeconds,
+                baseDowntime: baseDowntimeSeconds,
+                basePlanned: basePlannedSeconds
+            });
+            
+            // Initialize counter
+            realTimeCounter = 0;
+            
+            // Initialize display dengan server-side values terlebih dahulu
+            // Ini memastikan tampilan langsung muncul tanpa menunggu fetch
+            updateTimeDisplay();
+            console.log('📊 Initial display updated');
+
+            // Start real-time counter immediately (update every second)
+            // Counter akan bertambah setiap detik dan durasi akan update secara real-time
+            // Ini memastikan waktu berjalan real-time sejak page load
+            startTimeCounter();
+
+            // Fetch initial data to get active job/downtime status
+            // Setelah fetch, counter akan di-reset dan mulai dari 0
+            // Tapi real-time counter tetap berjalan, jadi waktu tetap update setiap detik
+            fetchTimeMetrics().then(() => {
+                // Setelah fetch pertama selesai, pastikan display ter-update
+                updateTimeDisplay();
+                console.log('✅ Initial fetch completed, display updated');
+                console.log('📊 Updated state:', {
+                    hasActiveJob: hasActiveJob,
+                    hasActiveDowntime: hasActiveDowntime,
+                    baseOperating: baseOperatingSeconds,
+                    baseDowntime: baseDowntimeSeconds,
+                    basePlanned: basePlannedSeconds
+                });
+            }).catch(error => {
+                console.error('❌ Error in initial fetch:', error);
+            });
+
+            // Refresh data every 10 seconds to get updated base values and status
+            // Setiap fetch, counter akan di-reset karena base values sudah update
+            // Tapi real-time counter tetap berjalan, jadi waktu tetap update setiap detik
+            setInterval(() => {
+                fetchTimeMetrics();
+            }, 10000);
+        }
+
+        // Initialize on page load - dengan fallback jika DOM sudah ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeTimeMetrics);
+        } else {
+            // DOM sudah ready, langsung jalankan
+            initializeTimeMetrics();
+        }
+
+            // ========== SIGNALR CONNECTION FOR REAL-TIME UPDATES ==========
+            let oeeConnection = null;
+            try {
+                oeeConnection = new signalR.HubConnectionBuilder()
+                    .withUrl("/oeeHub")
+                    .build();
+            } catch (error) {
+                console.error('❌ Error creating SignalR connection:', error);
+            }
+            
+            if (oeeConnection) {
+
+                oeeConnection.on("OeeUpdated", function (data) {
+                    console.log('📢 OeeUpdated received in OEE View:', data);
+                    
+                    // Jika MachineId sesuai atau ada flag RefreshTimeMetrics
+                    if (data.MachineId === machineId || data.RefreshTimeMetrics || 
+                        data.Type === "MachineStarted" || 
+                        data.Type === "MachineStopped" || 
+                        data.Type === "DowntimeStarted" || 
+                        data.Type === "DowntimeEnded") {
+                        
+                        // Refresh Time Metrics immediately
+                        console.log('🔄 Refreshing Time Metrics due to action update');
+                        fetchTimeMetrics();
+                        
+                        // Juga refresh setelah 2 detik untuk memastikan sinkronisasi
+                        setTimeout(() => {
+                            fetchTimeMetrics();
+                        }, 2000);
+                    }
+                });
+
+                oeeConnection.start()
+                    .then(() => {
+                        console.log('✅ SignalR connected in OEE View');
+                    })
+                    .catch(err => {
+                        console.error('❌ SignalR connection error in OEE View:', err);
+                    });
+            }
+
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                if (oeeConnection) {
+                    oeeConnection.stop();
+                }
+                if (timeMetricsInterval) {
+                    clearInterval(timeMetricsInterval);
+                }
+                if (sinceLastStatusInterval) {
+                    clearInterval(sinceLastStatusInterval);
+                }
+            });
+        });
+    </script>
+}
+

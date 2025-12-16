@@ -1,0 +1,374 @@
+@model CreateWorkOrderViewModel
+@{
+    ViewData["Title"] = "Create Work Order - Planning Produksi";
+}
+
+<div class="row mb-3">
+    <div class="col-12">
+        <h2 class="mb-0"><i class="fa-solid fa-plus me-2"></i>Create Work Order - Planning Produksi</h2>
+        <div class="text-secondary small">Pilih mesin dan buat beberapa jadwal produksi</div>
+    </div>
+</div>
+
+@if (TempData["SuccessMessage"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fa-solid fa-check-circle me-2"></i>@TempData["SuccessMessage"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body">
+        <form asp-action="CreateWorkOrder" method="post" id="workOrderForm">
+            <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+            
+            <!-- Step 1: Pilih Plant & Mesin -->
+            <h5 class="mb-3"><i class="fa-solid fa-building me-2"></i>Step 1: Pilih Plant & Mesin</h5>
+            <div class="row mb-4">
+                <!-- Dropdown Plant -->
+                <div class="col-md-6">
+                    <label class="form-label">Plant <span class="text-danger">*</span></label>
+                    <select class="form-select" id="plantSelect" required>
+                        <option value="">-- Pilih Plant --</option>
+                        @foreach (var plant in Model.Plants)
+                        {
+                            <option value="@plant.Id">
+                                @plant.Code - @plant.Name
+                            </option>
+                        }
+                    </select>
+                    <div class="text-danger small mt-1" id="plantError" style="display: none;">Plant harus dipilih terlebih dahulu</div>
+                </div>
+                
+                <!-- Dropdown Mesin -->
+                <div class="col-md-6">
+                    <label asp-for="MachineId" class="form-label">Mesin <span class="text-danger">*</span></label>
+                    <select asp-for="MachineId" class="form-select" id="machineSelect" required disabled>
+                        <option value="">-- Pilih Plant Terlebih Dahulu --</option>
+                        @foreach (var machine in Model.Machines)
+                        {
+                            <option value="@machine.Id" data-plant-id="@machine.PlantId" style="display: none;">
+                                @machine.Name (@machine.LineId)
+                            </option>
+                        }
+                    </select>
+                    <span asp-validation-for="MachineId" class="text-danger"></span>
+                </div>
+            </div>
+            
+            <hr class="my-4" />
+            
+            <!-- Step 2: Buat Jadwal -->
+            <div id="scheduleSection" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0"><i class="fa-solid fa-calendar-check me-2"></i>Step 2: Buat Jadwal Produksi</h5>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="addScheduleBtn">
+                        <i class="fa-solid fa-plus me-1"></i>Tambah Jadwal
+                    </button>
+                </div>
+                
+                <div id="schedulesContainer">
+                    @for (int i = 0; i < Model.Schedules.Count; i++)
+                    {
+                        <div class="card mb-3 schedule-item" data-index="@i">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0">Jadwal @(i + 1)</h6>
+                                    @if (i > 0)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger remove-schedule">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    }
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Product <span class="text-danger">*</span></label>
+                                        <select name="Schedules[@i].ProductId" class="form-select product-select" required>
+                                            <option value="">-- Pilih Product --</option>
+                                            @foreach (var product in Model.Products)
+                                            {
+                                                var isProductSelected = Model.Schedules[i].ProductId == product.Id;
+                                                <option value="@product.Id" selected="@isProductSelected">
+                                                    @product.Name (@product.MaterialCode)
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Tanggal <span class="text-danger">*</span></label>
+                                        @{
+                                            var dateValue = Model.Schedules[i].PlannedDate.ToString("yyyy-MM-dd");
+                                        }
+                                        <input type="date" name="Schedules[@i].PlannedDate" class="form-control" 
+                                               value="@dateValue" required />
+                                    </div>
+                                    
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Shift <span class="text-danger">*</span></label>
+                                        <select name="Schedules[@i].ShiftId" class="form-select" required>
+                                            <option value="">-- Pilih Shift --</option>
+                                            @foreach (var shift in Model.Shifts)
+                                            {
+                                                var isSelected = Model.Schedules[i].ShiftId == shift.Id;
+                                                <option value="@shift.Id" selected="@isSelected">
+                                                    @shift.Name (@shift.StartTime.ToString(@"hh\:mm") - @shift.EndTime.ToString(@"hh\:mm"))
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-2 mb-3">
+                                        <label class="form-label">Qty <span class="text-danger">*</span></label>
+                                        @{
+                                            var qtyValue = Model.Schedules[i].TargetQuantity > 0 ? Model.Schedules[i].TargetQuantity.ToString() : "";
+                                        }
+                                        <input type="number" name="Schedules[@i].TargetQuantity" class="form-control" 
+                                               value="@qtyValue" min="1" required />
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Operator (Optional)</label>
+                                        <select name="Schedules[@i].OperatorId" class="form-select">
+                                            <option value="">-- Pilih Operator --</option>
+                                            @foreach (var op in Model.Operators)
+                                            {
+                                                var isOpSelected = Model.Schedules[i].OperatorId == op.Id;
+                                                <option value="@op.Id" selected="@isOpSelected">
+                                                    @op.Username
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-info" id="submitBtn" disabled>
+                    <i class="fa-solid fa-save me-2"></i>Create Work Orders
+                </button>
+                <a asp-action="WorkOrders" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        let scheduleIndex = @Model.Schedules.Count;
+        const plantSelect = document.getElementById('plantSelect');
+        const machineSelect = document.getElementById('machineSelect');
+        const scheduleSection = document.getElementById('scheduleSection');
+        const addScheduleBtn = document.getElementById('addScheduleBtn');
+        const schedulesContainer = document.getElementById('schedulesContainer');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        // Store all machine options dengan plant info
+        const allMachineOptions = [];
+        @foreach (var machine in Model.Machines)
+        {
+            <text>
+            allMachineOptions.push({
+                id: @machine.Id,
+                name: '@Html.Raw(machine.Name.Replace("'", "\\'"))',
+                lineId: '@Html.Raw(machine.LineId.Replace("'", "\\'"))',
+                plantId: @machine.PlantId
+            });
+            </text>
+        }
+        
+        // Set default date to today
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInputs = document.querySelectorAll('input[type="date"]');
+            const today = new Date().toISOString().split('T')[0];
+            dateInputs.forEach(input => {
+                if (!input.value) {
+                    input.value = today;
+                }
+            });
+        });
+        
+        // Filter mesin berdasarkan plant
+        plantSelect.addEventListener('change', function() {
+            const plantId = this.value;
+            
+            if (plantId) {
+                // Enable machine dropdown
+                machineSelect.disabled = false;
+                machineSelect.innerHTML = '<option value="">-- Pilih Mesin --</option>';
+                
+                // Filter dan tampilkan hanya mesin dari plant yang dipilih
+                const filteredMachines = allMachineOptions.filter(m => m.plantId == plantId);
+                
+                if (filteredMachines.length > 0) {
+                    filteredMachines.forEach(machine => {
+                        const opt = document.createElement('option');
+                        opt.value = machine.id;
+                        opt.textContent = `${machine.name} (${machine.lineId})`;
+                        machineSelect.appendChild(opt);
+                    });
+                } else {
+                    machineSelect.innerHTML = '<option value="">-- Tidak ada mesin di plant ini --</option>';
+                }
+                
+                // Reset schedule section
+                scheduleSection.style.display = 'none';
+                submitBtn.disabled = true;
+            } else {
+                // Disable machine dropdown if no plant selected
+                machineSelect.disabled = true;
+                machineSelect.innerHTML = '<option value="">-- Pilih Plant Terlebih Dahulu --</option>';
+                scheduleSection.style.display = 'none';
+                submitBtn.disabled = true;
+            }
+        });
+        
+        // Show/hide schedule section based on machine selection
+        machineSelect.addEventListener('change', function() {
+            const machineId = this.value;
+            if (machineId) {
+                scheduleSection.style.display = 'block';
+                submitBtn.disabled = false;
+                loadProductsForMachine(machineId);
+            } else {
+                scheduleSection.style.display = 'none';
+                submitBtn.disabled = true;
+            }
+        });
+        
+        // Load products for selected machine
+        function loadProductsForMachine(machineId) {
+            fetch(`/Admin/GetProductsForMachine?machineId=${machineId}`)
+                .then(r => r.ok ? r.json() : [])
+                .then(products => {
+                    const productSelects = document.querySelectorAll('.product-select');
+                    productSelects.forEach(select => {
+                        const currentValue = select.value;
+                        select.innerHTML = '<option value="">-- Pilih Product --</option>';
+                        products.forEach(p => {
+                            const opt = document.createElement('option');
+                            opt.value = p.productId;
+                            opt.textContent = `${p.name} (${p.materialCode})`;
+                            if (currentValue == p.productId) {
+                                opt.selected = true;
+                            }
+                            select.appendChild(opt);
+                        });
+                    });
+                })
+                .catch(err => console.error('Error loading products', err));
+        }
+        
+        // Add new schedule
+        addScheduleBtn.addEventListener('click', function() {
+            const machineId = machineSelect.value;
+            if (!machineId) {
+                alert('Pilih mesin terlebih dahulu!');
+                return;
+            }
+            
+            const today = new Date().toISOString().split('T')[0];
+            const scheduleHtml = `
+                <div class="card mb-3 schedule-item" data-index="${scheduleIndex}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="mb-0">Jadwal ${scheduleIndex + 1}</h6>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-schedule">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Product <span class="text-danger">*</span></label>
+                                <select name="Schedules[${scheduleIndex}].ProductId" class="form-select product-select" required>
+                                    <option value="">-- Pilih Product --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Tanggal <span class="text-danger">*</span></label>
+                                <input type="date" name="Schedules[${scheduleIndex}].PlannedDate" class="form-control" value="${today}" required />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Shift <span class="text-danger">*</span></label>
+                                <select name="Schedules[${scheduleIndex}].ShiftId" class="form-select" required>
+                                    <option value="">-- Pilih Shift --</option>
+                                    @foreach (var shift in Model.Shifts)
+                                    {
+                                        <text>
+                                        <option value="@shift.Id">@shift.Name (@shift.StartTime.ToString(@"hh\:mm") - @shift.EndTime.ToString(@"hh\:mm"))</option>
+                                        </text>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">Qty <span class="text-danger">*</span></label>
+                                <input type="number" name="Schedules[${scheduleIndex}].TargetQuantity" class="form-control" min="1" required />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Operator (Optional)</label>
+                                <select name="Schedules[${scheduleIndex}].OperatorId" class="form-select">
+                                    <option value="">-- Pilih Operator --</option>
+                                    @foreach (var op in Model.Operators)
+                                    {
+                                        <text>
+                                        <option value="@op.Id">@op.Username</option>
+                                        </text>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            schedulesContainer.insertAdjacentHTML('beforeend', scheduleHtml);
+            loadProductsForMachine(machineId);
+            updateScheduleNumbers();
+            scheduleIndex++;
+        });
+        
+        // Remove schedule
+        schedulesContainer.addEventListener('click', function(e) {
+            if (e.target.closest('.remove-schedule')) {
+                const scheduleItem = e.target.closest('.schedule-item');
+                scheduleItem.remove();
+                updateScheduleNumbers();
+                
+                // Ensure at least 1 schedule
+                if (schedulesContainer.querySelectorAll('.schedule-item').length === 0) {
+                    addScheduleBtn.click();
+                }
+            }
+        });
+        
+        // Update schedule numbers
+        function updateScheduleNumbers() {
+            const items = schedulesContainer.querySelectorAll('.schedule-item');
+            items.forEach((item, index) => {
+                const title = item.querySelector('h6');
+                if (title) {
+                    title.textContent = `Jadwal ${index + 1}`;
+                }
+            });
+        }
+        
+        // Initialize
+        if (machineSelect.value) {
+            scheduleSection.style.display = 'block';
+            submitBtn.disabled = false;
+            loadProductsForMachine(machineSelect.value);
+        }
+    </script>
+}
