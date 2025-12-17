@@ -49,7 +49,7 @@
                         @foreach (var machine in Model.Machines)
                         {
                             <option value="@machine.Id" data-plant-id="@machine.PlantId" style="display: none;">
-                                @machine.Name (@machine.LineId)
+                                @machine.Name
                             </option>
                         }
                     </select>
@@ -179,7 +179,7 @@
         {
             <text>
             allMachineOptions.push({
-                id: @machine.Id,
+                id: '@machine.Id',
                 name: '@Html.Raw(machine.Name.Replace("'", "\\'"))',
                 lineId: '@Html.Raw(machine.LineId.Replace("'", "\\'"))',
                 plantId: @machine.PlantId
@@ -214,7 +214,7 @@
                     filteredMachines.forEach(machine => {
                         const opt = document.createElement('option');
                         opt.value = machine.id;
-                        opt.textContent = `${machine.name} (${machine.lineId})`;
+                        opt.textContent = `${machine.name}`;
                         machineSelect.appendChild(opt);
                     });
                 } else {

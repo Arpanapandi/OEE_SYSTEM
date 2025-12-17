@@ -156,6 +156,76 @@ using (var scope = app.Services.CreateScope())
                 // Jangan stop aplikasi, biarkan tetap berjalan
             }
 
+            // Tambahkan kolom PlannedDate dan ShiftId ke tabel WorkOrders jika belum ada
+            try
+            {
+                // Cek dan tambahkan kolom PlannedDate
+                var plannedDateExists = await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[WorkOrders]') AND name = 'PlannedDate')
+                    BEGIN
+                        ALTER TABLE [dbo].[WorkOrders] ADD [PlannedDate] [datetime2](7) NULL
+                    END");
+                Console.WriteLine("INFO: Kolom PlannedDate sudah ada atau berhasil ditambahkan");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat menambahkan kolom PlannedDate: {ex.Message}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            }
+
+            try
+            {
+                // Cek dan tambahkan kolom ShiftId
+                var shiftIdExists = await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[WorkOrders]') AND name = 'ShiftId')
+                    BEGIN
+                        ALTER TABLE [dbo].[WorkOrders] ADD [ShiftId] [int] NULL
+                    END");
+                Console.WriteLine("INFO: Kolom ShiftId sudah ada atau berhasil ditambahkan");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat menambahkan kolom ShiftId: {ex.Message}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            }
+
+            try
+            {
+                // Tambahkan foreign key ke tabel Shifts jika belum ada
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_WorkOrders_Shifts_ShiftId')
+                    BEGIN
+                        ALTER TABLE [dbo].[WorkOrders]
+                        ADD CONSTRAINT [FK_WorkOrders_Shifts_ShiftId] 
+                        FOREIGN KEY([ShiftId])
+                        REFERENCES [dbo].[Shifts] ([Id])
+                        ON DELETE SET NULL
+                    END");
+                Console.WriteLine("INFO: Foreign key FK_WorkOrders_Shifts_ShiftId sudah ada atau berhasil ditambahkan");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat menambahkan foreign key: {ex.Message}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            }
+
+            try
+            {
+                // Buat index untuk ShiftId jika belum ada
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_WorkOrders_ShiftId' AND object_id = OBJECT_ID('WorkOrders'))
+                    BEGIN
+                        CREATE NONCLUSTERED INDEX [IX_WorkOrders_ShiftId] 
+                        ON [dbo].[WorkOrders] ([ShiftId] ASC)
+                    END");
+                Console.WriteLine("INFO: Index IX_WorkOrders_ShiftId sudah ada atau berhasil dibuat");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat membuat index: {ex.Message}");
+                Console.WriteLine($"StackTrace: {ex.StackTrace}");
+            }
+
             // Seed default shifts jika belum ada
     if (!db.Shifts.Any())
     {

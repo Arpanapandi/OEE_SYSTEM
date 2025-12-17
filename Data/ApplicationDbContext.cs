@@ -67,6 +67,13 @@ public class ApplicationDbContext : DbContext
             .Property(w => w.Status)
             .HasConversion<string>();
 
+        // Relasi WorkOrder dengan Shift
+        modelBuilder.Entity<WorkOrder>()
+            .HasOne(w => w.Shift)
+            .WithMany()
+            .HasForeignKey(w => w.ShiftId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Relasi dasar (sebagian besar mengikuti konvensi, ini hanya eksplisitkan yang penting)
         modelBuilder.Entity<JobRun>()
             .HasOne(j => j.Machine)

@@ -1,4 +1,4 @@
-@model List<WorkOrder>
+@model List<WorkOrderViewModel>
 @{
     ViewData["Title"] = "Work Orders";
 }
@@ -46,6 +46,8 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Tanggal</th>
+                        <th>Shift</th>
                         <th>Order Number</th>
                         <th>Product</th>
                         <th>Target Quantity</th>
@@ -54,10 +56,13 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var wo in Model)
+                    @foreach (var item in Model)
                     {
+                        var wo = item.WorkOrder;
                         <tr>
                             <td>@wo.Id</td>
+                            <td>@(item.PlannedDate?.ToString("yyyy-MM-dd") ?? "N/A")</td>
+                            <td>@(item.ShiftName ?? "N/A")</td>
                             <td>@wo.OrderNumber</td>
                             <td>@(wo.Product?.Name ?? "N/A")</td>
                             <td>@wo.TargetQuantity</td>

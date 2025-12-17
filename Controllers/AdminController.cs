@@ -1102,12 +1102,59 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteProductConfirmed(int id)
     {
-        var product = await _context.Products.FindAsync(id);
-        if (product != null)
+        var product = await _context.Products
+            .Include(p => p.ProductMachines)
+            .Include(p => p.ProductNgTypes)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        
+        if (product == null)
         {
-            _context.Products.Remove(product);
-            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(Products));
         }
+        
+        try
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            
+            try
+            {
+                // 1. Hapus ProductMachines (many-to-many dengan Machine)
+                if (product.ProductMachines.Any())
+                {
+                    _context.ProductMachines.RemoveRange(product.ProductMachines);
+                }
+                
+                // 2. Hapus ProductNgTypes (many-to-many dengan NgType)
+                if (product.ProductNgTypes.Any())
+                {
+                    _context.ProductNgTypes.RemoveRange(product.ProductNgTypes);
+                }
+                
+                // 3. Hapus Product
+                _context.Products.Remove(product);
+                
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                
+                TempData["SuccessMessage"] = "Product berhasil dihapus.";
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            TempData["ErrorMessage"] = $"Tidak dapat menghapus product. Product mungkin masih digunakan di Work Orders atau data terkait lainnya. Error: {ex.InnerException?.Message ?? ex.Message}";
+            return RedirectToAction(nameof(DeleteProduct), new { id });
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Terjadi error saat menghapus product: {ex.Message}";
+            return RedirectToAction(nameof(DeleteProduct), new { id });
+        }
+        
         return RedirectToAction(nameof(Products));
     }
 
@@ -1183,12 +1230,40 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeletePlantConfirmed(int id)
     {
-        var plant = await _context.Plants.FindAsync(id);
-        if (plant != null)
+        var plant = await _context.Plants
+            .Include(p => p.Machines)
+            .Include(p => p.Products)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        
+        if (plant == null)
+        {
+            return RedirectToAction(nameof(Plants));
+        }
+        
+        // Cek apakah plant masih digunakan
+        if (plant.Machines.Any() || plant.Products.Any())
+        {
+            TempData["ErrorMessage"] = $"Tidak dapat menghapus plant. Plant masih digunakan oleh {plant.Machines.Count} mesin dan {plant.Products.Count} produk. Hapus mesin dan produk terlebih dahulu.";
+            return RedirectToAction(nameof(DeletePlant), new { id });
+        }
+        
+        try
         {
             _context.Plants.Remove(plant);
             await _context.SaveChangesAsync();
+            TempData["SuccessMessage"] = "Plant berhasil dihapus.";
         }
+        catch (DbUpdateException ex)
+        {
+            TempData["ErrorMessage"] = $"Tidak dapat menghapus plant. Plant mungkin masih digunakan. Error: {ex.InnerException?.Message ?? ex.Message}";
+            return RedirectToAction(nameof(DeletePlant), new { id });
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Terjadi error saat menghapus plant: {ex.Message}";
+            return RedirectToAction(nameof(DeletePlant), new { id });
+        }
+        
         return RedirectToAction(nameof(Plants));
     }
 
@@ -1461,8 +1536,21 @@ public class AdminController : Controller
     {
         var workOrders = await _context.WorkOrders
             .Include(w => w.Product)
+            .Include(w => w.Shift) // Include Shift untuk mendapatkan nama shift
             .ToListAsync();
-        return View(workOrders);
+        
+        // Buat ViewModel dengan tanggal dan shift dari WorkOrder langsung (sudah tersimpan di database)
+        var viewModels = workOrders.Select(wo =>
+        {
+            return new WorkOrderViewModel
+            {
+                WorkOrder = wo,
+                PlannedDate = wo.PlannedDate, // Ambil langsung dari WorkOrder
+                ShiftName = wo.Shift?.Name ?? "N/A" // Ambil langsung dari WorkOrder.Shift
+            };
+        }).ToList();
+        
+        return View(viewModels);
     }
 
     public async Task<IActionResult> CreateWorkOrder()
@@ -1568,7 +1656,9 @@ public class AdminController : Controller
                     {
                         ProductId = schedule.ProductId,
                         TargetQuantity = schedule.TargetQuantity,
-                        Status = WorkOrderStatus.InProgress // Langsung InProgress karena akan di-assign
+                        Status = WorkOrderStatus.InProgress, // Langsung InProgress karena akan di-assign
+                        PlannedDate = schedule.PlannedDate, // Simpan PlannedDate ke database
+                        ShiftId = schedule.ShiftId // Simpan ShiftId ke database
                     };
                     
                     _context.WorkOrders.Add(workOrder);
@@ -1722,12 +1812,71 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteWorkOrderConfirmed(int id)
     {
-        var workOrder = await _context.WorkOrders.FindAsync(id);
-        if (workOrder != null)
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.JobRuns)
+            .FirstOrDefaultAsync(w => w.Id == id);
+        
+        if (workOrder == null)
         {
-            _context.WorkOrders.Remove(workOrder);
-            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(WorkOrders));
         }
+        
+        try
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            
+            try
+            {
+                // 1. Hapus ProductionCounts yang terkait dengan JobRuns
+                var jobRunIds = workOrder.JobRuns.Select(j => j.Id).ToList();
+                if (jobRunIds.Any())
+                {
+                    var productionCounts = await _context.ProductionCounts
+                        .Where(pc => jobRunIds.Contains(pc.JobRunId))
+                        .ToListAsync();
+                    if (productionCounts.Any())
+                    {
+                        _context.ProductionCounts.RemoveRange(productionCounts);
+                    }
+                    
+                    // 2. Hapus DowntimeEvents yang terkait dengan JobRuns
+                    var downtimeEvents = await _context.DowntimeEvents
+                        .Where(de => jobRunIds.Contains(de.JobRunId))
+                        .ToListAsync();
+                    if (downtimeEvents.Any())
+                    {
+                        _context.DowntimeEvents.RemoveRange(downtimeEvents);
+                    }
+                    
+                    // 3. Hapus JobRuns
+                    _context.JobRuns.RemoveRange(workOrder.JobRuns);
+                }
+                
+                // 4. Hapus WorkOrder
+                _context.WorkOrders.Remove(workOrder);
+                
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                
+                TempData["SuccessMessage"] = "Work Order berhasil dihapus.";
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            TempData["ErrorMessage"] = $"Tidak dapat menghapus work order. Error: {ex.InnerException?.Message ?? ex.Message}";
+            return RedirectToAction(nameof(DeleteWorkOrder), new { id });
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Terjadi error saat menghapus work order: {ex.Message}";
+            return RedirectToAction(nameof(DeleteWorkOrder), new { id });
+        }
+        
         return RedirectToAction(nameof(WorkOrders));
     }
 
@@ -2001,12 +2150,59 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteDowntimeReasonConfirmed(int id)
     {
-        var reason = await _context.DowntimeReasons.FindAsync(id);
-        if (reason != null)
+        var reason = await _context.DowntimeReasons
+            .Include(r => r.DowntimeEvents)
+            .Include(r => r.MachineDowntimeReasons)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        
+        if (reason == null)
         {
-            _context.DowntimeReasons.Remove(reason);
-            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(DowntimeReasons));
         }
+        
+        try
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            
+            try
+            {
+                // 1. Hapus MachineDowntimeReasons (many-to-many dengan Machine)
+                if (reason.MachineDowntimeReasons.Any())
+                {
+                    _context.MachineDowntimeReasons.RemoveRange(reason.MachineDowntimeReasons);
+                }
+                
+                // 2. Hapus DowntimeEvents yang menggunakan reason ini
+                if (reason.DowntimeEvents.Any())
+                {
+                    _context.DowntimeEvents.RemoveRange(reason.DowntimeEvents);
+                }
+                
+                // 3. Hapus DowntimeReason
+                _context.DowntimeReasons.Remove(reason);
+                
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                
+                TempData["SuccessMessage"] = "Downtime Reason berhasil dihapus.";
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            TempData["ErrorMessage"] = $"Tidak dapat menghapus downtime reason. Error: {ex.InnerException?.Message ?? ex.Message}";
+            return RedirectToAction(nameof(DeleteDowntimeReason), new { id });
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Terjadi error saat menghapus downtime reason: {ex.Message}";
+            return RedirectToAction(nameof(DeleteDowntimeReason), new { id });
+        }
+        
         return RedirectToAction(nameof(DowntimeReasons));
     }
 
