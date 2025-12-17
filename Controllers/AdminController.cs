@@ -1462,7 +1462,8 @@ public class AdminController : Controller
         var workOrders = await _context.WorkOrders
             .Include(w => w.Product)
             .Include(w => w.Shift) // Include Shift untuk menampilkan nama shift
-            .OrderByDescending(w => w.Id) // Urutkan terbaru dulu
+            .OrderBy(w => w.PlannedDate ?? DateTime.MaxValue) // Urutkan berdasarkan tanggal dari lama ke baru (null di akhir)
+            .ThenBy(w => w.Id) // Jika tanggal sama, urutkan berdasarkan ID
             .ToListAsync();
         return View(workOrders);
     }

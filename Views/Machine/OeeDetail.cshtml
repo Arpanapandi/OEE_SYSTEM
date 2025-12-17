@@ -122,13 +122,28 @@
                         <span class="text-secondary">Operating Time</span>
                         <span class="fw-semibold text-success" id="operating-time">@Model.OperatingTime.ToString(@"hh\:mm\:ss")</span>
                     </div>
-                    <div class="progress" style="height: 6px;">
+                    <div class="progress" style="height: 6px; background-color: #e9ecef;">
                         @{
                             var operatingPercent = Model.PlannedProductionTime.TotalSeconds > 0 
                                 ? (Model.OperatingTime.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
                                 : 0;
+                            
+                            // Logika warna dinamis: Hijau >=80%, Kuning 50-80%, Merah <50%
+                            string operatingColor;
+                            if (operatingPercent >= 80)
+                            {
+                                operatingColor = "#28a745";
+                            }
+                            else if (operatingPercent >= 50)
+                            {
+                                operatingColor = "#ffc107";
+                            }
+                            else
+                            {
+                                operatingColor = "#dc3545";
+                            }
                         }
-                        <div class="progress-bar bg-success" id="operating-progress-bar" style="width: @operatingPercent.ToString("F1")%"></div>
+                        <div class="progress-bar" id="operating-progress-bar" style="width: @operatingPercent.ToString("F1")%; background-color: @operatingColor !important; min-width: 2px;"></div>
                     </div>
                 </div>
                 <div class="mt-auto">
@@ -136,13 +151,28 @@
                         <span class="text-secondary">Downtime</span>
                         <span class="fw-semibold text-danger" id="downtime-total">@Model.DowntimeTotal.ToString(@"hh\:mm\:ss")</span>
                     </div>
-                    <div class="progress" style="height: 6px;">
+                    <div class="progress" style="height: 6px; background-color: #e9ecef;">
                         @{
                             var downtimePercent = Model.PlannedProductionTime.TotalSeconds > 0 
                                 ? (Model.DowntimeTotal.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
                                 : 0;
+                            
+                            // Logika warna dinamis: Merah >20%, Kuning 10-20%, Hijau <10%
+                            string downtimeColor;
+                            if (downtimePercent > 20)
+                            {
+                                downtimeColor = "#dc3545";
+                            }
+                            else if (downtimePercent > 10)
+                            {
+                                downtimeColor = "#ffc107";
+                            }
+                            else
+                            {
+                                downtimeColor = "#28a745";
+                            }
                         }
-                        <div class="progress-bar bg-danger" id="downtime-progress-bar" style="width: @downtimePercent.ToString("F1")%"></div>
+                        <div class="progress-bar" id="downtime-progress-bar" style="width: @downtimePercent.ToString("F1")%; background-color: @downtimeColor !important; min-width: 2px;"></div>
                     </div>
                 </div>
             </div>
@@ -174,11 +204,26 @@
                         </span>
                         <span class="fw-bold" style="color: #28a745 !important;">@Model.GoodCount</span>
                     </div>
-                    <div class="progress" style="height: 8px;">
+                    <div class="progress" style="height: 8px; background-color: #e9ecef;">
                         @{
                             var goodPercent = Model.TotalCount > 0 ? (Model.GoodCount * 100.0 / Model.TotalCount) : 0;
+                            
+                            // Logika warna dinamis: Hijau >=95%, Kuning 80-95%, Merah <80%
+                            string goodColor;
+                            if (goodPercent >= 95)
+                            {
+                                goodColor = "#28a745";
+                            }
+                            else if (goodPercent >= 80)
+                            {
+                                goodColor = "#ffc107";
+                            }
+                            else
+                            {
+                                goodColor = "#dc3545";
+                            }
                         }
-                        <div class="progress-bar bg-success" style="width: @goodPercent.ToString("F1")%"></div>
+                        <div class="progress-bar" id="good-progress-bar" style="width: @goodPercent.ToString("F1")%; background-color: @goodColor !important; min-width: 2px;"></div>
                     </div>
                 </div>
                 <div class="mt-auto">
@@ -188,11 +233,26 @@
                         </span>
                         <span class="fw-bold" style="color: #dc3545 !important;">@Model.RejectCount</span>
                     </div>
-                    <div class="progress" style="height: 8px;">
+                    <div class="progress" style="height: 8px; background-color: #e9ecef;">
                         @{
                             var rejectPercent = Model.TotalCount > 0 ? (Model.RejectCount * 100.0 / Model.TotalCount) : 0;
+                            
+                            // Logika warna dinamis: Merah >5%, Kuning 2-5%, Hijau <2%
+                            string rejectColor;
+                            if (rejectPercent > 5)
+                            {
+                                rejectColor = "#dc3545";
+                            }
+                            else if (rejectPercent > 2)
+                            {
+                                rejectColor = "#ffc107";
+                            }
+                            else
+                            {
+                                rejectColor = "#28a745";
+                            }
                         }
-                        <div class="progress-bar bg-danger" style="width: @rejectPercent.ToString("F1")%"></div>
+                        <div class="progress-bar" id="reject-progress-bar" style="width: @rejectPercent.ToString("F1")%; background-color: @rejectColor !important; min-width: 2px;"></div>
                     </div>
                 </div>
             </div>
@@ -419,6 +479,23 @@
         </div>
     </div>
 </div>
+
+<style>
+    /* Progress bar colors dinamis - warna akan diatur berdasarkan data proses mesin */
+    /* Operating Time: Hijau >=80%, Kuning 50-80%, Merah <50% */
+    /* Downtime: Merah >20%, Kuning 10-20%, Hijau <10% */
+    /* Good: Hijau >=95%, Kuning 80-95%, Merah <80% */
+    /* Reject: Merah >5%, Kuning 2-5%, Hijau <2% */
+    
+    /* Pastikan progress bar memiliki min-width untuk visibility */
+    #operating-progress-bar,
+    #downtime-progress-bar,
+    #good-progress-bar,
+    #reject-progress-bar {
+        min-width: 2px;
+        transition: background-color 0.3s ease;
+    }
+</style>
 
 @section Scripts {
     <script>
@@ -842,18 +919,58 @@
                 downtimeEl.textContent = formatTime(currentDowntimeSeconds);
             }
 
-            // Update progress bars
+            // Update progress bars dengan warna dinamis
             const operatingProgressBar = document.getElementById('operating-progress-bar');
             const downtimeProgressBar = document.getElementById('downtime-progress-bar');
             
-            if (operatingProgressBar && currentPlannedSeconds > 0) {
-                const operatingPercent = (currentOperatingSeconds / currentPlannedSeconds * 100);
-                operatingProgressBar.style.width = operatingPercent.toFixed(1) + '%';
+            if (operatingProgressBar) {
+                if (currentPlannedSeconds > 0) {
+                    const operatingPercent = (currentOperatingSeconds / currentPlannedSeconds * 100);
+                    operatingProgressBar.style.width = operatingPercent.toFixed(1) + '%';
+                    
+                    // Logika warna dinamis: Hijau >=80%, Kuning 50-80%, Merah <50%
+                    const operatingColor = operatingPercent >= 80 ? '#28a745' : 
+                                          operatingPercent >= 50 ? '#ffc107' : '#dc3545';
+                    operatingProgressBar.style.setProperty('background-color', operatingColor, 'important');
+                } else {
+                    // Default warna jika tidak ada planned time
+                    operatingProgressBar.style.setProperty('background-color', '#28a745', 'important');
+                }
             }
 
-            if (downtimeProgressBar && currentPlannedSeconds > 0) {
-                const downtimePercent = (currentDowntimeSeconds / currentPlannedSeconds * 100);
-                downtimeProgressBar.style.width = downtimePercent.toFixed(1) + '%';
+            if (downtimeProgressBar) {
+                if (currentPlannedSeconds > 0) {
+                    const downtimePercent = (currentDowntimeSeconds / currentPlannedSeconds * 100);
+                    downtimeProgressBar.style.width = downtimePercent.toFixed(1) + '%';
+                    
+                    // Logika warna dinamis: Merah >20%, Kuning 10-20%, Hijau <10%
+                    const downtimeColor = downtimePercent > 20 ? '#dc3545' : 
+                                        downtimePercent > 10 ? '#ffc107' : '#28a745';
+                    downtimeProgressBar.style.setProperty('background-color', downtimeColor, 'important');
+                } else {
+                    // Default warna jika tidak ada planned time
+                    downtimeProgressBar.style.setProperty('background-color', '#dc3545', 'important');
+                }
+            }
+            
+            // Update Good dan Reject progress bars dengan warna dinamis
+            const goodProgressBar = document.getElementById('good-progress-bar');
+            const rejectProgressBar = document.getElementById('reject-progress-bar');
+            
+            if (goodProgressBar) {
+                const goodWidth = parseFloat(goodProgressBar.style.width) || 0;
+                // Logika warna dinamis: Hijau >=95%, Kuning 80-95%, Merah <80%
+                const goodColor = goodWidth >= 95 ? '#28a745' : 
+                                goodWidth >= 80 ? '#ffc107' : '#dc3545';
+                goodProgressBar.style.setProperty('background-color', goodColor, 'important');
+            }
+            
+            if (rejectProgressBar) {
+                const rejectWidth = parseFloat(rejectProgressBar.style.width) || 0;
+                // Logika warna dinamis: Merah >5%, Kuning 2-5%, Hijau <2%
+                const rejectColor = rejectWidth > 5 ? '#dc3545' : 
+                                  rejectWidth > 2 ? '#ffc107' : '#28a745';
+                rejectProgressBar.style.setProperty('background-color', rejectColor, 'important');
             }
         }
 
