@@ -46,6 +46,8 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Tanggal</th>
+                        <th>Shift</th>
                         <th>Order Number</th>
                         <th>Product</th>
                         <th>Target Quantity</th>
@@ -58,6 +60,8 @@
                     {
                         <tr>
                             <td>@wo.Id</td>
+                            <td>@(wo.PlannedDate?.ToString("dd/MM/yyyy") ?? "-")</td>
+                            <td>@(wo.Shift?.Name ?? "-")</td>
                             <td>@wo.OrderNumber</td>
                             <td>@(wo.Product?.Name ?? "N/A")</td>
                             <td>@wo.TargetQuantity</td>

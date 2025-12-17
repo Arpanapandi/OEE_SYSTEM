@@ -21,15 +21,15 @@
 <div class="card">
     <div class="card-body">
         <form asp-action="CreateWorkOrder" method="post" id="workOrderForm">
-            <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+            <div asp-validation-summary="All" class="text-danger mb-3"></div>
             
             <!-- Step 1: Pilih Plant & Mesin -->
             <h5 class="mb-3"><i class="fa-solid fa-building me-2"></i>Step 1: Pilih Plant & Mesin</h5>
             <div class="row mb-4">
                 <!-- Dropdown Plant -->
                 <div class="col-md-6">
-                    <label class="form-label">Plant <span class="text-danger">*</span></label>
-                    <select class="form-select" id="plantSelect" required>
+                    <label asp-for="PlantId" class="form-label">Plant <span class="text-danger">*</span></label>
+                    <select asp-for="PlantId" class="form-select" id="plantSelect" name="PlantId" required>
                         <option value="">-- Pilih Plant --</option>
                         @foreach (var plant in Model.Plants)
                         {
@@ -38,6 +38,7 @@
                             </option>
                         }
                     </select>
+                    <span asp-validation-for="PlantId" class="text-danger"></span>
                     <div class="text-danger small mt-1" id="plantError" style="display: none;">Plant harus dipilih terlebih dahulu</div>
                 </div>
                 
@@ -293,28 +294,65 @@
                 }
             }
             
-            // Filter mesin berdasarkan plant
+            // Filter mesin berdasarkan plant dan update product dropdown
             plantSelect.addEventListener('change', function() {
+                const plantId = this.value;
+                const machineId = machineSelect.value;
+                
+                console.log('Plant changed:', plantId);
+                
                 updateMachineDropdown();
+                
+                // Update product dropdown berdasarkan plant yang dipilih
+                if (plantId) {
+                    loadProductsByPlant(parseInt(plantId, 10));
+                } else {
+                    // Clear product dropdown jika plant tidak dipilih
+                    clearProductDropdowns();
+                }
+                
+                // Update submit button dan schedule section state
+                updateSubmitButtonState(plantId, machineId);
             });
-            
-            // Inisialisasi dropdown mesin saat halaman dimuat (jika plant sudah dipilih)
-            if (plantSelect.value) {
-                updateMachineDropdown();
-            }
             
             // Show/hide schedule section based on machine selection
             machineSelect.addEventListener('change', function() {
                 const machineId = this.value;
-                if (machineId) {
-                    if (scheduleSection) scheduleSection.style.display = 'block';
-                    if (submitBtn) submitBtn.disabled = false;
-                    loadProductsForMachine(machineId);
-            } else {
-                    if (scheduleSection) scheduleSection.style.display = 'none';
-                    if (submitBtn) submitBtn.disabled = true;
-                }
+                const plantId = plantSelect.value;
+                
+                console.log('Machine changed:', machineId, 'Plant:', plantId);
+                
+                updateSubmitButtonState(plantId, machineId);
             });
+            
+            // Fungsi helper untuk update submit button state
+            function updateSubmitButtonState(plantId, machineId) {
+                if (plantId && machineId) {
+                    if (scheduleSection) scheduleSection.style.display = 'block';
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        console.log('Submit button enabled');
+                    }
+                } else {
+                    if (scheduleSection) scheduleSection.style.display = 'none';
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        console.log('Submit button disabled - missing plant or machine');
+                    }
+                }
+            }
+            
+            // Inisialisasi dropdown mesin saat halaman dimuat (jika plant sudah dipilih)
+            if (plantSelect.value) {
+                updateMachineDropdown();
+                // Load products untuk plant yang sudah dipilih
+                const plantId = parseInt(plantSelect.value, 10);
+                if (plantId) {
+                    loadProductsByPlant(plantId);
+                }
+                // Update submit button state
+                updateSubmitButtonState(plantSelect.value, machineSelect.value);
+            }
         
         // Add new schedule
             if (addScheduleBtn) {
@@ -395,9 +433,17 @@
                             });
                         }
                         
-            loadProductsForMachine(machineId);
-            updateScheduleNumbers();
-            scheduleIndex++;
+                        // Product sudah di-load berdasarkan plant, tidak perlu load lagi
+                        // Tapi jika plant belum dipilih, load berdasarkan machine (fallback)
+                        const plantSelect = document.getElementById('plantSelect');
+                        if (plantSelect && plantSelect.value) {
+                            const plantId = parseInt(plantSelect.value, 10);
+                            loadProductsByPlant(plantId);
+                        } else {
+                            loadProductsForMachine(machineId);
+                        }
+                        updateScheduleNumbers();
+                        scheduleIndex++;
                     }
         });
             }
@@ -422,23 +468,92 @@
             if (machineSelect && machineSelect.value) {
                 if (scheduleSection) scheduleSection.style.display = 'block';
                 if (submitBtn) submitBtn.disabled = false;
-                loadProductsForMachine(machineSelect.value);
+                // Load products berdasarkan plant yang dipilih
+                if (plantSelect && plantSelect.value) {
+                    const plantId = parseInt(plantSelect.value, 10);
+                    loadProductsByPlant(plantId);
+                } else {
+                    loadProductsForMachine(machineSelect.value);
+                }
+            }
+            
+            // Form submission handler untuk debugging
+            const workOrderForm = document.getElementById('workOrderForm');
+            if (workOrderForm) {
+                workOrderForm.addEventListener('submit', function(e) {
+                    // Validasi client-side sebelum submit
+                    const plantId = plantSelect.value;
+                    const machineId = machineSelect.value;
+                    
+                    if (!plantId) {
+                        e.preventDefault();
+                        alert('Plant harus dipilih terlebih dahulu!');
+                        plantSelect.focus();
+                        return false;
+                    }
+                    
+                    if (!machineId) {
+                        e.preventDefault();
+                        alert('Mesin harus dipilih terlebih dahulu!');
+                        machineSelect.focus();
+                        return false;
+                    }
+                    
+                    // Cek apakah ada schedule
+                    const scheduleItems = schedulesContainer ? schedulesContainer.querySelectorAll('.schedule-item') : [];
+                    if (scheduleItems.length === 0) {
+                        e.preventDefault();
+                        alert('Minimal harus ada 1 jadwal produksi!');
+                        return false;
+                    }
+                    
+                    // Cek setiap schedule
+                    let hasError = false;
+                    scheduleItems.forEach((item, index) => {
+                        const productSelect = item.querySelector('.product-select');
+                        const shiftSelect = item.querySelector('select[name*="ShiftId"]');
+                        const qtyInput = item.querySelector('input[name*="TargetQuantity"]');
+                        
+                        if (productSelect && !productSelect.value) {
+                            hasError = true;
+                            alert(`Jadwal ${index + 1}: Product harus dipilih!`);
+                        }
+                        if (shiftSelect && !shiftSelect.value) {
+                            hasError = true;
+                            alert(`Jadwal ${index + 1}: Shift harus dipilih!`);
+                        }
+                        if (qtyInput && (!qtyInput.value || parseInt(qtyInput.value) <= 0)) {
+                            hasError = true;
+                            alert(`Jadwal ${index + 1}: Quantity harus lebih dari 0!`);
+                        }
+                    });
+                    
+                    if (hasError) {
+                        e.preventDefault();
+                        return false;
+                    }
+                    
+                    console.log('Form submitting with data:');
+                    console.log('PlantId:', plantId);
+                    console.log('MachineId:', machineId);
+                    console.log('Schedules count:', scheduleItems.length);
+                });
             }
         });
         
-        // Load products for selected machine
-        // Fungsi untuk refresh products dengan cache busting
-        function refreshProductsForMachine(machineId) {
-            if (!machineId) {
-                console.warn('MachineId is required to load products');
+        // Fungsi untuk load products berdasarkan Plant
+        function loadProductsByPlant(plantId) {
+            if (!plantId) {
+                console.warn('PlantId is required to load products');
+                clearProductDropdowns();
                 return;
             }
             
             // Clear cache dengan menambahkan timestamp
             const timestamp = new Date().getTime();
-            console.log('Loading products for machine:', machineId);
+            console.log('Loading products for plant:', plantId);
             
-            fetch(`/Admin/GetProductsForMachine?machineId=${encodeURIComponent(machineId)}&_=${timestamp}`, {
+            fetch(`/Admin/GetProductsByPlant?plantId=${plantId}&_=${timestamp}`, {
                 cache: 'no-cache',
                 headers: {
                     'Cache-Control': 'no-cache'
@@ -452,54 +567,83 @@
                     return r.json();
                 })
                 .then(products => {
-                    console.log('Loaded products:', products);
-                    const productSelects = document.querySelectorAll('.product-select');
-                    
-                    if (productSelects.length === 0) {
-                        console.warn('No product select elements found');
-                        return;
-                    }
-                    
-                    productSelects.forEach(select => {
-                        const currentValue = select.value;
-                        select.innerHTML = '<option value="">-- Pilih Product --</option>';
-                        
-                        if (products && products.length > 0) {
-                            products.forEach(p => {
-                                const opt = document.createElement('option');
-                                opt.value = p.productId || p.ProductId;
-                                const productName = p.name || p.Name || '';
-                                const materialCode = p.materialCode || p.MaterialCode || '';
-                                opt.textContent = `${productName} (${materialCode})`;
-                                if (currentValue && (currentValue == (p.productId || p.ProductId))) {
-                                    opt.selected = true;
-                                }
-                                select.appendChild(opt);
-                            });
-                        } else {
-                            console.warn('No products found for machine:', machineId);
-                        }
-                    });
+                    console.log('Loaded products for plant:', products);
+                    updateProductDropdowns(products);
                 })
                 .catch(err => {
-                    console.error('Error loading products:', err);
-                    // Tampilkan error di UI jika perlu
-                    const productSelects = document.querySelectorAll('.product-select');
-                    productSelects.forEach(select => {
-                        if (select.options.length === 1) { // Hanya option default
-                            const errorOpt = document.createElement('option');
-                            errorOpt.value = '';
-                            errorOpt.textContent = '-- Error loading products --';
-                            errorOpt.disabled = true;
-                            select.appendChild(errorOpt);
-                        }
-                    });
+                    console.error('Error loading products by plant:', err);
+                    showProductError();
                 });
         }
         
-        // Alias untuk backward compatibility
+        // Fungsi untuk update semua product dropdowns
+        function updateProductDropdowns(products) {
+            const productSelects = document.querySelectorAll('.product-select');
+            
+            if (productSelects.length === 0) {
+                console.warn('No product select elements found');
+                return;
+            }
+            
+            productSelects.forEach(select => {
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">-- Pilih Product --</option>';
+                
+                if (products && products.length > 0) {
+                    products.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.productId || p.ProductId;
+                        const productName = p.name || p.Name || '';
+                        const materialCode = p.materialCode || p.MaterialCode || '';
+                        opt.textContent = `${productName} (${materialCode})`;
+                        if (currentValue && (currentValue == (p.productId || p.ProductId))) {
+                            opt.selected = true;
+                        }
+                        select.appendChild(opt);
+                    });
+                } else {
+                    const noProductOpt = document.createElement('option');
+                    noProductOpt.value = '';
+                    noProductOpt.textContent = '-- Tidak ada product di plant ini --';
+                    noProductOpt.disabled = true;
+                    select.appendChild(noProductOpt);
+                }
+            });
+        }
+        
+        // Fungsi untuk clear product dropdowns
+        function clearProductDropdowns() {
+            const productSelects = document.querySelectorAll('.product-select');
+            productSelects.forEach(select => {
+                select.innerHTML = '<option value="">-- Pilih Product --</option>';
+            });
+        }
+        
+        // Fungsi untuk show error di product dropdowns
+        function showProductError() {
+            const productSelects = document.querySelectorAll('.product-select');
+            productSelects.forEach(select => {
+                if (select.options.length === 1) { // Hanya option default
+                    const errorOpt = document.createElement('option');
+                    errorOpt.value = '';
+                    errorOpt.textContent = '-- Error loading products --';
+                    errorOpt.disabled = true;
+                    select.appendChild(errorOpt);
+                }
+            });
+        }
+        
+        // Load products for selected machine (backward compatibility - sekarang menggunakan plant)
         function loadProductsForMachine(machineId) {
-            refreshProductsForMachine(machineId);
+            // Get plant dari machine yang dipilih
+            const plantSelect = document.getElementById('plantSelect');
+            if (plantSelect && plantSelect.value) {
+                const plantId = parseInt(plantSelect.value, 10);
+                loadProductsByPlant(plantId);
+            } else {
+                console.warn('Plant must be selected first');
+                clearProductDropdowns();
+            }
         }
         
         // Update schedule numbers

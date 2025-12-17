@@ -17,6 +17,11 @@ public class WorkOrder
 
     public int TargetQuantity { get; set; }
     public WorkOrderStatus Status { get; set; } = WorkOrderStatus.Planned;
+    
+    // Planning fields
+    public DateTime? PlannedDate { get; set; }
+    public int? ShiftId { get; set; }
+    public Shift? Shift { get; set; }
 
     public ICollection<JobRun> JobRuns { get; set; } = new List<JobRun>();
 }
