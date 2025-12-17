@@ -24,7 +24,7 @@
                     <label class="input-group-text" for="plantId">
                         <i class="fa-solid fa-building me-1"></i>PLANT:
                     </label>
-                    <select class="form-select" id="plantId" name="plantId" onchange="updateMachineDropdown(); submitForm();">
+                    <select class="form-select" id="plantId" name="plantId" onchange="handlePlantChange();">
                         <option value="">-- Semua Plant --</option>
                         @foreach (var plant in Model.Plants)
                         {
@@ -479,6 +479,9 @@
             // Load saved status first
             loadSavedStatus();
             
+            // Update machine dropdown berdasarkan plant yang dipilih (jika ada)
+            updateMachineDropdown();
+            
             // Load charts
             loadHourlyProductionChart();
             loadDowntimeReasonsChart();
@@ -501,35 +504,60 @@
         {
             <text>
             allMachineOptions.push({
-                id: @machine.Id,
+                id: '@machine.Id',
                 name: '@Html.Raw(machine.Name.Replace("'", "\\'"))',
                 plantId: @machine.PlantId
             });
             </text>
         }
 
+        // Fungsi untuk handle perubahan plant
+        function handlePlantChange() {
+            // Update dropdown mesin terlebih dahulu
+            updateMachineDropdown();
+            // Reset machine selection karena plant berubah
+            document.getElementById('machineId').value = '';
+            // Submit form untuk refresh data
+            submitForm();
+        }
+
         // Fungsi untuk update dropdown mesin berdasarkan plant yang dipilih
         function updateMachineDropdown() {
-            const plantId = document.getElementById('plantId').value;
+            const plantId = document.getElementById('plantId')?.value || '';
             const machineSelect = document.getElementById('machineId');
+            
+            if (!machineSelect) {
+                console.error('Machine select element not found');
+                return;
+            }
+            
             const currentValue = machineSelect.value;
             
             // Reset dropdown mesin
             machineSelect.innerHTML = '<option value="">-- Semua Mesin --</option>';
             
+            // Konversi plantId ke number untuk perbandingan yang benar
+            const plantIdNum = plantId ? parseInt(plantId, 10) : null;
+            
+            console.log('Updating machine dropdown - PlantId:', plantId, 'PlantIdNum:', plantIdNum, 'Total machines:', allMachineOptions.length);
+            
             // Filter dan tambahkan mesin berdasarkan plant yang dipilih
+            let filteredCount = 0;
             allMachineOptions.forEach(machine => {
-                if (!plantId || machine.plantId == plantId) {
+                if (!plantIdNum || machine.plantId === plantIdNum) {
                     const option = document.createElement('option');
                     option.value = machine.id;
                     option.textContent = machine.name;
                     option.setAttribute('data-plant-id', machine.plantId);
-                    if (currentValue && currentValue == machine.id) {
+                    if (currentValue && currentValue === machine.id) {
                         option.selected = true;
                     }
                     machineSelect.appendChild(option);
+                    filteredCount++;
                 }
             });
+            
+            console.log('Filtered machines count:', filteredCount);
         }
 
         // Fungsi untuk submit form dengan mempertahankan semua filter

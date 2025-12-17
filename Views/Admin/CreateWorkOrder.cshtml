@@ -166,12 +166,6 @@
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
     <script>
         let scheduleIndex = @Model.Schedules.Count;
-        const plantSelect = document.getElementById('plantSelect');
-        const machineSelect = document.getElementById('machineSelect');
-        const scheduleSection = document.getElementById('scheduleSection');
-        const addScheduleBtn = document.getElementById('addScheduleBtn');
-        const schedulesContainer = document.getElementById('schedulesContainer');
-        const submitBtn = document.getElementById('submitBtn');
         
         // Store all machine options dengan plant info
         const allMachineOptions = [];
@@ -179,7 +173,7 @@
         {
             <text>
             allMachineOptions.push({
-                id: @machine.Id,
+                id: '@machine.Id',
                 name: '@Html.Raw(machine.Name.Replace("'", "\\'"))',
                 lineId: '@Html.Raw(machine.LineId.Replace("'", "\\'"))',
                 plantId: @machine.PlantId
@@ -187,8 +181,47 @@
             </text>
         }
         
-        // Set default date to today
+        // Store all shifts untuk dropdown
+        const allShifts = [];
+        @foreach (var shift in Model.Shifts)
+        {
+            <text>
+            allShifts.push({
+                id: @shift.Id,
+                name: '@Html.Raw(shift.Name.Replace("'", "\\'"))',
+                startTime: '@shift.StartTime.ToString(@"hh\:mm")',
+                endTime: '@shift.EndTime.ToString(@"hh\:mm")'
+            });
+            </text>
+        }
+        
+        // Store all operators untuk dropdown
+        const allOperators = [];
+        @foreach (var op in Model.Operators)
+        {
+            <text>
+            allOperators.push({
+                id: @op.Id,
+                username: '@Html.Raw(op.Username.Replace("'", "\\'"))'
+            });
+            </text>
+        }
+        
+        // Set default date to today dan setup event listeners
         document.addEventListener('DOMContentLoaded', function() {
+            const plantSelect = document.getElementById('plantSelect');
+            const machineSelect = document.getElementById('machineSelect');
+            const scheduleSection = document.getElementById('scheduleSection');
+            const addScheduleBtn = document.getElementById('addScheduleBtn');
+            const schedulesContainer = document.getElementById('schedulesContainer');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (!plantSelect || !machineSelect) {
+                console.error('Required elements not found');
+                return;
+            }
+            
+            // Set default date to today
             const dateInputs = document.querySelectorAll('input[type="date"]');
             const today = new Date().toISOString().split('T')[0];
             dateInputs.forEach(input => {
@@ -196,80 +229,95 @@
                     input.value = today;
                 }
             });
-        });
-        
-        // Filter mesin berdasarkan plant
-        plantSelect.addEventListener('change', function() {
-            const plantId = this.value;
             
-            if (plantId) {
-                // Enable machine dropdown
-                machineSelect.disabled = false;
-                machineSelect.innerHTML = '<option value="">-- Pilih Mesin --</option>';
+            // Fungsi untuk update dropdown mesin berdasarkan plant
+            function updateMachineDropdown() {
+                const plantId = plantSelect.value;
                 
-                // Filter dan tampilkan hanya mesin dari plant yang dipilih
-                const filteredMachines = allMachineOptions.filter(m => m.plantId == plantId);
-                
-                if (filteredMachines.length > 0) {
-                    filteredMachines.forEach(machine => {
-                        const opt = document.createElement('option');
-                        opt.value = machine.id;
-                        opt.textContent = `${machine.name} (${machine.lineId})`;
-                        machineSelect.appendChild(opt);
-                    });
-                } else {
-                    machineSelect.innerHTML = '<option value="">-- Tidak ada mesin di plant ini --</option>';
+                // Hapus semua option yang ada (termasuk yang di-render dari server)
+                while (machineSelect.options.length > 0) {
+                    machineSelect.remove(0);
                 }
                 
-                // Reset schedule section
-                scheduleSection.style.display = 'none';
-                submitBtn.disabled = true;
-            } else {
-                // Disable machine dropdown if no plant selected
-                machineSelect.disabled = true;
-                machineSelect.innerHTML = '<option value="">-- Pilih Plant Terlebih Dahulu --</option>';
-                scheduleSection.style.display = 'none';
-                submitBtn.disabled = true;
-            }
-        });
-        
-        // Show/hide schedule section based on machine selection
-        machineSelect.addEventListener('change', function() {
-            const machineId = this.value;
-            if (machineId) {
-                scheduleSection.style.display = 'block';
-                submitBtn.disabled = false;
-                loadProductsForMachine(machineId);
-            } else {
-                scheduleSection.style.display = 'none';
-                submitBtn.disabled = true;
-            }
-        });
-        
-        // Load products for selected machine
-        function loadProductsForMachine(machineId) {
-            fetch(`/Admin/GetProductsForMachine?machineId=${machineId}`)
-                .then(r => r.ok ? r.json() : [])
-                .then(products => {
-                    const productSelects = document.querySelectorAll('.product-select');
-                    productSelects.forEach(select => {
-                        const currentValue = select.value;
-                        select.innerHTML = '<option value="">-- Pilih Product --</option>';
-                        products.forEach(p => {
-                            const opt = document.createElement('option');
-                            opt.value = p.productId;
-                            opt.textContent = `${p.name} (${p.materialCode})`;
-                            if (currentValue == p.productId) {
-                                opt.selected = true;
-                            }
-                            select.appendChild(opt);
-                        });
+                if (plantId) {
+                    // Enable machine dropdown
+                    machineSelect.disabled = false;
+                    
+                    // Tambahkan option default
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = '';
+                    defaultOpt.textContent = '-- Pilih Mesin --';
+                    machineSelect.appendChild(defaultOpt);
+                    
+                    // Konversi plantId ke number untuk perbandingan yang benar
+                    const plantIdNum = parseInt(plantId, 10);
+                    
+                    console.log('Filtering machines for plant:', plantIdNum, 'Total machines:', allMachineOptions.length);
+                    console.log('All machine options:', allMachineOptions);
+                    
+                    // Filter dan tampilkan hanya mesin dari plant yang dipilih
+                    const filteredMachines = allMachineOptions.filter(m => {
+                        console.log(`Machine ${m.id}: plantId=${m.plantId}, comparing with ${plantIdNum}, match: ${m.plantId === plantIdNum}`);
+                        return m.plantId === plantIdNum;
                     });
-                })
-                .catch(err => console.error('Error loading products', err));
-        }
+                    
+                    console.log('Filtered machines count:', filteredMachines.length);
+                    console.log('Filtered machines:', filteredMachines);
+                    
+                    if (filteredMachines.length > 0) {
+                        filteredMachines.forEach(machine => {
+                            const opt = document.createElement('option');
+                            opt.value = machine.id;
+                            opt.textContent = `${machine.name} (${machine.lineId})`;
+                            machineSelect.appendChild(opt);
+                        });
+                    } else {
+                        const noMachineOpt = document.createElement('option');
+                        noMachineOpt.value = '';
+                        noMachineOpt.textContent = '-- Tidak ada mesin di plant ini --';
+                        machineSelect.appendChild(noMachineOpt);
+                    }
+                    
+                    // Reset schedule section
+                    if (scheduleSection) scheduleSection.style.display = 'none';
+                    if (submitBtn) submitBtn.disabled = true;
+                } else {
+                    // Disable machine dropdown if no plant selected
+                    machineSelect.disabled = true;
+                    const defaultOpt = document.createElement('option');
+                    defaultOpt.value = '';
+                    defaultOpt.textContent = '-- Pilih Plant Terlebih Dahulu --';
+                    machineSelect.appendChild(defaultOpt);
+                    if (scheduleSection) scheduleSection.style.display = 'none';
+                    if (submitBtn) submitBtn.disabled = true;
+                }
+            }
+            
+            // Filter mesin berdasarkan plant
+            plantSelect.addEventListener('change', function() {
+                updateMachineDropdown();
+            });
+            
+            // Inisialisasi dropdown mesin saat halaman dimuat (jika plant sudah dipilih)
+            if (plantSelect.value) {
+                updateMachineDropdown();
+            }
+            
+            // Show/hide schedule section based on machine selection
+            machineSelect.addEventListener('change', function() {
+                const machineId = this.value;
+                if (machineId) {
+                    if (scheduleSection) scheduleSection.style.display = 'block';
+                    if (submitBtn) submitBtn.disabled = false;
+                    loadProductsForMachine(machineId);
+            } else {
+                    if (scheduleSection) scheduleSection.style.display = 'none';
+                    if (submitBtn) submitBtn.disabled = true;
+                }
+            });
         
         // Add new schedule
+            if (addScheduleBtn) {
         addScheduleBtn.addEventListener('click', function() {
             const machineId = machineSelect.value;
             if (!machineId) {
@@ -302,12 +350,6 @@
                                 <label class="form-label">Shift <span class="text-danger">*</span></label>
                                 <select name="Schedules[${scheduleIndex}].ShiftId" class="form-select" required>
                                     <option value="">-- Pilih Shift --</option>
-                                    @foreach (var shift in Model.Shifts)
-                                    {
-                                        <text>
-                                        <option value="@shift.Id">@shift.Name (@shift.StartTime.ToString(@"hh\:mm") - @shift.EndTime.ToString(@"hh\:mm"))</option>
-                                        </text>
-                                    }
                                 </select>
                             </div>
                             <div class="col-md-2 mb-3">
@@ -320,12 +362,6 @@
                                 <label class="form-label">Operator (Optional)</label>
                                 <select name="Schedules[${scheduleIndex}].OperatorId" class="form-select">
                                     <option value="">-- Pilih Operator --</option>
-                                    @foreach (var op in Model.Operators)
-                                    {
-                                        <text>
-                                        <option value="@op.Id">@op.Username</option>
-                                        </text>
-                                    }
                                 </select>
                             </div>
                         </div>
@@ -333,13 +369,41 @@
                 </div>
             `;
             
+                    if (schedulesContainer) {
+                        const currentIndex = scheduleIndex;
             schedulesContainer.insertAdjacentHTML('beforeend', scheduleHtml);
+                        
+                        // Populate shift dropdown
+                        const shiftSelect = schedulesContainer.querySelector(`select[name="Schedules[${currentIndex}].ShiftId"]`);
+                        if (shiftSelect) {
+                            allShifts.forEach(shift => {
+                                const opt = document.createElement('option');
+                                opt.value = shift.id;
+                                opt.textContent = `${shift.name} (${shift.startTime} - ${shift.endTime})`;
+                                shiftSelect.appendChild(opt);
+                            });
+                        }
+                        
+                        // Populate operator dropdown
+                        const operatorSelect = schedulesContainer.querySelector(`select[name="Schedules[${currentIndex}].OperatorId"]`);
+                        if (operatorSelect) {
+                            allOperators.forEach(op => {
+                                const opt = document.createElement('option');
+                                opt.value = op.id;
+                                opt.textContent = op.username;
+                                operatorSelect.appendChild(opt);
+                            });
+                        }
+                        
             loadProductsForMachine(machineId);
             updateScheduleNumbers();
             scheduleIndex++;
+                    }
         });
+            }
         
         // Remove schedule
+            if (schedulesContainer) {
         schedulesContainer.addEventListener('click', function(e) {
             if (e.target.closest('.remove-schedule')) {
                 const scheduleItem = e.target.closest('.schedule-item');
@@ -348,13 +412,101 @@
                 
                 // Ensure at least 1 schedule
                 if (schedulesContainer.querySelectorAll('.schedule-item').length === 0) {
-                    addScheduleBtn.click();
-                }
+                            if (addScheduleBtn) addScheduleBtn.click();
+                        }
+                    }
+                });
+            }
+            
+            // Initialize
+            if (machineSelect && machineSelect.value) {
+                if (scheduleSection) scheduleSection.style.display = 'block';
+                if (submitBtn) submitBtn.disabled = false;
+                loadProductsForMachine(machineSelect.value);
             }
         });
         
+        // Load products for selected machine
+        // Fungsi untuk refresh products dengan cache busting
+        function refreshProductsForMachine(machineId) {
+            if (!machineId) {
+                console.warn('MachineId is required to load products');
+                return;
+            }
+            
+            // Clear cache dengan menambahkan timestamp
+            const timestamp = new Date().getTime();
+            console.log('Loading products for machine:', machineId);
+            
+            fetch(`/Admin/GetProductsForMachine?machineId=${encodeURIComponent(machineId)}&_=${timestamp}`, {
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache'
+                }
+            })
+                .then(r => {
+                    if (!r.ok) {
+                        console.error('Failed to fetch products:', r.status, r.statusText);
+                        return [];
+                    }
+                    return r.json();
+                })
+                .then(products => {
+                    console.log('Loaded products:', products);
+                    const productSelects = document.querySelectorAll('.product-select');
+                    
+                    if (productSelects.length === 0) {
+                        console.warn('No product select elements found');
+                        return;
+                    }
+                    
+                    productSelects.forEach(select => {
+                        const currentValue = select.value;
+                        select.innerHTML = '<option value="">-- Pilih Product --</option>';
+                        
+                        if (products && products.length > 0) {
+                            products.forEach(p => {
+                                const opt = document.createElement('option');
+                                opt.value = p.productId || p.ProductId;
+                                const productName = p.name || p.Name || '';
+                                const materialCode = p.materialCode || p.MaterialCode || '';
+                                opt.textContent = `${productName} (${materialCode})`;
+                                if (currentValue && (currentValue == (p.productId || p.ProductId))) {
+                                    opt.selected = true;
+                                }
+                                select.appendChild(opt);
+                            });
+                        } else {
+                            console.warn('No products found for machine:', machineId);
+                        }
+                    });
+                })
+                .catch(err => {
+                    console.error('Error loading products:', err);
+                    // Tampilkan error di UI jika perlu
+                    const productSelects = document.querySelectorAll('.product-select');
+                    productSelects.forEach(select => {
+                        if (select.options.length === 1) { // Hanya option default
+                            const errorOpt = document.createElement('option');
+                            errorOpt.value = '';
+                            errorOpt.textContent = '-- Error loading products --';
+                            errorOpt.disabled = true;
+                            select.appendChild(errorOpt);
+                        }
+                    });
+                });
+        }
+        
+        // Alias untuk backward compatibility
+        function loadProductsForMachine(machineId) {
+            refreshProductsForMachine(machineId);
+        }
+        
         // Update schedule numbers
         function updateScheduleNumbers() {
+            const schedulesContainer = document.getElementById('schedulesContainer');
+            if (!schedulesContainer) return;
+            
             const items = schedulesContainer.querySelectorAll('.schedule-item');
             items.forEach((item, index) => {
                 const title = item.querySelector('h6');
@@ -362,13 +514,6 @@
                     title.textContent = `Jadwal ${index + 1}`;
                 }
             });
-        }
-        
-        // Initialize
-        if (machineSelect.value) {
-            scheduleSection.style.display = 'block';
-            submitBtn.disabled = false;
-            loadProductsForMachine(machineSelect.value);
         }
     </script>
 }

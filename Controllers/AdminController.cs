@@ -1663,13 +1663,16 @@ public class AdminController : Controller
     [HttpGet]
     public async Task<IActionResult> GetProductsForMachine(string machineId)
     {
+        // Pastikan data selalu fresh dari database (no cache)
         var products = await _context.ProductMachines
+            .AsNoTracking() // Pastikan tidak ada tracking/cache
             .Where(pm => pm.MachineId == machineId)
+            .Include(pm => pm.Product) // Pastikan Product di-load
             .Select(pm => new
             {
-                pm.ProductId,
-                pm.Product!.Name,
-                pm.Product.MaterialCode
+                productId = pm.ProductId,
+                name = pm.Product != null ? pm.Product.Name : "",
+                materialCode = pm.Product != null ? pm.Product.MaterialCode : ""
             })
             .ToListAsync();
         
