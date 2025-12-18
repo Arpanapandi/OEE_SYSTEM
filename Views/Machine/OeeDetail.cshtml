@@ -71,19 +71,18 @@
                 </div>
             </div>
             <div class="card-body" style="padding: 1rem;">
-                <!-- Action Buttons - Compact Horizontal Layout -->
-                <div class="row g-2">
+                <!-- Action Buttons - Compact Horizontal Layout (centered) -->
+                <div class="row g-2 justify-content-center text-center">
                     <!-- RUNNING PROCESS Button -->
-                    <div class="col-md-3 col-6">
+                    <div class="col-md-2 col-6">
                         <form asp-controller="Operator" asp-action="Start" method="post" id="running-form" style="margin: 0;">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="machineId" value="@Model.MachineId" />
                             <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
                             <button type="submit" 
                                     id="btn-running" 
-                                    class="btn btn-sm w-100 btn-outline-success"
-                                    style="pointer-events: auto !important; cursor: pointer !important;"
-                                    @(Model.MachineStatus == MachineStatus.TidakAktif || (Model.HasActiveJob && !Model.HasActiveDowntime) ? "disabled" : "")>
+                                    class="btn btn-sm w-100 btn-outline-success machine-action-btn"
+                                    style="pointer-events: auto !important; cursor: pointer !important;">
                                 <i class="fa-solid fa-play-circle me-1"></i>
                                 RUNNING
                             </button>
@@ -93,7 +92,7 @@
                     <!-- REST BREAK Button -->
                     @if (Model.RestReason != null)
                     {
-                        <div class="col-md-3 col-6">
+                        <div class="col-md-2 col-6">
                             <form asp-controller="Operator" asp-action="Rest" method="post" id="rest-form" style="margin: 0;">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="machineId" value="@Model.MachineId" />
@@ -101,9 +100,8 @@
                                 <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
                                 <button type="submit" 
                                         id="btn-rest" 
-                                        class="btn btn-sm w-100 btn-outline-warning"
-                                        style="pointer-events: auto !important; cursor: pointer !important;"
-                                        @(Model.MachineStatus == MachineStatus.TidakAktif || (Model.HasActiveJob && !Model.HasActiveDowntime) ? "disabled" : "")>
+                                        class="btn btn-sm w-100 btn-outline-warning machine-action-btn"
+                                        style="pointer-events: auto !important; cursor: pointer !important;">
                                     <i class="fa-solid fa-pause-circle me-1"></i>
                                     REST BREAK
                                 </button>
@@ -112,29 +110,31 @@
                     }
 
                     <!-- LINE STOP Button -->
-                    <div class="col-md-3 col-6">
+                    <div class="col-md-2 col-6">
                         <button type="button" 
                                 id="btn-line-stop" 
-                                class="btn btn-sm w-100 btn-outline-danger"
+                                class="btn btn-sm w-100 btn-outline-danger machine-action-btn"
                                 style="pointer-events: auto !important; cursor: pointer !important;"
                                 data-bs-toggle="modal" 
-                                data-bs-target="#lineStopModal"
-                                @(Model.MachineStatus == MachineStatus.TidakAktif || (Model.HasActiveJob && !Model.HasActiveDowntime) ? "disabled" : "")>
+                                data-bs-target="#lineStopModal">
                             <i class="fa-solid fa-stop-circle me-1"></i>
                             LINE STOP
                         </button>
                     </div>
 
-                    <!-- TAMBAH QTY Button -->
-                    <div class="col-md-3 col-6">
+                    <!-- NO LOADING Button -->
+                    <div class="col-md-2 col-6">
                         <button type="button" 
-                                class="btn btn-sm w-100 btn-primary" 
+                                id="btn-no-loading" 
+                                class="btn btn-sm w-100 btn-outline-info machine-action-btn"
+                                style="pointer-events: auto !important; cursor: pointer !important;"
                                 data-bs-toggle="modal" 
-                                data-bs-target="#addQtyModal">
-                            <i class="fa-solid fa-plus-circle me-1"></i>
-                            QUANTITY
+                                data-bs-target="#noLoadingModal">
+                            <i class="fa-regular fa-hourglass-half me-1"></i>
+                            NO LOADING
                         </button>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -359,16 +359,16 @@
     <!-- Current Job -->
     <div class="col-md-6">
         <div class="card h-100" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+            <div class="card-header" style="padding: 0.75rem 1rem;">
                 <i class="fa-solid fa-clipboard-list me-2"></i>Current Job
             </div>
-            <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
+            <div class="card-body d-flex flex-column" style="padding: 0.75rem 1rem;">
                 @if (Model.ActiveJob != null)
                 {
-                    <div class="row g-2 h-100">
+                    <div class="row gy-2 gx-1 h-100">
                         <!-- Left Section: Product Image/Name -->
                         <div class="col-5 d-flex flex-column">
-                            <div class="mb-2">
+                            <div class="mb-1">
                                 @if (!string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl))
                                 {
                                     <img src="@Model.ActiveJob.ProductImageUrl" alt="@(Model.ActiveJob?.ProductName ?? "Product")" 
@@ -388,7 +388,17 @@
                         </div>
                         
                         <!-- Right Section: Progress & Info -->
-                        <div class="col-7 d-flex flex-column">
+                        <div class="col-7 d-flex flex-column ps-2">
+                            <!-- QUANTITY di atas progress, selebar area progress -->
+                            <div class="mb-2">
+                                <button type="button" 
+                                        class="btn btn-sm btn-primary w-100"
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#addQtyModal">
+                                    <i class="fa-solid fa-plus-circle me-1"></i>
+                                    QUANTITY
+                                </button>
+                            </div>
                             <div class="mb-2">
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span>Progress</span>
@@ -478,6 +488,40 @@
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
                         <button type="submit" class="btn btn-danger">
                             <i class="fa-solid fa-play me-2"></i>START LINE STOP
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal No Loading -->
+    <div class="modal fade" id="noLoadingModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">NO LOADING - Konfirmasi</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form asp-controller="Operator" asp-action="NoLoading" method="post" id="no-loading-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                    <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="fa-solid fa-info-circle me-2"></i>
+                            Mesin akan di-set ke status <strong>NO LOADING</strong>. Status ini menandakan mesin tidak memiliki material untuk diproses.
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                            <strong>Catatan Penting:</strong> Waktu NO LOADING <strong>tidak akan</strong> dihitung sebagai Operating Time atau Downtime.
+                        </div>
+                        <p>Apakah Anda yakin ingin melanjutkan?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn btn-info">
+                            <i class="fa-solid fa-check me-2"></i>KONFIRMASI NO LOADING
                         </button>
                     </div>
                 </form>
@@ -946,6 +990,7 @@
             var hasActiveDowntimeValue = Model.RecentDowntimes != null && Model.RecentDowntimes.Any(d => !d.EndTime.HasValue);
         }
         let hasActiveDowntime = @(hasActiveDowntimeValue ? "true" : "false");
+        let isNoLoading = false; // Track status NoLoading - tidak masuk ke Operating Time atau Downtime
         let previousHasActiveJob = hasActiveJob;
         let previousHasActiveDowntime = hasActiveDowntime;
 
@@ -996,6 +1041,11 @@
                     hasActiveDowntime = newHasActiveDowntime;
                     previousHasActiveJob = hasActiveJob;
                     previousHasActiveDowntime = hasActiveDowntime;
+                    
+                    // Update NoLoading status dari data jika ada
+                    if (data.IsNoLoading !== undefined) {
+                        isNoLoading = data.IsNoLoading;
+                    }
 
                     // Update display immediately
                     updateTimeDisplay();
@@ -1081,17 +1131,17 @@
             const baseDowntime = Number(baseDowntimeSeconds) || 0;
 
             // Calculate current values dengan real-time increment
-            // Operating Time bertambah jika ada active job DAN tidak ada active downtime (running)
+            // Operating Time bertambah jika ada active job DAN tidak ada active downtime (running) DAN bukan NoLoading
             let currentOperatingSeconds = baseOperating;
-            if (hasActiveJob && !hasActiveDowntime) {
-                // Operating time bertambah setiap detik jika running
+            if (hasActiveJob && !hasActiveDowntime && !isNoLoading) {
+                // Operating time bertambah setiap detik jika running dan bukan NoLoading
                 currentOperatingSeconds = baseOperating + realTimeCounter;
             }
 
-            // Downtime bertambah jika ada active downtime
+            // Downtime bertambah jika ada active downtime DAN bukan NoLoading
             let currentDowntimeSeconds = baseDowntime;
-            if (hasActiveDowntime) {
-                // Downtime bertambah setiap detik jika ada downtime aktif
+            if (hasActiveDowntime && !isNoLoading) {
+                // Downtime bertambah setiap detik jika ada downtime aktif dan bukan NoLoading
                 currentDowntimeSeconds = baseDowntime + realTimeCounter;
             }
 
@@ -1257,7 +1307,9 @@
                         data.Type === "MachineStarted" || 
                         data.Type === "MachineStopped" || 
                         data.Type === "DowntimeStarted" || 
-                        data.Type === "DowntimeEnded") {
+                        data.Type === "DowntimeEnded" ||
+                        data.Type === "NoLoadingStarted" ||
+                        data.Type === "NoLoadingEnded") {
                         
                         // Refresh Time Metrics immediately
                         console.log('🔄 Refreshing Time Metrics due to action update');
@@ -1303,60 +1355,26 @@
         let machineStatusOee = '@Model.MachineStatus.ToString()';
 
         // Update action buttons state
+        // FRONTEND: semua tombol selalu bisa diklik.
+        // BACKEND: teman Anda yang akan validasi & menolak jika status tidak sesuai.
         function updateActionButtonsOee(data) {
             // Defensive: Check if data exists
             if (!data) {
                 data = {};
             }
             
-            const btnRunning = document.getElementById('btn-running');
-            const btnRest = document.getElementById('btn-rest');
-            const btnLineStop = document.getElementById('btn-line-stop');
-            
             // Safe property access with fallbacks
             const machineStatusFromAdmin = (data?.MachineStatus ?? machineStatusOee ?? '').toString().trim();
-            const isDisabledByAdmin = machineStatusFromAdmin === 'TidakAktif';
             const hasActiveJobValue = data?.HasActiveJob ?? hasActiveJobOee ?? false;
             const hasActiveDowntimeValue = data?.HasActiveDowntime ?? hasActiveDowntimeOee ?? false;
             
-            // Update RUNNING button
-            if (btnRunning) {
-                const shouldDisable = isDisabledByAdmin || (hasActiveJobValue && !hasActiveDowntimeValue);
-                btnRunning.disabled = shouldDisable;
-                if (shouldDisable) {
-                    btnRunning.style.opacity = '0.6';
-                    btnRunning.style.cursor = 'not-allowed';
-                } else {
-                    btnRunning.style.opacity = '1';
-                    btnRunning.style.cursor = 'pointer';
-                }
+            // Update NoLoading flag dari data jika ada (dipakai hanya untuk time metrics)
+            if (data?.IsNoLoading !== undefined) {
+                isNoLoading = data.IsNoLoading;
             }
             
-            // Update REST button
-            if (btnRest) {
-                const shouldDisable = isDisabledByAdmin || (hasActiveJobValue && !hasActiveDowntimeValue);
-                btnRest.disabled = shouldDisable;
-                if (shouldDisable) {
-                    btnRest.style.opacity = '0.6';
-                    btnRest.style.cursor = 'not-allowed';
-                } else {
-                    btnRest.style.opacity = '1';
-                    btnRest.style.cursor = 'pointer';
-                }
-            }
-            
-            // Update LINE STOP button
-            if (btnLineStop) {
-                const shouldDisable = isDisabledByAdmin || (hasActiveJobValue && !hasActiveDowntimeValue);
-                btnLineStop.disabled = shouldDisable;
-                if (shouldDisable) {
-                    btnLineStop.style.opacity = '0.6';
-                    btnLineStop.style.cursor = 'not-allowed';
-                } else {
-                    btnLineStop.style.opacity = '1';
-                    btnLineStop.style.cursor = 'pointer';
-                }
-            }
+            // Tidak ada pengaturan disabled/enabled di sini.
+            // Semua tombol tetap aktif; server menjadi single source of truth.
         }
 
         // Update machine status display
@@ -1499,22 +1517,40 @@
             const runningForm = document.getElementById('running-form');
             const restForm = document.getElementById('rest-form');
             const lineStopBtn = document.getElementById('btn-line-stop');
+            const noLoadingBtn = document.getElementById('btn-no-loading');
+            const noLoadingForm = document.getElementById('no-loading-form');
             
             if (runningForm) {
                 runningForm.addEventListener('submit', function() {
                     resetTimerOnAction();
+                    isNoLoading = false; // Reset NoLoading status saat RUNNING
                 });
             }
             
             if (restForm) {
                 restForm.addEventListener('submit', function() {
                     resetTimerOnAction();
+                    isNoLoading = false; // Reset NoLoading status saat REST BREAK
                 });
             }
             
             if (lineStopBtn) {
                 lineStopBtn.addEventListener('click', function() {
                     // Timer akan di-reset setelah line stop dimulai (via SignalR update)
+                    isNoLoading = false; // Reset NoLoading status saat LINE STOP
+                });
+            }
+            
+            if (noLoadingForm) {
+                noLoadingForm.addEventListener('submit', function() {
+                    resetTimerOnAction();
+                    isNoLoading = true; // Set NoLoading status
+                });
+            }
+            
+            if (noLoadingBtn) {
+                noLoadingBtn.addEventListener('click', function() {
+                    // Timer akan di-reset setelah no loading dimulai (via SignalR update)
                 });
             }
             
@@ -1522,7 +1558,8 @@
             updateActionButtonsOee({
                 MachineStatus: machineStatusOee,
                 HasActiveJob: hasActiveJobOee,
-                HasActiveDowntime: hasActiveDowntimeOee
+                HasActiveDowntime: hasActiveDowntimeOee,
+                IsNoLoading: isNoLoading
             });
         });
 
@@ -1553,6 +1590,11 @@
                 hasActiveJobOee = data?.HasActiveJob ?? false;
                 hasActiveDowntimeOee = data?.HasActiveDowntime ?? false;
                 machineStatusOee = data?.MachineStatus ?? machineStatusOee;
+                
+                // Update NoLoading status dari data jika ada
+                if (data?.IsNoLoading !== undefined) {
+                    isNoLoading = data.IsNoLoading;
+                }
                 
                 // Update timer jika ada LastStatusChangeTime atau SinceLastChangeSeconds
                 if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
@@ -1600,11 +1642,21 @@
             margin: 0;
         }
         
+        /* Samakan ukuran & alignment semua tombol Machine Actions */
+        .machine-action-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            min-height: 32px; /* pastikan tinggi konsisten, bisa dinaikkan jika perlu */
+        }
+        
         /* Ensure buttons are clickable */
         button[type="submit"]:not(:disabled),
         #btn-running:not(:disabled),
         #btn-rest:not(:disabled),
-        #btn-line-stop:not(:disabled) {
+        #btn-line-stop:not(:disabled),
+        #btn-no-loading:not(:disabled) {
             pointer-events: auto !important;
             cursor: pointer !important;
         }
@@ -1613,6 +1665,7 @@
         .btn-outline-success:hover:not(:disabled),
         .btn-outline-warning:hover:not(:disabled),
         .btn-outline-danger:hover:not(:disabled),
+        .btn-outline-info:hover:not(:disabled),
         .btn-primary:hover:not(:disabled) {
             transform: scale(1.02);
             transition: transform 0.2s ease;
