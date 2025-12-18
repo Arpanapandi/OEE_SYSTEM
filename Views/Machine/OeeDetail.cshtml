@@ -295,22 +295,48 @@
                         <!-- Right Section: Progress & Info -->
                         <div class="col-7 d-flex flex-column">
                             <div class="mb-2">
-                                <div class="small mb-1">Progress</div>
-                                <div class="progress" style="height: 8px;">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>Progress</span>
+                                    <span id="progress-text">@Model.GoodCount / @Model.ActiveJob.TargetQuantity</span>
+                                </div>
+                                <div class="progress" style="height: 10px;">
                                     @{
                                         var progressPercent = Model.ActiveJob.TargetQuantity > 0 
-                                            ? (Model.ActiveJob.CurrentQuantity * 100.0 / Model.ActiveJob.TargetQuantity) 
+                                            ? (Model.GoodCount * 100.0 / Model.ActiveJob.TargetQuantity) 
                                             : 0;
                                         if (progressPercent > 100) progressPercent = 100;
                                     }
-                                    <div class="progress-bar bg-primary" style="width: @progressPercent.ToString("F1")%"></div>
+                                    <div id="progress-bar" class="progress-bar bg-primary" role="progressbar" style="width: @progressPercent.ToString("F1")%;" aria-valuenow="@progressPercent" aria-valuemin="0" aria-valuemax="100">
+                                        <span id="progress-percent" class="small">@progressPercent.ToString("F1")%</span>
+                                    </div>
                                 </div>
-                                <div class="small text-secondary mt-1">@Model.ActiveJob.CurrentQuantity / @Model.ActiveJob.TargetQuantity</div>
+                                <div class="small mt-1 text-secondary">
+                                    Total Good: <span id="total-good" class="fw-bold text-success">@Model.GoodCount</span> • 
+                                    Reject: <span id="total-reject" class="fw-bold text-danger">@Model.RejectCount</span>
+                                </div>
+                                @if (Model.ActiveJob.TargetQuantity > 0)
+                                {
+                                    <div class="small mt-1 text-info">
+                                        <i class="fa-solid fa-clock me-1"></i>
+                                        Est. Completion: <span id="estimated-completion">@(ViewData["EstimatedCompletion"] ?? "-")</span>
+                                    </div>
+                                }
                             </div>
-                            <div class="mt-auto small text-secondary">
-                                <div class="mb-1"><i class="fa-solid fa-user me-1"></i>Operator: @Model.ActiveJob.OperatorName</div>
-                                <div class="mb-1"><i class="fa-solid fa-play me-1"></i>Started: @Model.ActiveJob.StartTime.ToString("MM/dd HH:mm")</div>
-                                <div><i class="fa-solid fa-clock me-1"></i>Durasi sejak status terakhir: <span id="since-last-status">00:00:00</span></div>
+                            <div class="mt-auto">
+                                <div class="small text-secondary mb-2">
+                                    <div class="mb-1"><i class="fa-solid fa-user me-1"></i>Operator: @Model.ActiveJob.OperatorName</div>
+                                    <div class="mb-1"><i class="fa-solid fa-play me-1"></i>Started: @Model.ActiveJob.StartTime.ToString("MM/dd HH:mm")</div>
+                                </div>
+                                <!-- Durasi sejak status terakhir - Prominent -->
+                                <div class="pt-2 border-top">
+                                    <div class="text-secondary small mb-1">Durasi sejak status terakhir</div>
+                                    <div class="fs-4 fw-bold text-primary" id="since-last-status">
+                                        @{
+                                            var sinceLastChange = TimeSpan.FromSeconds(Model.ActiveJob.SinceLastChangeSeconds);
+                                        }
+                                        @sinceLastChange.ToString(@"hh\:mm\:ss")
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -326,6 +352,188 @@
         </div>
     </div>
 </div>
+
+    <!-- Action Buttons Section - Horizontal Layout -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header" style="padding: 1rem 1.25rem;">
+                    <i class="fa-solid fa-sliders me-2"></i>Machine Actions
+                </div>
+                <div class="card-body" style="padding: 1.25rem;">
+                    <!-- Action Buttons - Horizontal Layout -->
+                    <div class="row g-2">
+                        <!-- RUNNING PROCESS Button -->
+                        <div class="col-md-3 col-sm-6">
+                            <form asp-controller="Operator" asp-action="Start" method="post" id="running-form" style="margin: 0;">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                                <button type="submit" 
+                                        id="btn-running" 
+                                        class="btn btn-lg w-100 btn-outline-success"
+                                        style="pointer-events: auto !important; cursor: pointer !important;"
+                                        @(Model.MachineStatus == MachineStatus.TidakAktif || (Model.HasActiveJob && !Model.HasActiveDowntime) ? "disabled" : "")>
+                                    <i class="fa-solid fa-play-circle me-2"></i>
+                                    RUNNING
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- REST BREAK Button -->
+                        @if (Model.RestReason != null)
+                        {
+                            <div class="col-md-3 col-sm-6">
+                                <form asp-controller="Operator" asp-action="Rest" method="post" id="rest-form" style="margin: 0;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                    <input type="hidden" name="reasonId" value="@Model.RestReason.Id" />
+                                    <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                                    <button type="submit" 
+                                            id="btn-rest" 
+                                            class="btn btn-lg w-100 btn-outline-warning"
+                                            style="pointer-events: auto !important; cursor: pointer !important;"
+                                            @(Model.MachineStatus == MachineStatus.TidakAktif || (Model.HasActiveJob && !Model.HasActiveDowntime) ? "disabled" : "")>
+                                        <i class="fa-solid fa-pause-circle me-2"></i>
+                                        REST BREAK
+                                    </button>
+                                </form>
+                            </div>
+                        }
+
+                        <!-- LINE STOP Button -->
+                        <div class="col-md-3 col-sm-6">
+                            <button type="button" 
+                                    id="btn-line-stop" 
+                                    class="btn btn-lg w-100 btn-outline-danger"
+                                    style="pointer-events: auto !important; cursor: pointer !important;"
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#lineStopModal"
+                                    @(Model.MachineStatus == MachineStatus.TidakAktif || (Model.HasActiveJob && !Model.HasActiveDowntime) ? "disabled" : "")>
+                                <i class="fa-solid fa-stop-circle me-2"></i>
+                                LINE STOP
+                            </button>
+                        </div>
+
+                        <!-- TAMBAH QTY Button -->
+                        <div class="col-md-3 col-sm-6">
+                            <button type="button" 
+                                    class="btn btn-lg w-100 btn-primary" 
+                                    data-bs-toggle="modal" 
+                                    data-bs-target="#addQtyModal">
+                                <i class="fa-solid fa-plus-circle me-2"></i>
+                                QUANTITY
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Machine Status Display -->
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="text-secondary small">Machine Status:</div>
+                                <div class="fs-5 fw-bold @(Model.MachineStatus == MachineStatus.Aktif ? "text-success" : "text-warning")" id="machine-status">
+                                    @(Model.MachineStatus == MachineStatus.Aktif ? "AKTIF" : "TIDAK AKTIF")
+                                </div>
+                            </div>
+                            @if (Model.MachineStatus == MachineStatus.TidakAktif)
+                            {
+                                <div class="small text-warning" id="machine-status-info">
+                                    <i class="fa-solid fa-exclamation-triangle me-1"></i>Machine di-set Tidak Aktif di Admin
+                                </div>
+                            }
+                            else if (Model.HasActiveDowntime && !string.IsNullOrEmpty(Model.ActiveDowntimeDescription))
+                            {
+                                <div class="small text-danger" id="downtime-description">
+                                    @Model.ActiveDowntimeDescription
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Line Stop -->
+    <div class="modal fade" id="lineStopModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">LINE STOP - Pilih Alasan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form asp-controller="Operator" asp-action="LineStop" method="post" id="line-stop-start-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                    <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Pilih Alasan Line Stop:</label>
+                            <select class="form-select" name="reasonId" required>
+                                <option value="">-- Pilih Alasan --</option>
+                                @foreach (var r in Model.LineStopReasons)
+                                {
+                                    <option value="@r.Id">@r.Description (@r.Category)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fa-solid fa-play me-2"></i>START LINE STOP
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Tambah Qty -->
+    <div class="modal fade" id="addQtyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Tambah Output</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form asp-controller="Operator" asp-action="AddQuantity" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                    <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Good Qty</label>
+                            <input type="number" class="form-control" name="goodQty" value="0" min="0" required />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Reject Qty</label>
+                            <input type="number" class="form-control" name="rejectQty" value="0" min="0" required />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Jenis NG (jika ada reject)</label>
+                            <select class="form-select" name="ngTypeId">
+                                <option value="">-- Pilih Jenis NG --</option>
+                                @foreach (var ng in Model.NgTypes)
+                                {
+                                    <option value="@ng.Id">@ng.Code - @ng.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Alasan Reject (optional)</label>
+                            <input type="text" class="form-control" name="rejectReason" />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                        <button type="submit" class="btn btn-primary">Simpan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
 <div class="row g-4 mb-4">
     <!-- Recent Downtimes -->
@@ -1058,9 +1266,13 @@
                         console.log('🔄 Refreshing Time Metrics due to action update');
                         fetchTimeMetrics();
                         
+                        // Refresh operator data untuk update action buttons dan timer
+                        fetchOperatorDataForOee();
+                        
                         // Juga refresh setelah 2 detik untuk memastikan sinkronisasi
                         setTimeout(() => {
                             fetchTimeMetrics();
+                            fetchOperatorDataForOee();
                         }, 2000);
                     }
                 });
@@ -1087,6 +1299,264 @@
                 }
             });
         });
+
+        // ========== ACTION BUTTONS & TIMER SYNCHRONIZATION ==========
+        let hasActiveJobOee = @(Model.HasActiveJob.ToString().ToLower());
+        let hasActiveDowntimeOee = @(Model.HasActiveDowntime.ToString().ToLower());
+        let machineStatusOee = '@Model.MachineStatus.ToString()';
+
+        // Update action buttons state
+        function updateActionButtonsOee(data) {
+            const btnRunning = document.getElementById('btn-running');
+            const btnRest = document.getElementById('btn-rest');
+            const btnLineStop = document.getElementById('btn-line-stop');
+            
+            const machineStatusFromAdmin = (data?.MachineStatus || machineStatusOee || '').toString().trim();
+            const isDisabledByAdmin = machineStatusFromAdmin === 'TidakAktif';
+            const hasActiveJobValue = data?.HasActiveJob ?? hasActiveJobOee;
+            const hasActiveDowntimeValue = data?.HasActiveDowntime ?? hasActiveDowntimeOee;
+            
+            // Update RUNNING button
+            if (btnRunning) {
+                const shouldDisable = isDisabledByAdmin || (hasActiveJobValue && !hasActiveDowntimeValue);
+                btnRunning.disabled = shouldDisable;
+                if (shouldDisable) {
+                    btnRunning.style.opacity = '0.6';
+                    btnRunning.style.cursor = 'not-allowed';
+                } else {
+                    btnRunning.style.opacity = '1';
+                    btnRunning.style.cursor = 'pointer';
+                }
+            }
+            
+            // Update REST button
+            if (btnRest) {
+                const shouldDisable = isDisabledByAdmin || (hasActiveJobValue && !hasActiveDowntimeValue);
+                btnRest.disabled = shouldDisable;
+                if (shouldDisable) {
+                    btnRest.style.opacity = '0.6';
+                    btnRest.style.cursor = 'not-allowed';
+                } else {
+                    btnRest.style.opacity = '1';
+                    btnRest.style.cursor = 'pointer';
+                }
+            }
+            
+            // Update LINE STOP button
+            if (btnLineStop) {
+                const shouldDisable = isDisabledByAdmin || (hasActiveJobValue && !hasActiveDowntimeValue);
+                btnLineStop.disabled = shouldDisable;
+                if (shouldDisable) {
+                    btnLineStop.style.opacity = '0.6';
+                    btnLineStop.style.cursor = 'not-allowed';
+                } else {
+                    btnLineStop.style.opacity = '1';
+                    btnLineStop.style.cursor = 'pointer';
+                }
+            }
+        }
+
+        // Update machine status display
+        function updateMachineStatusOee(data) {
+            const statusEl = document.getElementById('machine-status');
+            const downtimeDescEl = document.getElementById('downtime-description');
+            const machineStatusInfoEl = document.getElementById('machine-status-info');
+            
+            const machineStatusFromAdmin = (data?.MachineStatus || machineStatusOee || '').toString().trim();
+            const isAktif = machineStatusFromAdmin === 'Aktif';
+            
+            if (statusEl) {
+                statusEl.textContent = isAktif ? 'AKTIF' : 'TIDAK AKTIF';
+                statusEl.className = `fs-5 fw-bold ${isAktif ? 'text-success' : 'text-warning'}`;
+            }
+            
+            if (machineStatusInfoEl) {
+                machineStatusInfoEl.style.display = isAktif ? 'none' : 'block';
+            }
+            
+            if (downtimeDescEl) {
+                if (data?.HasActiveDowntime && data?.ActiveDowntimeDescription) {
+                    downtimeDescEl.textContent = data.ActiveDowntimeDescription;
+                    downtimeDescEl.style.display = 'block';
+                } else {
+                    downtimeDescEl.style.display = 'none';
+                }
+            }
+        }
+
+        // Update progress bar and production data
+        function updateProductionDataOee(data) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressPercent = document.getElementById('progress-percent');
+            const progressText = document.getElementById('progress-text');
+            const totalGoodEl = document.getElementById('total-good');
+            const totalRejectEl = document.getElementById('total-reject');
+            const estimatedCompletion = document.getElementById('estimated-completion');
+            
+            if (progressBar && progressPercent && progressText && data) {
+                const percent = data.ProgressPercent || 0;
+                progressBar.style.width = percent + '%';
+                progressBar.setAttribute('aria-valuenow', percent);
+                progressPercent.textContent = percent.toFixed(1) + '%';
+                progressText.textContent = `${data.TotalGood || 0} / ${data.TargetQuantity || 0}`;
+                
+                // Change color based on progress
+                if (percent >= 100) {
+                    progressBar.classList.remove('bg-success', 'bg-warning', 'bg-primary');
+                    progressBar.classList.add('bg-info');
+                } else if (percent >= 80) {
+                    progressBar.classList.remove('bg-success', 'bg-info', 'bg-primary');
+                    progressBar.classList.add('bg-warning');
+                } else {
+                    progressBar.classList.remove('bg-warning', 'bg-info');
+                    progressBar.classList.add('bg-primary');
+                }
+            }
+            
+            if (totalGoodEl && data) {
+                const oldValue = parseInt(totalGoodEl.textContent) || 0;
+                const newValue = data.TotalGood || 0;
+                totalGoodEl.textContent = newValue;
+                
+                // Animate change
+                if (newValue > oldValue) {
+                    totalGoodEl.classList.add('text-success');
+                    setTimeout(() => totalGoodEl.classList.remove('text-success'), 1000);
+                }
+            }
+            
+            if (totalRejectEl && data) {
+                const oldValue = parseInt(totalRejectEl.textContent) || 0;
+                const newValue = data.TotalReject || 0;
+                totalRejectEl.textContent = newValue;
+                
+                // Animate change
+                if (newValue > oldValue) {
+                    totalRejectEl.classList.add('text-danger');
+                    setTimeout(() => totalRejectEl.classList.remove('text-danger'), 1000);
+                }
+            }
+            
+            if (estimatedCompletion && data) {
+                estimatedCompletion.textContent = data.EstimatedCompletion || '-';
+            }
+        }
+
+        // Reset timer when action button is clicked
+        function resetTimerOnAction() {
+            // Reset timer to 0 when action is triggered
+            if (lastChangeTimestamp) {
+                lastChangeTimestamp = new Date();
+                updateTimerDisplay();
+            }
+        }
+
+        // Add event listeners to action buttons to reset timer
+        document.addEventListener('DOMContentLoaded', function() {
+            const runningForm = document.getElementById('running-form');
+            const restForm = document.getElementById('rest-form');
+            const lineStopBtn = document.getElementById('btn-line-stop');
+            
+            if (runningForm) {
+                runningForm.addEventListener('submit', function() {
+                    resetTimerOnAction();
+                });
+            }
+            
+            if (restForm) {
+                restForm.addEventListener('submit', function() {
+                    resetTimerOnAction();
+                });
+            }
+            
+            if (lineStopBtn) {
+                lineStopBtn.addEventListener('click', function() {
+                    // Timer akan di-reset setelah line stop dimulai (via SignalR update)
+                });
+            }
+            
+            // Initialize action buttons state
+            updateActionButtonsOee({
+                MachineStatus: machineStatusOee,
+                HasActiveJob: hasActiveJobOee,
+                HasActiveDowntime: hasActiveDowntimeOee
+            });
+        });
+
+        // Fetch operator data untuk update action buttons dan production data
+        async function fetchOperatorDataForOee() {
+            try {
+                const response = await fetch(`/Operator/GetOperatorData?machineId=@Model.MachineId`);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                
+                // Update state
+                hasActiveJobOee = data.HasActiveJob || false;
+                hasActiveDowntimeOee = data.HasActiveDowntime || false;
+                machineStatusOee = data.MachineStatus || machineStatusOee;
+                
+                // Update timer jika ada LastStatusChangeTime
+                if (data.LastStatusChangeTime) {
+                    const lastChangeTime = new Date(data.LastStatusChangeTime);
+                    const now = new Date();
+                    const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
+                    updateSinceLastChange(diffSeconds);
+                }
+                
+                // Update action buttons
+                updateActionButtonsOee(data);
+                
+                // Update machine status
+                updateMachineStatusOee(data);
+                
+                // Update production data
+                updateProductionDataOee(data);
+            } catch (error) {
+                console.error('Error fetching operator data for OEE:', error);
+            }
+        }
+
+        // Fetch operator data every 5 seconds untuk sinkronisasi
+        setInterval(() => {
+            fetchOperatorDataForOee();
+        }, 5000);
+
+        // Initial fetch
+        fetchOperatorDataForOee();
     </script>
+    
+    <style>
+        /* Action Buttons Horizontal Layout */
+        #running-form,
+        #rest-form {
+            margin: 0;
+        }
+        
+        /* Ensure buttons are clickable */
+        button[type="submit"]:not(:disabled),
+        #btn-running:not(:disabled),
+        #btn-rest:not(:disabled),
+        #btn-line-stop:not(:disabled) {
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+        
+        /* Button hover effects */
+        .btn-outline-success:hover:not(:disabled),
+        .btn-outline-warning:hover:not(:disabled),
+        .btn-outline-danger:hover:not(:disabled),
+        .btn-primary:hover:not(:disabled) {
+            transform: scale(1.02);
+            transition: transform 0.2s ease;
+        }
+        
+        /* Responsive: Stack buttons on small screens */
+        @@media (max-width: 768px) {
+            .col-md-3 {
+                margin-bottom: 0.5rem;
+            }
+        }
+    </style>
 }
 

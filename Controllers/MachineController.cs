@@ -316,13 +316,13 @@ public class MachineController : Controller
             
             // ✅ PERUBAHAN: Hitung lastChangeTime dengan logika yang sama seperti Operator View
             DateTime lastChangeTime = activeJob.StartTime;
-            var openDowntime = activeJob.DowntimeEvents
+            var openDowntimeForTimer = activeJob.DowntimeEvents
                 .OrderByDescending(d => d.StartTime)
                 .FirstOrDefault(d => d.EndTime == null);
             
-            if (openDowntime != null)
+            if (openDowntimeForTimer != null)
             {
-                lastChangeTime = openDowntime.StartTime;
+                lastChangeTime = openDowntimeForTimer.StartTime;
             }
             
             // Started time: Jika job dimulai sebelum shift start, gunakan shift start
@@ -333,6 +333,27 @@ public class MachineController : Controller
             var currentTime = DateTime.Now;
             var sinceLastChangeSeconds = (int)(currentTime - lastChangeTime).TotalSeconds;
             
+            // Calculate estimated completion time (sama seperti Operator View)
+            string? estimatedCompletion = null;
+            var targetQuantity = activeJob.WorkOrder?.TargetQuantity ?? 0;
+            if (targetQuantity > 0 && goodCount > 0 && activeJob.WorkOrder?.Product != null)
+            {
+                var remaining = targetQuantity - goodCount;
+                if (remaining > 0)
+                {
+                    var productCycleTime = activeJob.WorkOrder.Product.StandarCycleTime;
+                    var elapsedTime = (currentTime - activeJob.StartTime).TotalSeconds;
+                    var currentRate = elapsedTime > 0 ? goodCount / elapsedTime : 0; // units per second
+                    
+                    if (currentRate > 0)
+                    {
+                        var estimatedSeconds = remaining / currentRate;
+                        var estimatedCompletionTime = currentTime.AddSeconds(estimatedSeconds);
+                        estimatedCompletion = estimatedCompletionTime.ToString("HH:mm");
+                    }
+                }
+            }
+            
             vm.ActiveJob = new JobRunViewModel
             {
                 Id = activeJob.Id,
@@ -342,11 +363,14 @@ public class MachineController : Controller
                 OperatorName = activeJob.Operator?.Username ?? "",
                 StartTime = displayStartTime, // Sinkron dengan shift
                 EndTime = activeJob.EndTime,
-                TargetQuantity = activeJob.WorkOrder?.TargetQuantity ?? 0,
+                TargetQuantity = targetQuantity,
                 CurrentQuantity = currentQty,
                 LastStatusChangeTime = lastChangeTime, // Tetap ada untuk backward compatibility
                 SinceLastChangeSeconds = sinceLastChangeSeconds // ✅ TAMBAHKAN untuk sinkronisasi dengan Operator View
             };
+            
+            // Store estimated completion untuk JavaScript
+            ViewData["EstimatedCompletion"] = estimatedCompletion;
         }
 
         // Recent Downtimes (10 terakhir) dalam window shift
@@ -394,6 +418,20 @@ public class MachineController : Controller
             .Where(r => r.Category == "Unplanned")
             .OrderBy(r => r.Description)
             .ToListAsync();
+        
+        // NgTypes untuk modal Add Quantity
+        vm.NgTypes = await _context.NgTypes
+            .OrderBy(n => n.Code)
+            .ToListAsync();
+        
+        // Status untuk action buttons
+        vm.HasActiveJob = activeJob != null;
+        vm.HasActiveDowntime = hasOpenDowntime;
+        var openDowntimeForStatus = activeJob?.DowntimeEvents
+            .OrderByDescending(d => d.StartTime)
+            .FirstOrDefault(d => d.EndTime == null);
+        vm.ActiveDowntimeDescription = openDowntimeForStatus?.Reason?.Description;
+        vm.MachineStatus = machine.Status; // Status dari Admin (Aktif/TidakAktif)
 
         // Chart Data - gunakan data shift
         var runTimeMinutes = operatingTime.TotalMinutes;

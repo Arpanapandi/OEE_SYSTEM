@@ -47,6 +47,11 @@ public class MachineOeeViewModel
     // Action Buttons Data
     public List<DowntimeReason> LineStopReasons { get; set; } = new();
     public DowntimeReason? RestReason { get; set; }
+    public List<NgType> NgTypes { get; set; } = new();
+    public bool HasActiveJob { get; set; }
+    public bool HasActiveDowntime { get; set; }
+    public string? ActiveDowntimeDescription { get; set; }
+    public MachineStatus MachineStatus { get; set; } // Status dari Admin (Aktif/TidakAktif)
 }
 
 public class ChartDataViewModel
