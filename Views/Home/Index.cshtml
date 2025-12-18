@@ -141,9 +141,10 @@
     </div>
 </div>
 
-<div class="row g-3">
-    <div class="col-lg-8">
-        <div class="card h-100">
+<!-- Machines Section - Full Width -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card">
             <div class="card-header border-0 d-flex justify-content-between align-items-center" style="padding: 1rem 1.25rem;">
                 <span>Machines</span>
             </div>
@@ -158,7 +159,7 @@
                             _ => "status-idle"
                         };
                         var statusText = m.Status == MachineStatus.Aktif ? "Aktif" : "Tidak Aktif";
-                        <div class="col-md-4">
+                        <div class="col-lg-3 col-md-6">
                             <div class="card machine-card h-100">
                                 <div class="card-body" style="padding: 1.25rem;">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -192,10 +193,10 @@
                                         Line: @m.LineId
                                     </div>
                                     <div class="small">
-                                        Product: @m.ProductName
+                                        Product: @(m.ProductName ?? "-")
                                     </div>
                                     <div class="small">
-                                        WO: @m.WorkOrderNumber
+                                        WO: @(m.WorkOrderNumber ?? "-")
                                     </div>
                                     <div class="mt-2 d-grid gap-2">
                                         <a asp-controller="Machine" asp-action="OeeDetail" asp-route-id="@m.MachineId" asp-route-shiftId="@Model.SelectedShiftId" class="btn btn-sm btn-primary">
@@ -210,8 +211,12 @@
             </div>
         </div>
     </div>
-    <div class="col-lg-4">
-        <div class="card mb-3">
+</div>
+
+<!-- Charts Section - Hourly Production and Downtime Reasons -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
             <div class="card-header border-0 d-flex justify-content-between align-items-center" style="padding: 1rem 1.25rem;">
                 <span>Hourly Production</span>
                 <div class="spinner-border spinner-border-sm text-primary d-none" id="hourlyChartLoading" role="status">
@@ -222,6 +227,8 @@
                 <canvas id="hourlyChart"></canvas>
             </div>
         </div>
+    </div>
+    <div class="col-lg-6">
         <div class="card">
             <div class="card-header border-0 d-flex justify-content-between align-items-center" style="padding: 1rem 1.25rem;">
                 <span>Top 5 Downtime Reasons</span>
@@ -409,24 +416,46 @@
 
         // Update OEE cards
         function updateOeeCards(data) {
+            // Defensive: Check if data exists
+            if (!data || typeof data !== 'object') {
+                console.warn('updateOeeCards: Invalid data', data);
+                return;
+            }
+            
             // Update OEE card
             const oeeCards = document.querySelectorAll('.kpi-card');
-            if (oeeCards.length >= 4 && data.Oee !== undefined) {
-                // OEE card (first card with border-success-subtle)
-                const oeeCard = oeeCards[0].querySelector('.kpi-value');
-                if (oeeCard) oeeCard.textContent = data.Oee.toFixed(1) + '%';
-                
-                // Availability card (second card)
-                const availCard = oeeCards[1].querySelector('.kpi-value');
-                if (availCard) availCard.textContent = data.Availability.toFixed(1) + '%';
-                
-                // Performance card (third card)
-                const perfCard = oeeCards[2].querySelector('.kpi-value');
-                if (perfCard) perfCard.textContent = data.Performance.toFixed(1) + '%';
-                
-                // Quality card (fourth card)
-                const qualCard = oeeCards[3].querySelector('.kpi-value');
-                if (qualCard) qualCard.textContent = data.Quality.toFixed(1) + '%';
+            if (oeeCards.length >= 4) {
+                try {
+                    // OEE card (first card)
+                    const oeeCard = oeeCards[0]?.querySelector('.kpi-value');
+                    if (oeeCard) {
+                        const oeeValue = data.Oee ?? 0;
+                        oeeCard.textContent = oeeValue.toFixed(1) + '%';
+                    }
+                    
+                    // Availability card (second card)
+                    const availCard = oeeCards[1]?.querySelector('.kpi-value');
+                    if (availCard) {
+                        const availValue = data.Availability ?? 0;
+                        availCard.textContent = availValue.toFixed(1) + '%';
+                    }
+                    
+                    // Performance card (third card)
+                    const perfCard = oeeCards[2]?.querySelector('.kpi-value');
+                    if (perfCard) {
+                        const perfValue = data.Performance ?? 0;
+                        perfCard.textContent = perfValue.toFixed(1) + '%';
+                    }
+                    
+                    // Quality card (fourth card)
+                    const qualCard = oeeCards[3]?.querySelector('.kpi-value');
+                    if (qualCard) {
+                        const qualValue = data.Quality ?? 0;
+                        qualCard.textContent = qualValue.toFixed(1) + '%';
+                    }
+                } catch (error) {
+                    console.error('Error updating OEE cards:', error);
+                }
             }
         }
 
@@ -581,25 +610,45 @@
             if (loadingEl) loadingEl.classList.remove('d-none');
 
             fetch(`/Home/GetHourlyProductionData?${params.toString()}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    // Defensive: Check if data exists
+                    if (!data || typeof data !== 'object') {
+                        console.warn('Invalid hourly production data:', data);
+                        if (loadingEl) loadingEl.classList.add('d-none');
+                        return;
+                    }
+                    
                     console.log('📊 Hourly Production Data:', data);
                     
                     const ctx = document.getElementById('hourlyChart');
-                    if (!ctx) return;
+                    if (!ctx) {
+                        if (loadingEl) loadingEl.classList.add('d-none');
+                        return;
+                    }
 
                     // Destroy chart jika sudah ada
                     if (hourlyChart) {
-                        hourlyChart.destroy();
+                        try {
+                            hourlyChart.destroy();
+                        } catch (error) {
+                            console.warn('Error destroying hourly chart:', error);
+                        }
                     }
 
-                    hourlyChart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: data.Labels || [],
-                            datasets: [{
-                                label: 'Output',
-                                data: data.Output || [],
+                    try {
+                        hourlyChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: data.Labels ?? [],
+                                datasets: [{
+                                    label: 'Output',
+                                    data: data.Output ?? [],
                                 borderColor: '#22c55e',
                                 backgroundColor: 'rgba(34,197,94,.2)',
                                 tension: 0.25,
@@ -633,7 +682,10 @@
                                 }
                             }
                         }
-                    });
+                        });
+                    } catch (chartError) {
+                        console.error('Error creating hourly chart:', chartError);
+                    }
 
                     if (loadingEl) loadingEl.classList.add('d-none');
                 })
@@ -658,25 +710,45 @@
             if (loadingEl) loadingEl.classList.remove('d-none');
 
             fetch(`/Home/GetDowntimeReasonsData?${params.toString()}`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    // Defensive: Check if data exists
+                    if (!data || typeof data !== 'object') {
+                        console.warn('Invalid downtime reasons data:', data);
+                        if (loadingEl) loadingEl.classList.add('d-none');
+                        return;
+                    }
+                    
                     console.log('📊 Downtime Reasons Data:', data);
                     
                     const ctx = document.getElementById('downtimeChart');
-                    if (!ctx) return;
+                    if (!ctx) {
+                        if (loadingEl) loadingEl.classList.add('d-none');
+                        return;
+                    }
 
                     // Destroy chart jika sudah ada
                     if (downtimeChart) {
-                        downtimeChart.destroy();
+                        try {
+                            downtimeChart.destroy();
+                        } catch (error) {
+                            console.warn('Error destroying downtime chart:', error);
+                        }
                     }
 
-                    downtimeChart = new Chart(ctx, {
-                        type: 'bar',
-                        data: {
-                            labels: data.Labels || [],
-                            datasets: [{
-                                label: 'Duration (minutes)',
-                                data: data.Data || [],
+                    try {
+                        downtimeChart = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: data.Labels ?? [],
+                                datasets: [{
+                                    label: 'Duration (minutes)',
+                                    data: data.Data ?? [],
                                 backgroundColor: '#ef4444'
                             }]
                         },
@@ -708,7 +780,10 @@
                                 }
                             }
                         }
-                    });
+                        });
+                    } catch (chartError) {
+                        console.error('Error creating downtime chart:', chartError);
+                    }
 
                     if (loadingEl) loadingEl.classList.add('d-none');
                 })
@@ -732,13 +807,15 @@
                             return;
                         }
 
-                        const timeLabels = @Html.Raw(Json.Serialize(timeline.TimeLabels ?? new List<string>()));
-                        const segments = @Html.Raw(Json.Serialize(timeline.StateData ?? new List<StateSegmentData>()));
+                        // Defensive: Safe serialization with fallbacks
+                        const timeLabels = @Html.Raw(Json.Serialize(timeline?.TimeLabels ?? new List<string>()));
+                        const segments = @Html.Raw(Json.Serialize(timeline?.StateData ?? new List<StateSegmentData>()));
 
                         console.log('Machine @timeline.MachineId - TimeLabels:', timeLabels);
                         console.log('Machine @timeline.MachineId - Segments:', segments);
 
-                        if (!timeLabels || timeLabels.length === 0) {
+                        // Defensive: Check if timeLabels is valid array
+                        if (!timeLabels || !Array.isArray(timeLabels) || timeLabels.length === 0) {
                             console.warn('No time labels for machine @timeline.MachineId');
                             return;
                         }
