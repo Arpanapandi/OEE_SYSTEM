@@ -301,7 +301,13 @@ public class OperatorController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddQuantity(string machineId, int goodQty, int rejectQty, string? rejectReason, int? ngTypeId = null)
+    public async Task<IActionResult> AddQuantity(
+        string machineId,
+        int goodQty,
+        int rejectQty,
+        string? rejectReason,
+        int? ngTypeId = null,
+        string? returnUrl = null)
     {
         var now = DateTime.Now;
 
@@ -309,13 +315,19 @@ public class OperatorController : Controller
         if (goodQty < 0 || rejectQty < 0)
         {
             TempData["OperationError"] = "Quantity tidak boleh negatif";
-            return RedirectToAction(nameof(Index), new { machineId });
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
         }
 
         if (goodQty == 0 && rejectQty == 0)
         {
             TempData["OperationError"] = "Minimal harus ada input quantity (good atau reject)";
-            return RedirectToAction(nameof(Index), new { machineId });
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
         }
 
         var job = await _context.JobRuns
@@ -329,7 +341,10 @@ public class OperatorController : Controller
         if (job == null)
         {
             TempData["OperationError"] = "Tidak ada job run aktif untuk mesin ini";
-            return RedirectToAction(nameof(Index), new { machineId });
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
         }
 
         if (goodQty > 0 || rejectQty > 0)
@@ -361,7 +376,12 @@ public class OperatorController : Controller
             });
         }
 
-        return RedirectToAction(nameof(Index), new { machineId });
+        // Jika ada returnUrl (dari OEE Detail), utamakan redirect ke sana
+        if (!string.IsNullOrEmpty(returnUrl))
+            return Redirect(returnUrl);
+
+        // Fallback: kembali ke OEE Detail untuk mesin ini
+        return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
     }
 
     private static TimeSpan GetOverlap(DateTime start, DateTime end, DateTime windowStart, DateTime windowEnd)
@@ -473,13 +493,41 @@ public class OperatorController : Controller
             .FirstOrDefault(d => d.EndTime == null);
 
         // ✅ PERBAIKAN: Hitung LastStatusChangeTime untuk sinkronisasi timer
-        DateTime lastStatusChangeTime = activeJob?.StartTime ?? machine.JobRuns
-            .OrderByDescending(j => j.StartTime)
-            .FirstOrDefault()?.StartTime ?? now;
+        // - Jika ada downtime aktif -> pakai StartTime downtime itu
+        // - Jika tidak ada downtime aktif, tetapi ada downtime yang baru selesai -> pakai EndTime downtime terakhir
+        // - Jika tidak ada downtime sama sekali -> pakai StartTime job
+        DateTime lastStatusChangeTime;
 
         if (openDowntime != null)
         {
+            // Sedang REST / LINE STOP: mulai hitung dari awal downtime
             lastStatusChangeTime = openDowntime.StartTime;
+        }
+        else if (activeJob != null)
+        {
+            // Cari downtime terakhir yang sudah selesai di job ini
+            var lastFinishedDowntime = activeJob.DowntimeEvents
+                .Where(d => d.EndTime.HasValue)
+                .OrderByDescending(d => d.EndTime)
+                .FirstOrDefault();
+
+            if (lastFinishedDowntime != null)
+            {
+                // Baru saja kembali RUNNING: mulai hitung dari waktu downtime berakhir
+                lastStatusChangeTime = lastFinishedDowntime.EndTime!.Value;
+            }
+            else
+            {
+                // Tidak pernah downtime: hitung sejak job dimulai
+                lastStatusChangeTime = activeJob.StartTime;
+            }
+        }
+        else
+        {
+            // Tidak ada job aktif: fallback ke job terakhir atau sekarang
+            lastStatusChangeTime = machine.JobRuns
+                .OrderByDescending(j => j.StartTime)
+                .FirstOrDefault()?.StartTime ?? now;
         }
 
         // Keep lastChangeTime untuk backward compatibility

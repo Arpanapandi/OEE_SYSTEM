@@ -315,14 +315,38 @@ public class MachineController : Controller
             var currentQty = activeJob.ProductionCounts.Sum(p => p.GoodCount + p.RejectCount);
             
             // ✅ PERUBAHAN: Hitung lastChangeTime dengan logika yang sama seperti Operator View
-            DateTime lastChangeTime = activeJob.StartTime;
+            // - Jika ada downtime aktif -> pakai StartTime downtime itu
+            // - Jika tidak ada downtime aktif, tetapi ada downtime yang baru selesai -> pakai EndTime downtime terakhir
+            // - Jika tidak ada downtime sama sekali -> pakai StartTime job
+            DateTime lastChangeTime;
+
             var openDowntimeForTimer = activeJob.DowntimeEvents
                 .OrderByDescending(d => d.StartTime)
                 .FirstOrDefault(d => d.EndTime == null);
             
             if (openDowntimeForTimer != null)
             {
+                // Sedang REST / LINE STOP
                 lastChangeTime = openDowntimeForTimer.StartTime;
+            }
+            else
+            {
+                // Cari downtime terakhir yang sudah selesai
+                var lastFinishedDowntime = activeJob.DowntimeEvents
+                    .Where(d => d.EndTime.HasValue)
+                    .OrderByDescending(d => d.EndTime)
+                    .FirstOrDefault();
+
+                if (lastFinishedDowntime != null)
+                {
+                    // Baru saja kembali RUNNING
+                    lastChangeTime = lastFinishedDowntime.EndTime!.Value;
+                }
+                else
+                {
+                    // Tidak pernah downtime
+                    lastChangeTime = activeJob.StartTime;
+                }
             }
             
             // Started time: Jika job dimulai sebelum shift start, gunakan shift start
