@@ -1102,9 +1102,36 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteProductConfirmed(int id)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products
+            .Include(p => p.ProductNgTypes)
+            .Include(p => p.ProductMachines)
+            .Include(p => p.WorkOrders)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        
         if (product != null)
         {
+            // ✅ PERBAIKAN: Hapus semua relasi terlebih dahulu sebelum menghapus Product
+            
+            // 1. Hapus ProductNgTypes (many-to-many dengan NgType)
+            if (product.ProductNgTypes.Any())
+            {
+                _context.ProductNgTypes.RemoveRange(product.ProductNgTypes);
+            }
+            
+            // 2. Hapus ProductMachines (many-to-many dengan Machine)
+            if (product.ProductMachines.Any())
+            {
+                _context.ProductMachines.RemoveRange(product.ProductMachines);
+            }
+            
+            // 3. Cek apakah ada WorkOrders yang menggunakan Product ini
+            if (product.WorkOrders.Any())
+            {
+                TempData["DeleteError"] = $"Tidak dapat menghapus Product '{product.Name}' karena masih digunakan oleh {product.WorkOrders.Count} Work Order(s). Hapus Work Order terlebih dahulu.";
+                return RedirectToAction(nameof(Products));
+            }
+            
+            // 4. Hapus Product setelah semua relasi dihapus
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
         }

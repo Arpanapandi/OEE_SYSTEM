@@ -223,8 +223,10 @@ public class HomeController : Controller
 
         var machineCards = new List<MachineCardViewModel>();
 
-        // Hitung planned production time berdasarkan durasi shift yang dipilih
-        TimeSpan plannedProductionTime = shiftEnd - shiftStart;
+        // ✅ PERBAIKAN: Hitung Planned dan Unplanned Downtime dari semua mesin
+        TimeSpan totalShiftTime = shiftEnd - shiftStart;
+        TimeSpan totalPlannedDowntime = TimeSpan.Zero;
+        TimeSpan totalUnplannedDowntime = TimeSpan.Zero;
         TimeSpan operatingTime = TimeSpan.Zero;
         int totalCount = 0;
         int goodCount = 0;
@@ -320,7 +322,7 @@ public class HomeController : Controller
             totalCount += mTotal;
             goodCount += mGood;
 
-            // Hitung operating time mesin ini dari jobrun dalam periode shift
+            // ✅ PERBAIKAN: Pisahkan Planned dan Unplanned Downtime, lalu hitung Operating Time
             foreach (var jr in shiftJobRuns)
             {
                 // Potong JobRun sesuai periode shift
@@ -331,9 +333,18 @@ public class HomeController : Controller
                 
                 var jrDuration = jrEnd - jrStart;
 
-                // Filter hanya Unplanned DowntimeEvents dalam periode shift
-                // Planned downtime (Setup, Rest Break) tidak mengurangi Availability
-                var jrDowntimeSeconds = jr.DowntimeEvents
+                // ✅ PERBAIKAN: Pisahkan Planned dan Unplanned Downtime
+                var jrPlannedDowntimeSeconds = jr.DowntimeEvents
+                    .Where(d => d.Reason != null && d.Reason.Category != "Unplanned")
+                    .Where(d => d.StartTime < jrEnd && (d.EndTime ?? now) > jrStart)
+                    .Sum(d =>
+                    {
+                        var dStart = d.StartTime > jrStart ? d.StartTime : jrStart;
+                        var dEnd = (d.EndTime ?? now) < jrEnd ? (d.EndTime ?? now) : jrEnd;
+                        return (dEnd - dStart).TotalSeconds;
+                    });
+
+                var jrUnplannedDowntimeSeconds = jr.DowntimeEvents
                     .Where(d => d.Reason != null && d.Reason.Category == "Unplanned")
                     .Where(d => d.StartTime < jrEnd && (d.EndTime ?? now) > jrStart)
                     .Sum(d =>
@@ -343,7 +354,12 @@ public class HomeController : Controller
                         return (dEnd - dStart).TotalSeconds;
                     });
 
-                var netSeconds = Math.Max(0, jrDuration.TotalSeconds - jrDowntimeSeconds);
+                // Accumulate total Planned dan Unplanned Downtime
+                totalPlannedDowntime += TimeSpan.FromSeconds(jrPlannedDowntimeSeconds);
+                totalUnplannedDowntime += TimeSpan.FromSeconds(jrUnplannedDowntimeSeconds);
+
+                // Operating Time = JobRun duration - Unplanned Downtime (Planned tidak mengurangi Operating Time)
+                var netSeconds = Math.Max(0, jrDuration.TotalSeconds - jrUnplannedDowntimeSeconds);
                 operatingTime += TimeSpan.FromSeconds(netSeconds);
             }
 
@@ -370,6 +386,19 @@ public class HomeController : Controller
         if (standarCycleCount > 0)
         {
             avgStandarCycle /= standarCycleCount;
+        }
+
+        // ✅ PERBAIKAN: Planned Production Time = Shift Time - Planned Downtime
+        TimeSpan plannedProductionTime = totalShiftTime - totalPlannedDowntime;
+        if (plannedProductionTime.TotalSeconds < 0)
+        {
+            plannedProductionTime = TimeSpan.Zero;
+        }
+
+        // Jika belum ada data, gunakan durasi shift sebagai default
+        if (plannedProductionTime.TotalSeconds == 0 && machines.Count == 0)
+        {
+            plannedProductionTime = totalShiftTime;
         }
 
         var oeeResult = _oeeService.CalculateOee(
@@ -730,8 +759,10 @@ public class HomeController : Controller
         
         var machines = await machinesQuery.ToListAsync();
 
-        // Hitung OEE
-        TimeSpan plannedProductionTime = shiftEnd - shiftStart;
+        // ✅ PERBAIKAN: Hitung Planned dan Unplanned Downtime dari semua mesin
+        TimeSpan totalShiftTime = shiftEnd - shiftStart;
+        TimeSpan totalPlannedDowntime = TimeSpan.Zero;
+        TimeSpan totalUnplannedDowntime = TimeSpan.Zero;
         TimeSpan operatingTime = TimeSpan.Zero;
         int totalCount = 0;
         int goodCount = 0;
@@ -757,7 +788,7 @@ public class HomeController : Controller
             totalCount += mTotal;
             goodCount += mGood;
 
-            // Hitung operating time (exclude unplanned downtime)
+            // ✅ PERBAIKAN: Pisahkan Planned dan Unplanned Downtime, lalu hitung Operating Time
             foreach (var jr in shiftJobRuns)
             {
                 var jrStart = jr.StartTime > shiftStart ? jr.StartTime : shiftStart;
@@ -767,8 +798,18 @@ public class HomeController : Controller
                 
                 var jrDuration = jrEnd - jrStart;
 
-                // Filter hanya Unplanned downtime
-                var jrDowntimeSeconds = jr.DowntimeEvents
+                // ✅ PERBAIKAN: Pisahkan Planned dan Unplanned Downtime
+                var jrPlannedDowntimeSeconds = jr.DowntimeEvents
+                    .Where(d => d.Reason != null && d.Reason.Category != "Unplanned")
+                    .Where(d => d.StartTime < jrEnd && (d.EndTime ?? now) > jrStart)
+                    .Sum(d =>
+                    {
+                        var dStart = d.StartTime > jrStart ? d.StartTime : jrStart;
+                        var dEnd = (d.EndTime ?? now) < jrEnd ? (d.EndTime ?? now) : jrEnd;
+                        return (dEnd - dStart).TotalSeconds;
+                    });
+
+                var jrUnplannedDowntimeSeconds = jr.DowntimeEvents
                     .Where(d => d.Reason != null && d.Reason.Category == "Unplanned")
                     .Where(d => d.StartTime < jrEnd && (d.EndTime ?? now) > jrStart)
                     .Sum(d =>
@@ -778,7 +819,12 @@ public class HomeController : Controller
                         return (dEnd - dStart).TotalSeconds;
                     });
 
-                var netSeconds = Math.Max(0, jrDuration.TotalSeconds - jrDowntimeSeconds);
+                // Accumulate total Planned dan Unplanned Downtime
+                totalPlannedDowntime += TimeSpan.FromSeconds(jrPlannedDowntimeSeconds);
+                totalUnplannedDowntime += TimeSpan.FromSeconds(jrUnplannedDowntimeSeconds);
+
+                // Operating Time = JobRun duration - Unplanned Downtime (Planned tidak mengurangi Operating Time)
+                var netSeconds = Math.Max(0, jrDuration.TotalSeconds - jrUnplannedDowntimeSeconds);
                 operatingTime += TimeSpan.FromSeconds(netSeconds);
             }
 
@@ -799,6 +845,19 @@ public class HomeController : Controller
         if (standarCycleCount > 0)
         {
             avgStandarCycle /= standarCycleCount;
+        }
+
+        // ✅ PERBAIKAN: Planned Production Time = Shift Time - Planned Downtime
+        TimeSpan plannedProductionTime = totalShiftTime - totalPlannedDowntime;
+        if (plannedProductionTime.TotalSeconds < 0)
+        {
+            plannedProductionTime = TimeSpan.Zero;
+        }
+
+        // Jika belum ada data, gunakan durasi shift sebagai default
+        if (plannedProductionTime.TotalSeconds == 0 && machines.Count == 0)
+        {
+            plannedProductionTime = totalShiftTime;
         }
 
         var oeeResult = _oeeService.CalculateOee(
