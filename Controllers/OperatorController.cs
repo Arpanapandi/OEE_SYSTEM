@@ -290,7 +290,8 @@ public class OperatorController : Controller
             Category = reason.Category,
             Message = $"Downtime: {reason.Description} pada mesin {job.Machine?.Name}",
             Timestamp = now,
-            RefreshTimeMetrics = true // Flag untuk trigger refresh Time Metrics di OEE View
+            RefreshTimeMetrics = true, // Flag untuk trigger refresh Time Metrics di OEE View
+            RefreshOperatorData = true // ✅ TAMBAHKAN untuk trigger refresh Operator Data
         });
 
         if (!string.IsNullOrEmpty(returnUrl))
@@ -492,42 +493,47 @@ public class OperatorController : Controller
             .OrderByDescending(d => d.StartTime)
             .FirstOrDefault(d => d.EndTime == null);
 
-        // ✅ PERBAIKAN: Hitung LastStatusChangeTime untuk sinkronisasi timer
-        // - Jika ada downtime aktif -> pakai StartTime downtime itu
-        // - Jika tidak ada downtime aktif, tetapi ada downtime yang baru selesai -> pakai EndTime downtime terakhir
-        // - Jika tidak ada downtime sama sekali -> pakai StartTime job
+        // ✅ PERBAIKAN: Hitung LastStatusChangeTime yang sinkron dengan Operating Time untuk OEE
+        // - Jika ada downtime aktif (REST/LINE STOP) -> pakai StartTime downtime (RESET ke 00:00:00)
+        // - Jika sedang RUNNING (tidak ada downtime aktif) -> hitung dari StartTime job dikurangi total downtime
         DateTime lastStatusChangeTime;
+        int sinceLastChangeSeconds;
 
         if (openDowntime != null)
         {
-            // Sedang REST / LINE STOP: mulai hitung dari awal downtime
+            // Sedang REST / LINE STOP: RESET durasi ke 00:00:00 (mulai hitung dari awal downtime)
             lastStatusChangeTime = openDowntime.StartTime;
+            sinceLastChangeSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
         }
         else if (activeJob != null)
         {
-            // Cari downtime terakhir yang sudah selesai di job ini
-            var lastFinishedDowntime = activeJob.DowntimeEvents
+            // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
+            // Operating Time = JobRun duration - Downtime duration (waktu running murni)
+            
+            // Hitung JobRun duration
+            var jobDuration = (now - activeJob.StartTime).TotalSeconds;
+            
+            // Hitung total downtime yang sudah selesai di job ini
+            var totalDowntimeSeconds = activeJob.DowntimeEvents
                 .Where(d => d.EndTime.HasValue)
-                .OrderByDescending(d => d.EndTime)
-                .FirstOrDefault();
-
-            if (lastFinishedDowntime != null)
-            {
-                // Baru saja kembali RUNNING: mulai hitung dari waktu downtime berakhir
-                lastStatusChangeTime = lastFinishedDowntime.EndTime!.Value;
-            }
-            else
-            {
-                // Tidak pernah downtime: hitung sejak job dimulai
-                lastStatusChangeTime = activeJob.StartTime;
-            }
+                .Sum(d => d.DurationSeconds > 0 
+                    ? d.DurationSeconds 
+                    : (d.EndTime!.Value - d.StartTime).TotalSeconds);
+            
+            // Operating Time murni = JobRun duration - Downtime duration (sinkron dengan perhitungan OEE)
+            var operatingTimeSeconds = jobDuration - totalDowntimeSeconds;
+            sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
+            
+            // LastStatusChangeTime untuk display (backward compatibility)
+            lastStatusChangeTime = now.AddSeconds(-sinceLastChangeSeconds);
         }
         else
         {
-            // Tidak ada job aktif: fallback ke job terakhir atau sekarang
+            // Tidak ada job aktif: fallback
             lastStatusChangeTime = machine.JobRuns
                 .OrderByDescending(j => j.StartTime)
                 .FirstOrDefault()?.StartTime ?? now;
+            sinceLastChangeSeconds = 0;
         }
 
         // Keep lastChangeTime untuk backward compatibility
@@ -560,7 +566,7 @@ public class OperatorController : Controller
             }
         }
 
-        var sinceLastChangeSeconds = (now - lastChangeTime).TotalSeconds;
+        // sinceLastChangeSeconds sudah dihitung di atas
 
         // ✅ PERBAIKAN: Tampilkan status sesuai dengan Machine.Status dari Admin (AKTIF atau TIDAK AKTIF)
         // Machine.Status adalah sumber kebenaran dari Admin Machines panel
@@ -577,12 +583,12 @@ public class OperatorController : Controller
             .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
             .ToList();
 
-        // 1. Operating Time = Total durasi waktu running (JobRun) yang overlap dengan window shift
-        TimeSpan operatingTime = TimeSpan.Zero;
+        // 1. Total JobRun Time = Total durasi waktu JobRun yang overlap dengan window shift
+        TimeSpan totalJobRunTime = TimeSpan.Zero;
         foreach (var jr in shiftJobRuns)
         {
             var jrEnd = jr.EndTime ?? effectiveNow;
-            operatingTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
+            totalJobRunTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
         }
 
         // 2. Downtime = Total durasi line stop (DowntimeEvents) yang overlap shift
@@ -596,7 +602,14 @@ public class OperatorController : Controller
             }
         }
 
-        // 3. Planned Production Time = Operating Time + Downtime
+        // 3. Operating Time = Total JobRun Time - Downtime (waktu running murni, tanpa downtime)
+        TimeSpan operatingTime = totalJobRunTime - downtimeTotal;
+        if (operatingTime.TotalSeconds < 0)
+        {
+            operatingTime = TimeSpan.Zero;
+        }
+
+        // 4. Planned Production Time = Operating Time + Downtime
         TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
         if (plannedProductionTime.TotalSeconds == 0)
         {
@@ -619,7 +632,7 @@ public class OperatorController : Controller
             ProgressPercent = Math.Round(progressPercent, 1),
             
             // Status & Timing
-            SinceLastChangeSeconds = Math.Floor(sinceLastChangeSeconds),
+            SinceLastChangeSeconds = sinceLastChangeSeconds,
             SinceLastChange = (now - lastChangeTime).ToString(@"hh\:mm\:ss"),
             LastStatusChangeTime = lastStatusChangeTime.ToString("O"), // ✅ ISO 8601 format untuk sinkronisasi timer
             
