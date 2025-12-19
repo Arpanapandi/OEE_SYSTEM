@@ -155,20 +155,15 @@ public class ApplicationDbContext : DbContext
 
         // ========== DATA DUMMY PLANT & MACHINE ==========
         // Plant wajib ada karena Machine memiliki FK PlantId
+        // ✅ PERBAIKAN: Hapus HasData untuk Machine karena seeding sudah di-handle di Program.cs
+        // HasData() akan selalu mencoba insert data saat migration, menyebabkan data lama muncul kembali
         modelBuilder.Entity<Plant>().HasData(
             new Plant { Id = 1, Code = "PLT01", Name = "Plant Dummy" }
         );
 
-        modelBuilder.Entity<Machine>().HasData(
-            new Machine { Id = "M001", Name = "Machine A", LineId = "L1", PlantId = 1, Status = MachineStatus.Aktif },
-            new Machine { Id = "M002", Name = "Machine B", LineId = "L2", PlantId = 1, Status = MachineStatus.TidakAktif },
-            new Machine { Id = "M003", Name = "Machine C", LineId = "L3", PlantId = 1, Status = MachineStatus.Aktif },
-            new Machine { Id = "M004", Name = "Machine D", LineId = "L4", PlantId = 1, Status = MachineStatus.Aktif },
-            new Machine { Id = "M005", Name = "Machine E", LineId = "L5", PlantId = 1, Status = MachineStatus.TidakAktif },
-            new Machine { Id = "M006", Name = "Machine F", LineId = "L6", PlantId = 1, Status = MachineStatus.Aktif },
-            new Machine { Id = "M007", Name = "Machine G", LineId = "L7", PlantId = 1, Status = MachineStatus.Aktif },
-            new Machine { Id = "M008", Name = "Machine H", LineId = "L8", PlantId = 1, Status = MachineStatus.Aktif }
-        );
+        // ✅ PERBAIKAN: Seeding Machine dipindahkan ke Program.cs dengan conditional check
+        // Ini mencegah data lama muncul kembali setelah dihapus
+        // modelBuilder.Entity<Machine>().HasData(...) - DIHAPUS
     }
     
     // Helper method untuk convert string status ke enum dengan backward compatibility

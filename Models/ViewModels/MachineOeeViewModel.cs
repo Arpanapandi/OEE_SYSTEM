@@ -29,6 +29,7 @@ public class MachineOeeViewModel
     public TimeSpan OperatingTime { get; set; }
     public TimeSpan DowntimeTotal { get; set; }
     public TimeSpan NoLoadingTime { get; set; } // ✅ NO LOADING time (tidak masuk ke OEE)
+    public TimeSpan NettOperatingTime { get; set; } // ✅ Nett Operating Time = Cycle Time × Total Produced
 
     // Production metrics
     public int TotalCount { get; set; }

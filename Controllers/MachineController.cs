@@ -228,44 +228,58 @@ public class MachineController : Controller
             .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
             .ToList();
 
-        // 1. Total JobRun Time = Total durasi waktu JobRun yang overlap dengan window shift
-        TimeSpan totalJobRunTime = TimeSpan.Zero;
-        foreach (var jr in shiftJobRuns)
-        {
-            var jrEnd = jr.EndTime ?? effectiveNow;
-            totalJobRunTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
-        }
+        // 1. Total Shift Time
+        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
 
-        // 2. Downtime = Total durasi line stop (DowntimeEvents) yang overlap shift
-        TimeSpan downtimeTotal = TimeSpan.Zero;
+        // 2. Pisahkan Planned dan Unplanned Downtime
+        TimeSpan plannedDowntime = TimeSpan.Zero;
+        TimeSpan unplannedDowntime = TimeSpan.Zero;
+
         foreach (var jr in shiftJobRuns)
         {
             foreach (var d in jr.DowntimeEvents)
             {
                 var dEnd = d.EndTime ?? effectiveNow;
-                downtimeTotal += GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
+                var overlap = GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
+                
+                // Pisahkan berdasarkan kategori
+                if (d.Reason?.Category == "Unplanned")
+                {
+                    unplannedDowntime += overlap;
+                }
+                else
+                {
+                    // Planned: Rest Break, Setup, dll
+                    plannedDowntime += overlap;
+                }
             }
         }
 
-        // 3. Operating Time = Total JobRun Time - Downtime (waktu running murni, tanpa downtime)
-        TimeSpan operatingTime = totalJobRunTime - downtimeTotal;
+        // 3. Planned Production Time = Shift Time - Planned Downtime
+        TimeSpan plannedProductionTime = totalShiftTime - plannedDowntime;
+        if (plannedProductionTime.TotalSeconds < 0)
+        {
+            plannedProductionTime = TimeSpan.Zero;
+        }
+
+        // Jika belum ada data, gunakan durasi shift sebagai default
+        if (plannedProductionTime.TotalSeconds == 0 && shiftJobRuns.Count == 0)
+        {
+            plannedProductionTime = totalShiftTime;
+        }
+
+        // 4. Operating Time = Planned Production Time - Unplanned Downtime
+        TimeSpan operatingTime = plannedProductionTime - unplannedDowntime;
         if (operatingTime.TotalSeconds < 0)
         {
             operatingTime = TimeSpan.Zero;
         }
 
-        // 4. Planned Production Time = Operating Time + Downtime (tidak termasuk NO LOADING)
-        TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
+        // 5. Total Downtime untuk display = Planned + Unplanned
+        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
 
-        // Jika belum ada data, gunakan durasi shift sebagai default
-        if (plannedProductionTime.TotalSeconds == 0)
-        {
-            plannedProductionTime = shiftWindow.End - shiftWindow.Start;
-        }
-
-        // 5. NO LOADING Time = Total Shift Time - (Operating Time + Downtime)
+        // 6. NO LOADING Time = Total Shift Time - (Operating Time + Total Downtime)
         // NO LOADING time adalah waktu idle (tidak ada job aktif) yang tidak masuk ke perhitungan OEE
-        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
         TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
         if (noLoadingTime.TotalSeconds < 0)
         {
@@ -287,6 +301,14 @@ public class MachineController : Controller
         if (activeJob?.WorkOrder?.Product != null)
         {
             standarCycleTime = activeJob.WorkOrder.Product.StandarCycleTime;
+        }
+
+        // ✅ TAMBAHKAN: Hitung Nett Operating Time = Cycle Time × Total Produced
+        TimeSpan nettOperatingTime = TimeSpan.Zero;
+        if (standarCycleTime > 0 && totalCount > 0)
+        {
+            var nettOperatingSeconds = standarCycleTime * totalCount;
+            nettOperatingTime = TimeSpan.FromSeconds(nettOperatingSeconds);
         }
 
         // Hitung OEE
@@ -321,6 +343,7 @@ public class MachineController : Controller
             OperatingTime = operatingTime,
             DowntimeTotal = downtimeTotal,
             NoLoadingTime = noLoadingTime, // ✅ NO LOADING time (tidak masuk ke OEE)
+            NettOperatingTime = nettOperatingTime, // ✅ Nett Operating Time = Cycle Time × Total Produced
             TotalCount = totalCount,
             GoodCount = goodCount,
             RejectCount = rejectCount
@@ -351,7 +374,7 @@ public class MachineController : Controller
             else
             {
                 // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
-                // Operating Time = JobRun duration - Downtime duration (waktu running murni)
+                // Operating Time = JobRun duration - Unplanned Downtime duration (waktu running murni)
                 var currentTime = DateTime.Now;
                 
                 // Hitung JobRun duration (dari start job sampai sekarang, dalam window shift)
@@ -362,9 +385,9 @@ public class MachineController : Controller
                 var jobDuration = jobEndInShift - jobStartInShift;
                 if (jobDuration.TotalSeconds < 0) jobDuration = TimeSpan.Zero;
                 
-                // Hitung total downtime yang sudah selesai di job ini (dalam window shift)
-                var totalDowntimeInShift = activeJob.DowntimeEvents
-                    .Where(d => d.EndTime.HasValue)
+                // Hitung total Unplanned downtime yang sudah selesai di job ini (dalam window shift)
+                var totalUnplannedDowntimeInShift = activeJob.DowntimeEvents
+                    .Where(d => d.EndTime.HasValue && d.Reason?.Category == "Unplanned")
                     .Sum(d =>
                     {
                         var dStart = d.StartTime < shiftWindow.Start ? shiftWindow.Start : d.StartTime;
@@ -373,8 +396,8 @@ public class MachineController : Controller
                         return overlap.TotalSeconds;
                     });
                 
-                // Operating Time murni = JobRun duration - Downtime duration (sinkron dengan perhitungan OEE)
-                var operatingTimeSeconds = jobDuration.TotalSeconds - totalDowntimeInShift;
+                // Operating Time murni = JobRun duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
+                var operatingTimeSeconds = jobDuration.TotalSeconds - totalUnplannedDowntimeInShift;
                 sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
                 
                 // LastChangeTime untuk display (backward compatibility)
@@ -687,48 +710,84 @@ public class MachineController : Controller
             .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
             .ToList();
 
-        // 1. Total JobRun Time = Total durasi waktu JobRun yang overlap shift
-        TimeSpan totalJobRunTime = TimeSpan.Zero;
-        foreach (var jr in shiftJobRuns)
-        {
-            var jrEnd = jr.EndTime ?? effectiveNow;
-            totalJobRunTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
-        }
+        // 1. Total Shift Time
+        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
 
-        // 2. Downtime = Total durasi line stop (DowntimeEvents) yang overlap shift
-        TimeSpan downtimeTotal = TimeSpan.Zero;
+        // 2. Pisahkan Planned dan Unplanned Downtime
+        TimeSpan plannedDowntime = TimeSpan.Zero;
+        TimeSpan unplannedDowntime = TimeSpan.Zero;
+
         foreach (var jr in shiftJobRuns)
         {
             foreach (var d in jr.DowntimeEvents)
             {
                 var dEnd = d.EndTime ?? effectiveNow;
-                downtimeTotal += GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
+                var overlap = GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
+                
+                // Pisahkan berdasarkan kategori
+                if (d.Reason?.Category == "Unplanned")
+                {
+                    unplannedDowntime += overlap;
+                }
+                else
+                {
+                    // Planned: Rest Break, Setup, dll
+                    plannedDowntime += overlap;
+                }
             }
         }
 
-        // 3. Operating Time = Total JobRun Time - Downtime (waktu running murni, tanpa downtime)
-        TimeSpan operatingTime = totalJobRunTime - downtimeTotal;
+        // 3. Planned Production Time = Shift Time - Planned Downtime
+        TimeSpan plannedProductionTime = totalShiftTime - plannedDowntime;
+        if (plannedProductionTime.TotalSeconds < 0)
+        {
+            plannedProductionTime = TimeSpan.Zero;
+        }
+
+        // Jika belum ada data, gunakan durasi shift
+        if (plannedProductionTime.TotalSeconds == 0 && shiftJobRuns.Count == 0)
+        {
+            plannedProductionTime = totalShiftTime;
+        }
+
+        // 4. Operating Time = Planned Production Time - Unplanned Downtime
+        TimeSpan operatingTime = plannedProductionTime - unplannedDowntime;
         if (operatingTime.TotalSeconds < 0)
         {
             operatingTime = TimeSpan.Zero;
         }
 
-        // 4. Planned Production Time = Operating Time + Downtime (tidak termasuk NO LOADING)
-        TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
+        // 5. Total Downtime untuk display = Planned + Unplanned
+        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
 
-        // Jika belum ada data, gunakan durasi shift
-        if (plannedProductionTime.TotalSeconds == 0)
-        {
-            plannedProductionTime = shiftWindow.End - shiftWindow.Start;
-        }
-
-        // 5. NO LOADING Time = Total Shift Time - (Operating Time + Downtime)
+        // 6. NO LOADING Time = Total Shift Time - (Operating Time + Total Downtime)
         // NO LOADING time adalah waktu idle (tidak ada job aktif) yang tidak masuk ke perhitungan OEE
-        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
         TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
         if (noLoadingTime.TotalSeconds < 0)
         {
             noLoadingTime = TimeSpan.Zero;
+        }
+
+        // ✅ TAMBAHKAN: Hitung Nett Operating Time = Cycle Time × Total Produced
+        TimeSpan nettOperatingTime = TimeSpan.Zero;
+        double standarCycleTime = 0;
+        if (activeJob?.WorkOrder?.Product != null)
+        {
+            standarCycleTime = activeJob.WorkOrder.Product.StandarCycleTime;
+        }
+
+        // Hitung production counts di window shift
+        var allCounts = shiftJobRuns
+            .SelectMany(j => j.ProductionCounts
+                .Where(p => p.Timestamp >= shiftWindow.Start && p.Timestamp <= shiftWindow.End))
+            .ToList();
+
+        int totalCount = allCounts.Sum(c => c.GoodCount + c.RejectCount);
+
+        if (standarCycleTime > 0 && totalCount > 0)
+        {
+            var nettOperatingSeconds = standarCycleTime * totalCount;
+            nettOperatingTime = TimeSpan.FromSeconds(nettOperatingSeconds);
         }
 
         // Hitung persentase untuk progress bar
@@ -759,15 +818,19 @@ public class MachineController : Controller
                 var currentTime = DateTime.Now;
                 var jobDuration = (currentTime - activeJob.StartTime).TotalSeconds;
                 
-                // Hitung total downtime yang sudah selesai di job ini
-                var totalDowntimeSeconds = activeJob.DowntimeEvents
-                    .Where(d => d.EndTime.HasValue)
-                    .Sum(d => d.DurationSeconds > 0 
-                        ? d.DurationSeconds 
-                        : (d.EndTime!.Value - d.StartTime).TotalSeconds);
+                // Hitung total Unplanned downtime yang sudah selesai di job ini
+                var totalUnplannedDowntimeSeconds = activeJob.DowntimeEvents
+                    .Where(d => d.EndTime.HasValue && d.Reason?.Category == "Unplanned")
+                    .Sum(d =>
+                    {
+                        var dStart = d.StartTime < shiftWindow.Start ? shiftWindow.Start : d.StartTime;
+                        var dEnd = d.EndTime!.Value > shiftWindow.End ? shiftWindow.End : d.EndTime.Value;
+                        var overlap = GetOverlap(dStart, dEnd, shiftWindow.Start, shiftWindow.End);
+                        return overlap.TotalSeconds;
+                    });
                 
-                // Operating Time murni = JobRun duration - Downtime duration (sinkron dengan perhitungan OEE)
-                var operatingTimeSeconds = jobDuration - totalDowntimeSeconds;
+                // Operating Time murni = JobRun duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
+                var operatingTimeSeconds = jobDuration - totalUnplannedDowntimeSeconds;
                 sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
                 
                 // LastStatusChangeTime untuk display (backward compatibility)
@@ -796,6 +859,8 @@ public class MachineController : Controller
             DowntimeTotal = downtimeTotal.ToString(@"hh\:mm\:ss"),
             NoLoadingTimeSeconds = Math.Floor(noLoadingTime.TotalSeconds), // ✅ NO LOADING time (tidak masuk ke OEE)
             NoLoadingTime = noLoadingTime.ToString(@"hh\:mm\:ss"), // ✅ NO LOADING time (tidak masuk ke OEE)
+            NettOperatingTimeSeconds = Math.Floor(nettOperatingTime.TotalSeconds), // ✅ Nett Operating Time = Cycle Time × Total Produced
+            NettOperatingTime = nettOperatingTime.ToString(@"hh\:mm\:ss"), // ✅ Nett Operating Time
             OperatingPercent = Math.Round(operatingPercent, 1),
             DowntimePercent = Math.Round(downtimePercent, 1),
             NoLoadingPercent = Math.Round(noLoadingPercent, 1), // ✅ NO LOADING percent
