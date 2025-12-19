@@ -278,6 +278,32 @@ public class MachineController : Controller
         // 5. Total Downtime untuk display = Planned + Unplanned
         TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
 
+        // ✅ TAMBAHKAN: Hitung Rest Break Time secara terpisah (untuk display)
+        // Rest Break tetap termasuk dalam Planned Downtime untuk formula Planned Production Time
+        TimeSpan restBreakTime = TimeSpan.Zero;
+        bool hasActiveRestBreak = false;
+
+        foreach (var jr in shiftJobRuns)
+        {
+            foreach (var d in jr.DowntimeEvents)
+            {
+                // Cek apakah ini Rest Break (termasuk dalam Planned Downtime)
+                if (d.Reason?.Description == "Rest Break" || 
+                    (d.Reason?.Category == "Planned" && d.Reason?.Description?.Contains("Rest", StringComparison.OrdinalIgnoreCase) == true))
+                {
+                    var dEnd = d.EndTime ?? effectiveNow;
+                    var overlap = GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
+                    restBreakTime += overlap;
+                    
+                    // Cek apakah ada Rest Break yang masih aktif
+                    if (d.EndTime == null)
+                    {
+                        hasActiveRestBreak = true;
+                    }
+                }
+            }
+        }
+
         // 6. NO LOADING Time = Total Shift Time - (Operating Time + Total Downtime)
         // NO LOADING time adalah waktu idle (tidak ada job aktif) yang tidak masuk ke perhitungan OEE
         TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
@@ -342,11 +368,13 @@ public class MachineController : Controller
             PlannedProductionTime = plannedProductionTime,
             OperatingTime = operatingTime,
             DowntimeTotal = downtimeTotal,
+            RestBreakTime = restBreakTime, // ✅ Rest Break Time (terpisah untuk display, tetap termasuk Planned Downtime)
             NoLoadingTime = noLoadingTime, // ✅ NO LOADING time (tidak masuk ke OEE)
             NettOperatingTime = nettOperatingTime, // ✅ Nett Operating Time = Cycle Time × Total Produced
             TotalCount = totalCount,
             GoodCount = goodCount,
-            RejectCount = rejectCount
+            RejectCount = rejectCount,
+            HasActiveRestBreak = hasActiveRestBreak // ✅ Status Rest Break aktif
         };
 
         // Active Job Info
@@ -760,6 +788,32 @@ public class MachineController : Controller
         // 5. Total Downtime untuk display = Planned + Unplanned
         TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
 
+        // ✅ TAMBAHKAN: Hitung Rest Break Time secara terpisah (untuk display)
+        // Rest Break tetap termasuk dalam Planned Downtime untuk formula Planned Production Time
+        TimeSpan restBreakTime = TimeSpan.Zero;
+        bool hasActiveRestBreak = false;
+
+        foreach (var jr in shiftJobRuns)
+        {
+            foreach (var d in jr.DowntimeEvents)
+            {
+                // Cek apakah ini Rest Break (termasuk dalam Planned Downtime)
+                if (d.Reason?.Description == "Rest Break" || 
+                    (d.Reason?.Category == "Planned" && d.Reason?.Description?.Contains("Rest", StringComparison.OrdinalIgnoreCase) == true))
+                {
+                    var dEnd = d.EndTime ?? effectiveNow;
+                    var overlap = GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
+                    restBreakTime += overlap;
+                    
+                    // Cek apakah ada Rest Break yang masih aktif
+                    if (d.EndTime == null)
+                    {
+                        hasActiveRestBreak = true;
+                    }
+                }
+            }
+        }
+
         // 6. NO LOADING Time = Total Shift Time - (Operating Time + Total Downtime)
         // NO LOADING time adalah waktu idle (tidak ada job aktif) yang tidak masuk ke perhitungan OEE
         TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
@@ -857,6 +911,9 @@ public class MachineController : Controller
             OperatingTime = operatingTime.ToString(@"hh\:mm\:ss"),
             DowntimeTotalSeconds = Math.Floor(downtimeTotal.TotalSeconds),
             DowntimeTotal = downtimeTotal.ToString(@"hh\:mm\:ss"),
+            RestBreakTimeSeconds = Math.Floor(restBreakTime.TotalSeconds), // ✅ Rest Break Time (terpisah untuk display, tetap termasuk Planned Downtime)
+            RestBreakTime = restBreakTime.ToString(@"hh\:mm\:ss"), // ✅ Rest Break Time
+            HasActiveRestBreak = hasActiveRestBreak, // ✅ Status Rest Break aktif
             NoLoadingTimeSeconds = Math.Floor(noLoadingTime.TotalSeconds), // ✅ NO LOADING time (tidak masuk ke OEE)
             NoLoadingTime = noLoadingTime.ToString(@"hh\:mm\:ss"), // ✅ NO LOADING time (tidak masuk ke OEE)
             NettOperatingTimeSeconds = Math.Floor(nettOperatingTime.TotalSeconds), // ✅ Nett Operating Time = Cycle Time × Total Produced

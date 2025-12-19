@@ -28,6 +28,7 @@ public class MachineOeeViewModel
     public TimeSpan PlannedProductionTime { get; set; }
     public TimeSpan OperatingTime { get; set; }
     public TimeSpan DowntimeTotal { get; set; }
+    public TimeSpan RestBreakTime { get; set; } // ✅ Rest Break Time (terpisah untuk display, tetap termasuk Planned Downtime)
     public TimeSpan NoLoadingTime { get; set; } // ✅ NO LOADING time (tidak masuk ke OEE)
     public TimeSpan NettOperatingTime { get; set; } // ✅ Nett Operating Time = Cycle Time × Total Produced
 
@@ -52,6 +53,7 @@ public class MachineOeeViewModel
     public List<NgType> NgTypes { get; set; } = new();
     public bool HasActiveJob { get; set; }
     public bool HasActiveDowntime { get; set; }
+    public bool HasActiveRestBreak { get; set; } // ✅ Status Rest Break aktif
     public string? ActiveDowntimeDescription { get; set; }
     public MachineStatus MachineStatus { get; set; } // Status dari Admin (Aktif/TidakAktif)
 }
