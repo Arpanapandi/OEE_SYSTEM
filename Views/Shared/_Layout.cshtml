@@ -1,5 +1,6 @@
 @{
     var title = ViewData["Title"] as string ?? "OEE Monitoring";
+    var isOeeDetailPage = ViewData["IsOeeDetailPage"] as bool? ?? false;
 }
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
@@ -18,6 +19,17 @@
         .navbar {
             background: linear-gradient(90deg, #141823, #1f2933);
             border-bottom: 1px solid #252b3b;
+        }
+        
+        /* ✅ Style untuk navbar OEE Detail */
+        .navbar-oee-detail {
+            padding: 0.75rem 1rem;
+        }
+        
+        .navbar-oee-detail .machine-title {
+            font-size: 1.5rem;
+            line-height: 1.2;
+            margin-bottom: 0;
         }
 
         .card {
@@ -102,28 +114,73 @@
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark mb-3">
+    <nav class="navbar navbar-expand-lg navbar-dark mb-3 @(isOeeDetailPage ? "navbar-oee-detail" : "")">
         <div class="container-fluid">
-            <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index">
-                <i class="fa-solid fa-industry me-2"></i>OEE Monitoring
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" asp-controller="Home" asp-action="Index">
-                            <i class="fa-solid fa-chart-line me-1 text-danger"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-controller="Admin" asp-action="Index">
-                            <i class="fa-solid fa-gear me-1"></i>Admin
-                        </a>
-                    </li>
-                </ul>
-            </div>
+            @if (isOeeDetailPage)
+            {
+                <!-- ✅ Layout khusus untuk OEE Detail: Machine info di kiri -->
+                <div class="d-flex flex-column">
+                    <div class="d-flex align-items-center mb-0">
+                        <h2 class="machine-title mb-0 me-2">
+                            <i class="fa-solid fa-microchip me-2"></i>@(ViewData["MachineName"] ?? "Machine")
+                        </h2>
+                        @{
+                            var machineStatus = ViewData["MachineStatus"] as OeeSystem.Models.MachineStatus?;
+                            var statusClass = machineStatus switch
+                            {
+                                OeeSystem.Models.MachineStatus.Aktif => "status-running",
+                                OeeSystem.Models.MachineStatus.TidakAktif => "status-down",
+                                _ => "status-idle"
+                            };
+                            var statusText = machineStatus == OeeSystem.Models.MachineStatus.Aktif ? "Aktif" : "Tidak Aktif";
+                        }
+                        <span class="status-badge @statusClass">@statusText</span>
+                    </div>
+                    <div class="text-secondary small mt-1">
+                        <i class="fa-solid fa-layer-group me-1"></i>@(ViewData["LineId"] ?? "")
+                        <span class="ms-3">
+                            <i class="fa-solid fa-calendar-day me-1"></i>@(ViewData["ShiftName"] ?? "") (@(ViewData["ShiftTime"] ?? ""))
+                        </span>
+                        <span class="ms-3">
+                            <i class="fa-solid fa-clock me-1"></i>Standar Cycle Time Product: @(ViewData["StandarCycleTime"] ?? "0")s
+                        </span>
+                    </div>
+                </div>
+                
+                <!-- ✅ OEE Monitoring dan Back button di kanan -->
+                <div class="navbar-nav ms-auto d-flex flex-column align-items-end">
+                    <a class="nav-link fw-semibold" asp-controller="Home" asp-action="Index">
+                        <i class="fa-solid fa-industry me-2"></i>OEE Monitoring
+                    </a>
+                    <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm mt-1">
+                        <i class="fa-solid fa-arrow-left me-1"></i>Back to Dashboard
+                    </a>
+                </div>
+            }
+            else
+            {
+                <!-- ✅ Layout normal untuk halaman lain -->
+                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index">
+                    <i class="fa-solid fa-industry me-2"></i>OEE Monitoring
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" asp-controller="Home" asp-action="Index">
+                                <i class="fa-solid fa-chart-line me-1 text-danger"></i>Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Admin" asp-action="Index">
+                                <i class="fa-solid fa-gear me-1"></i>Admin
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            }
         </div>
     </nav>
 
