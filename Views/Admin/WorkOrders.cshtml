@@ -45,9 +45,7 @@
             <table class="table table-dark table-hover">
                 <thead>
                     <tr>
-                        <th>No</th>
-                        <th>Tanggal</th>
-                        <th>Shift</th>
+                        <th>ID</th>
                         <th>Order Number</th>
                         <th>Product</th>
                         <th>Target Quantity</th>
@@ -56,15 +54,10 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @{
-                        int rowNumber = 1;
-                    }
                     @foreach (var wo in Model)
                     {
                         <tr>
-                            <td>@rowNumber</td>
-                            <td>@(wo.PlannedDate?.ToString("dd/MM/yyyy") ?? "-")</td>
-                            <td>@(wo.Shift?.Name ?? "-")</td>
+                            <td>@wo.Id</td>
                             <td>@wo.OrderNumber</td>
                             <td>@(wo.Product?.Name ?? "N/A")</td>
                             <td>@wo.TargetQuantity</td>
@@ -82,7 +75,6 @@
                                 </a>
                             </td>
                         </tr>
-                        rowNumber++;
                     }
                 </tbody>
             </table>

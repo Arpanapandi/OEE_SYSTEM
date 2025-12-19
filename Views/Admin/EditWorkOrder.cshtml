@@ -36,20 +36,6 @@
             </div>
 
             <div class="mb-3">
-                <label asp-for="PlannedDate" class="form-label">Tanggal</label>
-                <input asp-for="PlannedDate" class="form-control" type="date" />
-                <span asp-validation-for="PlannedDate" class="text-danger"></span>
-            </div>
-
-            <div class="mb-3">
-                <label asp-for="ShiftId" class="form-label">Shift</label>
-                <select asp-for="ShiftId" class="form-select" asp-items="ViewBag.ShiftId">
-                    <option value="">-- Select Shift --</option>
-                </select>
-                <span asp-validation-for="ShiftId" class="text-danger"></span>
-            </div>
-
-            <div class="mb-3">
                 <label asp-for="Status" class="form-label">Status</label>
                 <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<WorkOrderStatus>()"></select>
                 <span asp-validation-for="Status" class="text-danger"></span>
