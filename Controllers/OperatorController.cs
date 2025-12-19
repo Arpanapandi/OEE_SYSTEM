@@ -299,6 +299,61 @@ public class OperatorController : Controller
         return RedirectToAction(nameof(Index), new { machineId });
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> NoLoading(string machineId, string? returnUrl = null)
+    {
+        var now = DateTime.Now;
+
+        // Cari job aktif untuk mesin ini
+        var activeJob = await _context.JobRuns
+            .Include(j => j.Machine)
+            .Include(j => j.DowntimeEvents)
+            .Where(j => j.MachineId == machineId)
+            .OrderByDescending(j => j.StartTime)
+            .FirstOrDefaultAsync(j => j.EndTime == null);
+
+        if (activeJob == null)
+        {
+            TempData["OperationError"] = "Tidak ada job aktif. Tidak bisa set NO LOADING.";
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+            return RedirectToAction(nameof(Index), new { machineId });
+        }
+
+        // Cek apakah ada downtime aktif, jika ada end terlebih dahulu
+        var openDowntime = activeJob.DowntimeEvents
+            .OrderByDescending(d => d.StartTime)
+            .FirstOrDefault(d => d.EndTime == null);
+
+        if (openDowntime != null)
+        {
+            // End downtime yang aktif
+            openDowntime.EndTime = now;
+            openDowntime.DurationSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
+        }
+
+        // End job aktif (NO LOADING = menghentikan mesin)
+        activeJob.EndTime = now;
+
+        await _context.SaveChangesAsync();
+
+        // Broadcast SignalR update
+        await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+        {
+            Type = "NoLoadingStarted",
+            MachineId = machineId,
+            MachineName = activeJob.Machine?.Name,
+            Message = $"NO LOADING: Mesin {activeJob.Machine?.Name} dihentikan (tidak masuk perhitungan OEE)",
+            Timestamp = now,
+            RefreshTimeMetrics = true, // Flag untuk trigger refresh Time Metrics di OEE View
+            RefreshOperatorData = true // Flag untuk trigger refresh Operator Data
+        });
+
+        if (!string.IsNullOrEmpty(returnUrl))
+            return Redirect(returnUrl);
+        return RedirectToAction(nameof(Index), new { machineId });
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
