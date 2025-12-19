@@ -28,6 +28,7 @@ public class MachineOeeViewModel
     public TimeSpan PlannedProductionTime { get; set; }
     public TimeSpan OperatingTime { get; set; }
     public TimeSpan DowntimeTotal { get; set; }
+    public TimeSpan NoLoadingTime { get; set; } // ✅ NO LOADING time (tidak masuk ke OEE)
 
     // Production metrics
     public int TotalCount { get; set; }

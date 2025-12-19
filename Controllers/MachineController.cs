@@ -254,13 +254,22 @@ public class MachineController : Controller
             operatingTime = TimeSpan.Zero;
         }
 
-        // 4. Planned Production Time = Operating Time + Downtime
+        // 4. Planned Production Time = Operating Time + Downtime (tidak termasuk NO LOADING)
         TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
 
         // Jika belum ada data, gunakan durasi shift sebagai default
         if (plannedProductionTime.TotalSeconds == 0)
         {
             plannedProductionTime = shiftWindow.End - shiftWindow.Start;
+        }
+
+        // 5. NO LOADING Time = Total Shift Time - (Operating Time + Downtime)
+        // NO LOADING time adalah waktu idle (tidak ada job aktif) yang tidak masuk ke perhitungan OEE
+        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
+        TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
+        if (noLoadingTime.TotalSeconds < 0)
+        {
+            noLoadingTime = TimeSpan.Zero;
         }
 
         // Hitung production counts di window shift
@@ -311,6 +320,7 @@ public class MachineController : Controller
             PlannedProductionTime = plannedProductionTime,
             OperatingTime = operatingTime,
             DowntimeTotal = downtimeTotal,
+            NoLoadingTime = noLoadingTime, // ✅ NO LOADING time (tidak masuk ke OEE)
             TotalCount = totalCount,
             GoodCount = goodCount,
             RejectCount = rejectCount
@@ -703,13 +713,22 @@ public class MachineController : Controller
             operatingTime = TimeSpan.Zero;
         }
 
-        // 4. Planned Production Time = Operating Time + Downtime
+        // 4. Planned Production Time = Operating Time + Downtime (tidak termasuk NO LOADING)
         TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
 
         // Jika belum ada data, gunakan durasi shift
         if (plannedProductionTime.TotalSeconds == 0)
         {
             plannedProductionTime = shiftWindow.End - shiftWindow.Start;
+        }
+
+        // 5. NO LOADING Time = Total Shift Time - (Operating Time + Downtime)
+        // NO LOADING time adalah waktu idle (tidak ada job aktif) yang tidak masuk ke perhitungan OEE
+        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
+        TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
+        if (noLoadingTime.TotalSeconds < 0)
+        {
+            noLoadingTime = TimeSpan.Zero;
         }
 
         // Hitung persentase untuk progress bar
@@ -756,6 +775,11 @@ public class MachineController : Controller
             }
         }
 
+        // Hitung persentase NO LOADING (berdasarkan total shift time)
+        var noLoadingPercent = totalShiftTime.TotalSeconds > 0
+            ? (noLoadingTime.TotalSeconds / totalShiftTime.TotalSeconds * 100)
+            : 0;
+
         // Return info tentang active job dan downtime untuk real-time calculation
         return Json(new
         {
@@ -770,8 +794,11 @@ public class MachineController : Controller
             OperatingTime = operatingTime.ToString(@"hh\:mm\:ss"),
             DowntimeTotalSeconds = Math.Floor(downtimeTotal.TotalSeconds),
             DowntimeTotal = downtimeTotal.ToString(@"hh\:mm\:ss"),
+            NoLoadingTimeSeconds = Math.Floor(noLoadingTime.TotalSeconds), // ✅ NO LOADING time (tidak masuk ke OEE)
+            NoLoadingTime = noLoadingTime.ToString(@"hh\:mm\:ss"), // ✅ NO LOADING time (tidak masuk ke OEE)
             OperatingPercent = Math.Round(operatingPercent, 1),
             DowntimePercent = Math.Round(downtimePercent, 1),
+            NoLoadingPercent = Math.Round(noLoadingPercent, 1), // ✅ NO LOADING percent
             HasActiveJob = activeJob != null,
             ActiveJobStartTime = activeJob?.StartTime.ToString("O"), // ISO 8601 format
             HasActiveDowntime = activeDowntime != null,
