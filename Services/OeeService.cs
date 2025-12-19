@@ -14,17 +14,21 @@ public class OeeService : IOeeService
         double plannedSeconds = plannedProductionTime.TotalSeconds;
         double operatingSeconds = operatingTime.TotalSeconds;
 
+        // ✅ PERBAIKAN: Batasi Availability maksimal 100%
         double availability = plannedSeconds <= 0
             ? 0
-            : operatingSeconds / plannedSeconds * 100.0;
+            : Math.Min(100.0, operatingSeconds / plannedSeconds * 100.0);
 
+        // ✅ PERBAIKAN: Batasi Performance maksimal 100%
+        // Performance > 100% berarti mesin lebih cepat dari standar (standar perlu diupdate)
         double performance = (operatingSeconds <= 0 || standarCycleTime <= 0)
             ? 0
-            : totalCount / (operatingSeconds / standarCycleTime) * 100.0;
+            : Math.Min(100.0, totalCount / (operatingSeconds / standarCycleTime) * 100.0);
 
+        // ✅ PERBAIKAN: Batasi Quality maksimal 100%
         double quality = totalCount <= 0
             ? 0
-            : (double)goodCount / totalCount * 100.0;
+            : Math.Min(100.0, (double)goodCount / totalCount * 100.0);
 
         double oee = (availability / 100.0) * (performance / 100.0) * (quality / 100.0) * 100.0;
 
