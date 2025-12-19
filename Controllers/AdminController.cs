@@ -1461,6 +1461,9 @@ public class AdminController : Controller
     {
         var workOrders = await _context.WorkOrders
             .Include(w => w.Product)
+            .Include(w => w.Shift) // Include Shift untuk menampilkan nama shift
+            .OrderBy(w => w.PlannedDate ?? DateTime.MaxValue) // Urutkan berdasarkan tanggal dari lama ke baru (null di akhir)
+            .ThenBy(w => w.Id) // Jika tanggal sama, urutkan berdasarkan ID
             .ToListAsync();
         return View(workOrders);
     }
@@ -1494,6 +1497,12 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateWorkOrder(CreateWorkOrderViewModel vm)
     {
+        // Validasi plant harus dipilih
+        if (!vm.PlantId.HasValue || vm.PlantId.Value <= 0)
+        {
+            ModelState.AddModelError(nameof(vm.PlantId), "Plant harus dipilih.");
+        }
+        
         // Validasi mesin harus dipilih
         if (string.IsNullOrEmpty(vm.MachineId))
         {
@@ -1506,8 +1515,22 @@ public class AdminController : Controller
             ModelState.AddModelError("", "Minimal harus ada 1 jadwal.");
         }
         
+        // Validasi sinkronisasi Plant, Machine, dan Product
+        if (vm.PlantId.HasValue && !string.IsNullOrEmpty(vm.MachineId))
+        {
+            // Cek apakah machine dari plant yang dipilih
+            var machine = await _context.Machines
+                .FirstOrDefaultAsync(m => m.Id == vm.MachineId);
+            
+            if (machine != null && machine.PlantId != vm.PlantId.Value)
+            {
+                ModelState.AddModelError(nameof(vm.MachineId), 
+                    "Mesin yang dipilih tidak berasal dari Plant yang dipilih.");
+            }
+        }
+        
         // Validasi setiap schedule
-        if (vm.Schedules != null && !string.IsNullOrEmpty(vm.MachineId))
+        if (vm.Schedules != null && !string.IsNullOrEmpty(vm.MachineId) && vm.PlantId.HasValue)
         {
             for (int i = 0; i < vm.Schedules.Count; i++)
             {
@@ -1519,16 +1542,27 @@ public class AdminController : Controller
                     ModelState.AddModelError($"Schedules[{i}].ProductId", "Product harus dipilih.");
                 }
                 
-                // Validasi product-mesin compatibility
+                // Validasi product-plant compatibility (sinkronisasi)
                 if (schedule.ProductId > 0)
                 {
-                    bool allowed = await _context.ProductMachines
-                        .AnyAsync(pm => pm.ProductId == schedule.ProductId && pm.MachineId == vm.MachineId);
+                    var product = await _context.Products
+                        .FirstOrDefaultAsync(p => p.Id == schedule.ProductId);
                     
-                    if (!allowed)
+                    if (product != null)
+                    {
+                        // Validasi: Product harus dari Plant yang sama dengan yang dipilih
+                        if (product.PlantId != vm.PlantId.Value)
+                        {
+                            ModelState.AddModelError($"Schedules[{i}].ProductId", 
+                                "Produk ini tidak berasal dari Plant yang dipilih.");
+                        }
+                        // Validasi: Product harus bisa dijalankan di machine yang dipilih
+                        // Mapping akan dibuat otomatis di transaction jika belum ada
+                    }
+                    else
                     {
                         ModelState.AddModelError($"Schedules[{i}].ProductId", 
-                            "Produk ini tidak boleh dijalankan di mesin yang dipilih.");
+                            "Product tidak ditemukan.");
                     }
                 }
                 
@@ -1547,7 +1581,7 @@ public class AdminController : Controller
             }
         }
         
-        if (ModelState.IsValid && !string.IsNullOrEmpty(vm.MachineId) && vm.Schedules != null && vm.Schedules.Count > 0)
+        if (ModelState.IsValid && !string.IsNullOrEmpty(vm.MachineId) && vm.PlantId.HasValue && vm.Schedules != null && vm.Schedules.Count > 0)
         {
             var createdWorkOrders = new List<string>();
             
@@ -1555,12 +1589,43 @@ public class AdminController : Controller
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // Load shift data sekali untuk semua schedules
+                // Step 1: Sinkronkan ProductMachine mappings terlebih dahulu
+                var productMachineMappings = new List<ProductMachine>();
+                foreach (var schedule in vm.Schedules)
+                {
+                    if (schedule.ProductId > 0 && !string.IsNullOrEmpty(vm.MachineId))
+                    {
+                        // Cek apakah mapping sudah ada
+                        var existingMapping = await _context.ProductMachines
+                            .FirstOrDefaultAsync(pm => pm.ProductId == schedule.ProductId && pm.MachineId == vm.MachineId);
+                        
+                        if (existingMapping == null)
+                        {
+                            // Buat mapping baru untuk sinkronisasi
+                            var newMapping = new ProductMachine
+                            {
+                                ProductId = schedule.ProductId,
+                                MachineId = vm.MachineId
+                            };
+                            productMachineMappings.Add(newMapping);
+                        }
+                    }
+                }
+                
+                // Simpan semua ProductMachine mappings sekaligus
+                if (productMachineMappings.Count > 0)
+                {
+                    await _context.ProductMachines.AddRangeAsync(productMachineMappings);
+                    await _context.SaveChangesAsync();
+                }
+                
+                // Step 2: Load shift data sekali untuk semua schedules
                 var shiftIds = vm.Schedules.Select(s => s.ShiftId).Distinct().ToList();
                 var shifts = await _context.Shifts
                     .Where(s => shiftIds.Contains(s.Id))
                     .ToDictionaryAsync(s => s.Id);
                 
+                // Step 3: Create WorkOrders dan JobRuns
                 foreach (var schedule in vm.Schedules)
                 {
                     // Create WorkOrder untuk setiap schedule
@@ -1568,7 +1633,9 @@ public class AdminController : Controller
                     {
                         ProductId = schedule.ProductId,
                         TargetQuantity = schedule.TargetQuantity,
-                        Status = WorkOrderStatus.InProgress // Langsung InProgress karena akan di-assign
+                        Status = WorkOrderStatus.InProgress, // Langsung InProgress karena akan di-assign
+                        PlannedDate = schedule.PlannedDate, // Simpan planned date
+                        ShiftId = schedule.ShiftId // Simpan shift ID
                     };
                     
                     _context.WorkOrders.Add(workOrder);
@@ -1627,6 +1694,9 @@ public class AdminController : Controller
         }
         
         // Reload dropdowns jika ada error atau validation failed
+        vm.Plants = await _context.Plants
+            .OrderBy(p => p.Name)
+            .ToListAsync();
         vm.Machines = await _context.Machines
             .Include(m => m.Plant)
             .OrderBy(m => m.Name)
@@ -1639,6 +1709,20 @@ public class AdminController : Controller
         if (vm.Schedules == null || vm.Schedules.Count == 0)
         {
             vm.Schedules = new List<WorkOrderScheduleItem> { new WorkOrderScheduleItem() };
+        }
+        
+        // Log validation errors untuk debugging
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .SelectMany(x => x.Value.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}"));
+            
+            System.Diagnostics.Debug.WriteLine("Validation Errors:");
+            foreach (var error in errors)
+            {
+                System.Diagnostics.Debug.WriteLine($"  - {error}");
+            }
         }
         
         return View(vm);
@@ -1663,14 +1747,35 @@ public class AdminController : Controller
     [HttpGet]
     public async Task<IActionResult> GetProductsForMachine(string machineId)
     {
+        // Pastikan data selalu fresh dari database (no cache)
         var products = await _context.ProductMachines
+            .AsNoTracking() // Pastikan tidak ada tracking/cache
             .Where(pm => pm.MachineId == machineId)
+            .Include(pm => pm.Product) // Pastikan Product di-load
             .Select(pm => new
             {
-                pm.ProductId,
-                pm.Product!.Name,
-                pm.Product.MaterialCode
+                productId = pm.ProductId,
+                name = pm.Product != null ? pm.Product.Name : "",
+                materialCode = pm.Product != null ? pm.Product.MaterialCode : ""
             })
+            .ToListAsync();
+        
+        return Json(products);
+    }
+    
+    public async Task<IActionResult> GetProductsByPlant(int plantId)
+    {
+        // Pastikan data selalu fresh dari database (no cache)
+        var products = await _context.Products
+            .AsNoTracking() // Pastikan tidak ada tracking/cache
+            .Where(p => p.PlantId == plantId)
+            .Select(p => new
+            {
+                productId = p.Id,
+                name = p.Name,
+                materialCode = p.MaterialCode
+            })
+            .OrderBy(p => p.name)
             .ToListAsync();
         
         return Json(products);
@@ -1679,9 +1784,12 @@ public class AdminController : Controller
     public async Task<IActionResult> EditWorkOrder(int? id)
     {
         if (id == null) return NotFound();
-        var workOrder = await _context.WorkOrders.FindAsync(id);
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.Shift)
+            .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
         ViewData["ProductId"] = new SelectList(await _context.Products.ToListAsync(), "Id", "Name", workOrder.ProductId);
+        ViewData["ShiftId"] = new SelectList(await _context.Shifts.ToListAsync(), "Id", "Name", workOrder.ShiftId);
         return View(workOrder);
     }
 
@@ -1694,7 +1802,19 @@ public class AdminController : Controller
         {
             try
             {
-                _context.Update(workOrder);
+                // Load existing work order untuk update
+                var existingWorkOrder = await _context.WorkOrders.FindAsync(id);
+                if (existingWorkOrder == null) return NotFound();
+                
+                // Update fields
+                existingWorkOrder.OrderNumber = workOrder.OrderNumber;
+                existingWorkOrder.ProductId = workOrder.ProductId;
+                existingWorkOrder.TargetQuantity = workOrder.TargetQuantity;
+                existingWorkOrder.Status = workOrder.Status;
+                existingWorkOrder.PlannedDate = workOrder.PlannedDate;
+                existingWorkOrder.ShiftId = workOrder.ShiftId;
+                
+                _context.Update(existingWorkOrder);
                 await _context.SaveChangesAsync();
             }
             catch (DbUpdateConcurrencyException)
@@ -1705,6 +1825,7 @@ public class AdminController : Controller
             return RedirectToAction(nameof(WorkOrders));
         }
         ViewData["ProductId"] = new SelectList(await _context.Products.ToListAsync(), "Id", "Name", workOrder.ProductId);
+        ViewData["ShiftId"] = new SelectList(await _context.Shifts.ToListAsync(), "Id", "Name", workOrder.ShiftId);
         return View(workOrder);
     }
 
@@ -1743,10 +1864,12 @@ public class AdminController : Controller
         worksheet.Cell(1, 1).Value = "OrderNumber";
         worksheet.Cell(1, 2).Value = "ProductMaterialCode";
         worksheet.Cell(1, 3).Value = "TargetQuantity";
-        worksheet.Cell(1, 4).Value = "Status";
+        worksheet.Cell(1, 4).Value = "PlannedDate";
+        worksheet.Cell(1, 5).Value = "ShiftName";
+        worksheet.Cell(1, 6).Value = "Status";
         
         // Style header
-        var headerRange = worksheet.Range(1, 1, 1, 4);
+        var headerRange = worksheet.Range(1, 1, 1, 6);
         headerRange.Style.Font.Bold = true;
         headerRange.Style.Fill.BackgroundColor = XLColor.LightBlue;
         headerRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -1758,7 +1881,9 @@ public class AdminController : Controller
         worksheet.Cell(2, 1).Value = "WO-2025-001";
         worksheet.Cell(2, 2).Value = "BRG-R12"; // Harus sesuai dengan MaterialCode Product di database
         worksheet.Cell(2, 3).Value = 1000;
-        worksheet.Cell(2, 4).Value = "Planned"; // Planned, InProgress, atau Completed
+        worksheet.Cell(2, 4).Value = DateTime.Now.ToString("yyyy-MM-dd"); // Format: yyyy-MM-dd
+        worksheet.Cell(2, 5).Value = "Shift 1"; // Harus sesuai dengan Shift Name di database
+        worksheet.Cell(2, 6).Value = "Planned"; // Planned, InProgress, atau Completed
         
         // Add instruction sheet
         var instructionSheet = workbook.Worksheets.Add("Instructions");
@@ -1769,14 +1894,18 @@ public class AdminController : Controller
         instructionSheet.Cell(3, 1).Value = "1. OrderNumber: Nomor Work Order (wajib, unique)";
         instructionSheet.Cell(4, 1).Value = "2. ProductMaterialCode: Kode Material Product (wajib, harus sesuai dengan MaterialCode di database)";
         instructionSheet.Cell(5, 1).Value = "3. TargetQuantity: Target jumlah produksi (wajib, angka)";
-        instructionSheet.Cell(6, 1).Value = "4. Status: Status Work Order (wajib, pilihan: Planned, InProgress, Completed)";
+        instructionSheet.Cell(6, 1).Value = "4. PlannedDate: Tanggal rencana produksi (wajib, format: yyyy-MM-dd, contoh: 2025-12-17)";
+        instructionSheet.Cell(7, 1).Value = "5. ShiftName: Nama Shift (wajib, harus sesuai dengan Shift Name di database)";
+        instructionSheet.Cell(8, 1).Value = "6. Status: Status Work Order (wajib, pilihan: Planned, InProgress, Completed)";
         
-        instructionSheet.Cell(8, 1).Value = "CATATAN PENTING:";
-        instructionSheet.Cell(8, 1).Style.Font.Bold = true;
-        instructionSheet.Cell(9, 1).Value = "- ProductMaterialCode harus sesuai dengan MaterialCode Product yang ada di database";
-        instructionSheet.Cell(10, 1).Value = "- Jika OrderNumber sudah ada, data akan di-update";
-        instructionSheet.Cell(11, 1).Value = "- Jika OrderNumber belum ada, data akan ditambahkan sebagai Work Order baru";
-        instructionSheet.Cell(12, 1).Value = "- Status harus salah satu dari: Planned, InProgress, Completed";
+        instructionSheet.Cell(10, 1).Value = "CATATAN PENTING:";
+        instructionSheet.Cell(10, 1).Style.Font.Bold = true;
+        instructionSheet.Cell(11, 1).Value = "- ProductMaterialCode harus sesuai dengan MaterialCode Product yang ada di database";
+        instructionSheet.Cell(12, 1).Value = "- ShiftName harus sesuai dengan Shift Name yang ada di database";
+        instructionSheet.Cell(13, 1).Value = "- PlannedDate format: yyyy-MM-dd (contoh: 2025-12-17)";
+        instructionSheet.Cell(14, 1).Value = "- Jika OrderNumber sudah ada, data akan di-update";
+        instructionSheet.Cell(15, 1).Value = "- Jika OrderNumber belum ada, data akan ditambahkan sebagai Work Order baru";
+        instructionSheet.Cell(16, 1).Value = "- Status harus salah satu dari: Planned, InProgress, Completed";
         
         instructionSheet.Columns().AdjustToContents();
         
@@ -1829,6 +1958,9 @@ public class AdminController : Controller
             // Get all products for lookup by MaterialCode
             var products = await _context.Products.ToDictionaryAsync(p => p.MaterialCode, p => p.Id);
             
+            // Get all shifts for lookup by Name
+            var shifts = await _context.Shifts.ToDictionaryAsync(s => s.Name, s => s.Id);
+            
             // Process rows (skip header)
             var rows = worksheet.RowsUsed().Skip(1);
             
@@ -1839,7 +1971,9 @@ public class AdminController : Controller
                     var orderNumber = row.Cell(1).GetString().Trim();
                     var productMaterialCode = row.Cell(2).GetString().Trim();
                     var targetQuantityStr = row.Cell(3).GetString().Trim();
-                    var statusStr = row.Cell(4).GetString().Trim();
+                    var plannedDateStr = row.Cell(4).GetString().Trim();
+                    var shiftName = row.Cell(5).GetString().Trim();
+                    var statusStr = row.Cell(6).GetString().Trim();
                     
                     // Validasi required fields
                     if (string.IsNullOrEmpty(orderNumber) || string.IsNullOrEmpty(productMaterialCode) || 
@@ -1866,6 +2000,38 @@ public class AdminController : Controller
                         continue;
                     }
                     
+                    // Parse planned date (optional, bisa kosong)
+                    DateTime? plannedDate = null;
+                    if (!string.IsNullOrEmpty(plannedDateStr))
+                    {
+                        if (DateTime.TryParse(plannedDateStr, out DateTime parsedDate))
+                        {
+                            plannedDate = parsedDate.Date;
+                        }
+                        else
+                        {
+                            errors.Add($"Row {row.RowNumber()}: PlannedDate format tidak valid. Gunakan format yyyy-MM-dd.");
+                            errorCount++;
+                            continue;
+                        }
+                    }
+                    
+                    // Parse shift (optional, bisa kosong)
+                    int? shiftId = null;
+                    if (!string.IsNullOrEmpty(shiftName))
+                    {
+                        if (shifts.ContainsKey(shiftName))
+                        {
+                            shiftId = shifts[shiftName];
+                        }
+                        else
+                        {
+                            errors.Add($"Row {row.RowNumber()}: Shift Name '{shiftName}' tidak ditemukan.");
+                            errorCount++;
+                            continue;
+                        }
+                    }
+                    
                     // Parse status
                     if (!Enum.TryParse<WorkOrderStatus>(statusStr, true, out WorkOrderStatus status))
                     {
@@ -1884,6 +2050,8 @@ public class AdminController : Controller
                         existingWorkOrder.ProductId = products[productMaterialCode];
                         existingWorkOrder.TargetQuantity = targetQuantity;
                         existingWorkOrder.Status = status;
+                        existingWorkOrder.PlannedDate = plannedDate;
+                        existingWorkOrder.ShiftId = shiftId;
                         updatedCount++;
                     }
                     else
@@ -1894,7 +2062,9 @@ public class AdminController : Controller
                             OrderNumber = orderNumber,
                             ProductId = products[productMaterialCode],
                             TargetQuantity = targetQuantity,
-                            Status = status
+                            Status = status,
+                            PlannedDate = plannedDate,
+                            ShiftId = shiftId
                         };
                         _context.WorkOrders.Add(newWorkOrder);
                         addedCount++;
