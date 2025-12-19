@@ -1,42 +1,21 @@
 @model OeeSystem.Models.ViewModels.MachineOeeViewModel
 @{
     ViewData["Title"] = "OEE Detail - " + Model.MachineName;
+    // ✅ Set ViewData untuk menandai ini adalah halaman OEE Detail
+    ViewData["IsOeeDetailPage"] = true;
+    ViewData["MachineName"] = Model.MachineName;
+    ViewData["LineId"] = Model.LineId;
+    ViewData["ShiftName"] = string.IsNullOrEmpty(Model.ShiftName) ? $"Shift {Model.ShiftCode}" : Model.ShiftName;
+    ViewData["ShiftTime"] = $"{Model.ShiftStart:HH:mm} - {Model.ShiftEnd:HH:mm}";
+    ViewData["StandarCycleTime"] = Model.StandarCycleTime.ToString("F1");
+    ViewData["MachineStatus"] = Model.Status;
+    
     var shiftDateStr = Model.ShiftDate.ToString("yyyy-MM-dd");
     var shiftStartStr = Model.ShiftStart.ToString("HH:mm");
     var shiftEndStr = Model.ShiftEnd.ToString("HH:mm");
 }
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2 class="mb-1">
-            <i class="fa-solid fa-microchip me-2"></i>@Model.MachineName
-        </h2>
-        <div class="text-secondary small">
-            <i class="fa-solid fa-layer-group me-1"></i>@Model.LineId
-            <span class="ms-3">
-                <i class="fa-solid fa-calendar-day me-1"></i>@(string.IsNullOrEmpty(Model.ShiftName) ? $"Shift {Model.ShiftCode}" : Model.ShiftName) (@shiftStartStr - @shiftEndStr)
-            </span>
-            <span class="ms-3">
-                <i class="fa-solid fa-clock me-1"></i>Standar Cycle Time Product: @Model.StandarCycleTime.ToString("F1")s
-            </span>
-        </div>
-    </div>
-    <div>
-        @{
-            var statusClass = Model.Status switch
-            {
-                OeeSystem.Models.MachineStatus.Aktif => "status-running",
-                OeeSystem.Models.MachineStatus.TidakAktif => "status-down",
-                _ => "status-idle"
-            };
-            var statusText = Model.Status == OeeSystem.Models.MachineStatus.Aktif ? "Aktif" : "Tidak Aktif";
-        }
-        <span class="status-badge @statusClass">@statusText</span>
-        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm ms-2">
-            <i class="fa-solid fa-arrow-left me-1"></i>Back to Dashboard
-        </a>
-    </div>
-</div>
+<!-- ✅ Status badge dan back button sudah dipindahkan ke navbar -->
 
 <div id="shift-meta"
      data-shift-key="@Model.ShiftKey"
@@ -81,7 +60,7 @@
                             <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
                             <button type="submit" 
                                     id="btn-running" 
-                                    class="btn btn-sm w-100 btn-outline-success machine-action-btn"
+                                    class="btn w-100 btn-outline-success machine-action-btn"
                                     style="pointer-events: auto !important; cursor: pointer !important;">
                                 <i class="fa-solid fa-play-circle me-1"></i>
                                 RUNNING
@@ -100,7 +79,7 @@
                                 <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
                                 <button type="submit" 
                                         id="btn-rest" 
-                                        class="btn btn-sm w-100 btn-outline-warning machine-action-btn"
+                                        class="btn w-100 btn-outline-warning machine-action-btn"
                                         style="pointer-events: auto !important; cursor: pointer !important;">
                                     <i class="fa-solid fa-pause-circle me-1"></i>
                                     REST BREAK
@@ -113,7 +92,7 @@
                     <div class="col-md-2 col-6">
                         <button type="button" 
                                 id="btn-line-stop" 
-                                class="btn btn-sm w-100 btn-outline-danger machine-action-btn"
+                                class="btn w-100 btn-outline-danger machine-action-btn"
                                 style="pointer-events: auto !important; cursor: pointer !important;"
                                 data-bs-toggle="modal" 
                                 data-bs-target="#lineStopModal">
@@ -126,12 +105,12 @@
                     <div class="col-md-2 col-6">
                         <button type="button" 
                                 id="btn-no-loading" 
-                                class="btn btn-sm w-100 btn-outline-info machine-action-btn"
+                                class="btn w-100 btn-outline-info machine-action-btn"
                                 style="pointer-events: auto !important; cursor: pointer !important;"
                                 data-bs-toggle="modal" 
                                 data-bs-target="#noLoadingModal">
                             <i class="fa-regular fa-hourglass-half me-1"></i>
-                            NO LOADING
+                            NOLOADING
                         </button>
                     </div>
 
@@ -149,7 +128,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">OEE</div>
-                        <div class="kpi-value text-primary">@Model.Oee.ToString("F1")%</div>
+                        <div class="kpi-value text-primary">@Model.Oee.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-chart-line fa-2x text-primary opacity-50"></i>
                 </div>
@@ -162,7 +141,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Availability</div>
-                        <div class="kpi-value text-success">@Model.Availability.ToString("F1")%</div>
+                        <div class="kpi-value text-success">@Model.Availability.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-clock fa-2x text-success opacity-50"></i>
                 </div>
@@ -175,7 +154,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Performance</div>
-                        <div class="kpi-value text-warning">@Model.Performance.ToString("F1")%</div>
+                        <div class="kpi-value text-warning">@Model.Performance.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-gauge-high fa-2x text-warning opacity-50"></i>
                 </div>
@@ -188,7 +167,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Quality</div>
-                        <div class="kpi-value text-info">@Model.Quality.ToString("F1")%</div>
+                        <div class="kpi-value text-info">@Model.Quality.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-check-circle fa-2x text-info opacity-50"></i>
                 </div>
@@ -1088,25 +1067,20 @@
                     // Update display immediately
                     updateTimeDisplay();
                     
-                    // ✅ PERUBAHAN: Update durasi sejak status terakhir menggunakan SinceLastChangeSeconds (sama seperti Operator View)
-                    if (data.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
+                    // ✅ Update durasi sejak status terakhir dari backend
+                    if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
                         updateSinceLastChange(data.SinceLastChangeSeconds);
-                    } else if (data.LastStatusChangeTime) {
-                        // Fallback untuk backward compatibility
-                        const lastChangeTime = new Date(data.LastStatusChangeTime);
-                        const now = new Date();
-                        const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
-                        updateSinceLastChange(Math.max(0, diffSeconds));
-                    } else {
-                        // ✅ PERBAIKAN: Jika backend tidak mengirim data timer, pastikan timer tetap berjalan
-                        if (!sinceLastChangeInterval) {
-                            if (!lastChangeTimestamp) {
-                                lastChangeTimestamp = new Date();
+                    } else if (data?.LastStatusChangeTime) {
+                        // Fallback
+                        try {
+                            const lastChangeTime = new Date(data.LastStatusChangeTime);
+                            if (!isNaN(lastChangeTime.getTime())) {
+                                const now = new Date();
+                                const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
+                                updateSinceLastChange(Math.max(0, diffSeconds));
                             }
-                            updateTimerDisplay();
-                            sinceLastChangeInterval = setInterval(() => {
-                                updateTimerDisplay();
-                            }, 1000);
+                        } catch (dateError) {
+                            console.warn('Error parsing LastStatusChangeTime:', dateError);
                         }
                     }
                 })
@@ -1118,72 +1092,19 @@
         }
         
         // ========== DURASI SEJAK STATUS TERAKHIR ==========
-        // ✅ PERUBAHAN: Gunakan fungsi yang sama dengan Operator View untuk sinkronisasi
+        // Variabel untuk timer durasi sejak status terakhir
         let sinceLastChangeInterval = null;
         let lastChangeTimestamp = null;
-        let lastKnownSinceLastChangeSeconds = null; // Track nilai terakhir untuk mencegah reset tidak perlu
-        let isManualReset = false; // ✅ PERBAIKAN: Flag untuk mencegah override dari backend setelah manual reset
-        let manualResetTime = null; // ✅ PERBAIKAN: Waktu saat manual reset untuk mencegah override selama 3 detik
 
-        function updateSinceLastChange(initialTimeSeconds) {
-            const sinceLastStatusEl = document.getElementById('since-last-status');
-            if (!sinceLastStatusEl) return;
-            
-            // ✅ PERBAIKAN: Jika baru saja manual reset (dalam 3 detik), ignore update dari backend
-            if (isManualReset && manualResetTime) {
-                const now = new Date();
-                const timeSinceReset = (now.getTime() - manualResetTime.getTime()) / 1000;
-                if (timeSinceReset < 3) {
-                    // Abaikan update dari backend selama 3 detik setelah manual reset
-                    console.log('⏸️ Ignoring backend update (manual reset in progress)');
-                    return;
-                } else {
-                    // Setelah 3 detik, reset flag
-                    isManualReset = false;
-                    manualResetTime = null;
-                }
-            }
-            
-            // ✅ PERBAIKAN: Hanya reset timer jika nilai berbeda secara signifikan (lebih dari 2 detik)
-            // Ini mencegah timer di-reset tidak perlu saat fetch yang sama
-            if (lastKnownSinceLastChangeSeconds !== null && 
-                Math.abs(lastKnownSinceLastChangeSeconds - initialTimeSeconds) < 2) {
-                // Nilai sama (dalam toleransi 2 detik), tidak perlu reset timer
-                // Timer tetap berjalan dengan interval yang sudah ada
-                return;
-            }
-            
-            // Simpan nilai terakhir
-            lastKnownSinceLastChangeSeconds = initialTimeSeconds;
-            
-            // Clear existing interval
-            if (sinceLastChangeInterval) {
-                clearInterval(sinceLastChangeInterval);
-                sinceLastChangeInterval = null;
-            }
-            
-            // Calculate the timestamp when last change occurred
-            // initialTimeSeconds is the duration in seconds since last change
-            const now = new Date();
-            lastChangeTimestamp = new Date(now.getTime() - (initialTimeSeconds * 1000));
-            
-            // Update immediately
-            updateTimerDisplay();
-            
-            // Update every second - PASTIKAN selalu berjalan
-            sinceLastChangeInterval = setInterval(() => {
-                updateTimerDisplay();
-            }, 1000);
-        }
-        
+        // 2. Fungsi Update Display (setiap detik)
         function updateTimerDisplay() {
             const sinceLastStatusEl = document.getElementById('since-last-status');
-            if (!sinceLastStatusEl) return;
-            
-            // ✅ PERBAIKAN: Jika lastChangeTimestamp belum di-set, jangan return
-            // Tapi set ke waktu sekarang sebagai fallback
-            if (!lastChangeTimestamp) {
-                lastChangeTimestamp = new Date();
+            if (!sinceLastStatusEl || !lastChangeTimestamp) {
+                // Jika element tidak ada atau timestamp belum di-set, tampilkan 00:00:00
+                if (sinceLastStatusEl) {
+                    sinceLastStatusEl.textContent = '00:00:00';
+                }
+                return;
             }
             
             const now = new Date();
@@ -1197,44 +1118,51 @@
             const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             sinceLastStatusEl.textContent = timeString;
         }
+
+        // 3. Fungsi Initialize/Update Timer dari Backend
+        function updateSinceLastChange(initialTimeSeconds) {
+            const sinceLastStatusEl = document.getElementById('since-last-status');
+            if (!sinceLastStatusEl) return;
+            
+            // Clear existing interval jika ada
+            if (sinceLastChangeInterval) {
+                clearInterval(sinceLastChangeInterval);
+                sinceLastChangeInterval = null;
+            }
+            
+            // Pastikan initialSeconds valid (tidak null, tidak undefined, >= 0)
+            const validSeconds = (initialTimeSeconds !== null && initialTimeSeconds !== undefined && initialTimeSeconds >= 0) 
+                ? initialTimeSeconds 
+                : 0;
+            
+            // Calculate timestamp ketika last change occurred
+            // initialSeconds adalah durasi dalam detik sejak last change
+            const now = new Date();
+            lastChangeTimestamp = new Date(now.getTime() - (validSeconds * 1000));
+            
+            // Update display immediately
+            updateTimerDisplay();
+            
+            // Start interval untuk update setiap detik - PASTIKAN selalu berjalan
+            sinceLastChangeInterval = setInterval(() => {
+                updateTimerDisplay();
+            }, 1000);
+            
+            console.log('✅ Timer initialized:', {
+                initialSeconds: validSeconds,
+                lastChangeTimestamp: lastChangeTimestamp,
+                currentDisplay: sinceLastStatusEl.textContent
+            });
+        }
         
-        // Initialize durasi sejak status terakhir
+        // 5. Initialize dari Server-Side Data (saat page load)
         @if (Model.ActiveJob != null)
         {
             <text>
-            // ✅ PERUBAHAN: Gunakan SinceLastChangeSeconds seperti Operator View
             const initialSeconds = @(Model.ActiveJob?.SinceLastChangeSeconds ?? 0);
             if (initialSeconds >= 0) {
-                lastKnownSinceLastChangeSeconds = initialSeconds;
                 updateSinceLastChange(initialSeconds);
-            } else {
-                // Fallback: Jika nilai tidak valid, mulai dari 0
-                const now = new Date();
-                lastChangeTimestamp = now;
-                lastKnownSinceLastChangeSeconds = 0;
-                updateTimerDisplay();
-                if (!sinceLastChangeInterval) {
-                    sinceLastChangeInterval = setInterval(() => {
-                        updateTimerDisplay();
-                    }, 1000);
-                }
-            }
-            </text>
-        }
-        else
-        {
-            <text>
-            // ✅ PERBAIKAN: Inisialisasi timer meskipun tidak ada ActiveJob
-            // Timer akan di-update via fetchOperatorDataForOee() yang dipanggil setiap 5 detik
-            // Tapi kita tetap inisialisasi untuk memastikan timer berjalan
-            const now = new Date();
-            lastChangeTimestamp = now;
-            lastKnownSinceLastChangeSeconds = 0;
-            updateTimerDisplay();
-            if (!sinceLastChangeInterval) {
-                sinceLastChangeInterval = setInterval(() => {
-                    updateTimerDisplay();
-                }, 1000);
+                console.log('✅ Timer initialized from server:', initialSeconds, 'seconds');
             }
             </text>
         }
@@ -1498,17 +1426,22 @@
                     });
             }
 
-            // Cleanup on page unload
+            // 9. Cleanup saat Page Unload
             window.addEventListener('beforeunload', () => {
+                // Clear interval saat page unload
+                if (sinceLastChangeInterval) {
+                    clearInterval(sinceLastChangeInterval);
+                    sinceLastChangeInterval = null;
+                }
+                
+                // Clear SignalR connection jika ada
                 if (oeeConnection) {
                     oeeConnection.stop();
                 }
+                
+                // Clear time metrics interval jika ada
                 if (timeMetricsInterval) {
                     clearInterval(timeMetricsInterval);
-                }
-                // Fix typo: sinceLastChangeInterval, bukan sinceLastStatusInterval
-                if (sinceLastChangeInterval) {
-                    clearInterval(sinceLastChangeInterval);
                 }
             });
         });
@@ -1667,84 +1600,67 @@
             }
         }
 
-        // Reset timer when action button is clicked
+        // 4. Fungsi Reset Timer saat Action Diklik
         function resetTimerOnAction() {
-            // ✅ PERBAIKAN: Force reset timer ke 00:00:00
+            // Reset timer ke 00:00:00 secara visual (backend akan konfirmasi nilai yang benar nanti)
             const now = new Date();
-            lastChangeTimestamp = now;
-            lastKnownSinceLastChangeSeconds = 0;
-            
-            // ✅ PERBAIKAN: Set flag untuk mencegah override dari backend selama 3 detik
-            isManualReset = true;
-            manualResetTime = now;
-            
-            // ✅ PERBAIKAN: Force update display langsung ke 00:00:00
-            const sinceLastStatusEl = document.getElementById('since-last-status');
-            if (sinceLastStatusEl) {
-                sinceLastStatusEl.textContent = '00:00:00';
-            }
+            lastChangeTimestamp = now; // Reset ke sekarang = 00:00:00
+            updateTimerDisplay(); // Update display immediately
             
             // Pastikan interval berjalan jika belum ada
             if (!sinceLastChangeInterval) {
                 sinceLastChangeInterval = setInterval(() => {
                     updateTimerDisplay();
                 }, 1000);
-            } else {
-                // ✅ PERBAIKAN: Jika interval sudah ada, pastikan tetap berjalan
-                // Update display untuk memastikan timer berjalan
-                updateTimerDisplay();
             }
             
             console.log('🔄 Timer reset to 00:00:00');
-            
-            // ✅ PERBAIKAN: Reset flag setelah 3 detik untuk allow backend update
-            setTimeout(() => {
-                isManualReset = false;
-                manualResetTime = null;
-                console.log('✅ Manual reset flag cleared, backend updates allowed');
-            }, 3000);
         }
 
-        // Add event listeners to action buttons to reset timer
+        // 8. Event Listeners untuk Reset Timer saat Action Diklik
         document.addEventListener('DOMContentLoaded', function() {
             const runningForm = document.getElementById('running-form');
             const restForm = document.getElementById('rest-form');
-            const lineStopForm = document.getElementById('line-stop-start-form'); // Form LINE STOP
+            const lineStopForm = document.getElementById('line-stop-start-form');
             const noLoadingForm = document.getElementById('no-loading-form');
             
             // RUNNING - Reset timer saat form submit
             if (runningForm) {
                 runningForm.addEventListener('submit', function() {
-                    resetTimerOnAction();
+                    resetTimerOnAction(); // Reset ke 00:00:00
+                    console.log('🔄 RUNNING clicked - timer reset');
                     isNoLoading = false; // Reset NoLoading status saat RUNNING
-                    hasActiveRestBreak = false; // ✅ PERBAIKAN: Reset Rest Break status saat RUNNING
+                    hasActiveRestBreak = false; // Reset Rest Break status saat RUNNING
                 });
             }
             
             // REST BREAK - Reset timer saat form submit
             if (restForm) {
                 restForm.addEventListener('submit', function() {
-                    resetTimerOnAction();
+                    resetTimerOnAction(); // Reset ke 00:00:00
+                    console.log('🔄 REST BREAK clicked - timer reset');
                     isNoLoading = false; // Reset NoLoading status saat REST BREAK
-                    hasActiveRestBreak = true; // ✅ PERBAIKAN: Set Rest Break status aktif
+                    hasActiveRestBreak = true; // Set Rest Break status aktif
                 });
             }
             
             // LINE STOP - Reset timer saat form submit (bukan saat button click)
             if (lineStopForm) {
                 lineStopForm.addEventListener('submit', function() {
-                    resetTimerOnAction();
+                    resetTimerOnAction(); // Reset ke 00:00:00
+                    console.log('🔄 LINE STOP clicked - timer reset');
                     isNoLoading = false; // Reset NoLoading status saat LINE STOP
-                    hasActiveRestBreak = false; // ✅ PERBAIKAN: Reset Rest Break status saat LINE STOP
+                    hasActiveRestBreak = false; // Reset Rest Break status saat LINE STOP
                 });
             }
             
-            // NO LOADING - Reset timer saat form submit
+            // NO LOADING - Reset timer ke 00:00:00 saat form submit
             if (noLoadingForm) {
                 noLoadingForm.addEventListener('submit', function() {
-                    resetTimerOnAction();
+                    resetTimerOnAction(); // Reset ke 00:00:00
+                    console.log('🔄 NO LOADING clicked - timer reset');
                     isNoLoading = true; // Set NoLoading status
-                    hasActiveRestBreak = false; // ✅ PERBAIKAN: Reset Rest Break status saat NO LOADING
+                    hasActiveRestBreak = false; // Reset Rest Break status saat NO LOADING
                 });
             }
             
@@ -1813,12 +1729,12 @@
                     hasActiveRestBreak = data.HasActiveRestBreak;
                 }
                 
-                // Update timer jika ada LastStatusChangeTime atau SinceLastChangeSeconds
-                // ✅ PERBAIKAN: Pastikan timer selalu sinkron dengan backend
+                // ✅ Update durasi sejak status terakhir dari backend
                 if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
-                    // Hanya update jika nilai berbeda secara signifikan
+                    // Gunakan SinceLastChangeSeconds dari backend (sumber kebenaran)
                     updateSinceLastChange(data.SinceLastChangeSeconds);
                 } else if (data?.LastStatusChangeTime) {
+                    // Fallback: hitung dari LastStatusChangeTime jika SinceLastChangeSeconds tidak ada
                     try {
                         const lastChangeTime = new Date(data.LastStatusChangeTime);
                         if (!isNaN(lastChangeTime.getTime())) {
@@ -1828,18 +1744,6 @@
                         }
                     } catch (dateError) {
                         console.warn('Error parsing LastStatusChangeTime:', dateError);
-                    }
-                } else {
-                    // ✅ PERBAIKAN: Jika backend tidak mengirim data timer, pastikan timer tetap berjalan
-                    // Timer akan menggunakan lastChangeTimestamp yang sudah ada
-                    if (!sinceLastChangeInterval) {
-                        if (!lastChangeTimestamp) {
-                            lastChangeTimestamp = new Date();
-                        }
-                        updateTimerDisplay();
-                        sinceLastChangeInterval = setInterval(() => {
-                            updateTimerDisplay();
-                        }, 1000);
                     }
                 }
                 
@@ -1879,7 +1783,11 @@
             align-items: center;
             justify-content: center;
             white-space: nowrap;
-            min-height: 32px; /* pastikan tinggi konsisten, bisa dinaikkan jika perlu */
+            min-height: 40px; /* ✅ Diperbesar dari 32px ke 40px */
+            padding: 0.5rem 1rem; /* ✅ Tambahkan padding untuk ukuran lebih besar */
+            font-size: 0.95rem; /* ✅ Sedikit lebih besar dari default */
+            border-radius: 8px !important; /* ✅ Tambahkan border radius */
+            font-weight: 500; /* ✅ Sedikit lebih bold untuk visibility */
         }
         
         /* Ensure buttons are clickable */

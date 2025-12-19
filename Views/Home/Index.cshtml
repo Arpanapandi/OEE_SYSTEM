@@ -93,7 +93,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">OEE</div>
-                        <div class="kpi-value text-primary">@Model.Oee.ToString("0.0")%</div>
+                        <div class="kpi-value text-primary">@Model.Oee.ToString("0")%</div>
                     </div>
                     <i class="fa-solid fa-chart-line fa-2x text-primary opacity-50"></i>
                 </div>
@@ -106,7 +106,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Availability</div>
-                        <div class="kpi-value text-success">@Model.Availability.ToString("0.0")%</div>
+                        <div class="kpi-value text-success">@Model.Availability.ToString("0")%</div>
                     </div>
                     <i class="fa-solid fa-clock fa-2x text-success opacity-50"></i>
                 </div>
@@ -119,7 +119,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Performance</div>
-                        <div class="kpi-value text-warning">@Model.Performance.ToString("0.0")%</div>
+                        <div class="kpi-value text-warning">@Model.Performance.ToString("0")%</div>
                     </div>
                     <i class="fa-solid fa-gauge-high fa-2x text-warning opacity-50"></i>
                 </div>
@@ -132,7 +132,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Quality</div>
-                        <div class="kpi-value text-info">@Model.Quality.ToString("0.0")%</div>
+                        <div class="kpi-value text-info">@Model.Quality.ToString("0")%</div>
                     </div>
                     <i class="fa-solid fa-check-circle fa-2x text-info opacity-50"></i>
                 </div>
@@ -430,28 +430,28 @@
                     const oeeCard = oeeCards[0]?.querySelector('.kpi-value');
                     if (oeeCard) {
                         const oeeValue = data.Oee ?? 0;
-                        oeeCard.textContent = oeeValue.toFixed(1) + '%';
+                        oeeCard.textContent = oeeValue.toFixed(0) + '%';
                     }
                     
                     // Availability card (second card)
                     const availCard = oeeCards[1]?.querySelector('.kpi-value');
                     if (availCard) {
                         const availValue = data.Availability ?? 0;
-                        availCard.textContent = availValue.toFixed(1) + '%';
+                        availCard.textContent = availValue.toFixed(0) + '%';
                     }
                     
                     // Performance card (third card)
                     const perfCard = oeeCards[2]?.querySelector('.kpi-value');
                     if (perfCard) {
                         const perfValue = data.Performance ?? 0;
-                        perfCard.textContent = perfValue.toFixed(1) + '%';
+                        perfCard.textContent = perfValue.toFixed(0) + '%';
                     }
                     
                     // Quality card (fourth card)
                     const qualCard = oeeCards[3]?.querySelector('.kpi-value');
                     if (qualCard) {
                         const qualValue = data.Quality ?? 0;
-                        qualCard.textContent = qualValue.toFixed(1) + '%';
+                        qualCard.textContent = qualValue.toFixed(0) + '%';
                     }
                 } catch (error) {
                     console.error('Error updating OEE cards:', error);
