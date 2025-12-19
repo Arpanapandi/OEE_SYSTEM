@@ -228,12 +228,12 @@ public class MachineController : Controller
             .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
             .ToList();
 
-        // 1. Operating Time = Total durasi waktu running (JobRun) yang overlap dengan window shift
-        TimeSpan operatingTime = TimeSpan.Zero;
+        // 1. Total JobRun Time = Total durasi waktu JobRun yang overlap dengan window shift
+        TimeSpan totalJobRunTime = TimeSpan.Zero;
         foreach (var jr in shiftJobRuns)
         {
             var jrEnd = jr.EndTime ?? effectiveNow;
-            operatingTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
+            totalJobRunTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
         }
 
         // 2. Downtime = Total durasi line stop (DowntimeEvents) yang overlap shift
@@ -247,7 +247,14 @@ public class MachineController : Controller
             }
         }
 
-        // 3. Planned Production Time = Operating Time + Downtime
+        // 3. Operating Time = Total JobRun Time - Downtime (waktu running murni, tanpa downtime)
+        TimeSpan operatingTime = totalJobRunTime - downtimeTotal;
+        if (operatingTime.TotalSeconds < 0)
+        {
+            operatingTime = TimeSpan.Zero;
+        }
+
+        // 4. Planned Production Time = Operating Time + Downtime
         TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
 
         // Jika belum ada data, gunakan durasi shift sebagai default
@@ -314,11 +321,11 @@ public class MachineController : Controller
         {
             var currentQty = activeJob.ProductionCounts.Sum(p => p.GoodCount + p.RejectCount);
             
-            // ✅ PERUBAHAN: Hitung lastChangeTime dengan logika yang sama seperti Operator View
-            // - Jika ada downtime aktif -> pakai StartTime downtime itu
-            // - Jika tidak ada downtime aktif, tetapi ada downtime yang baru selesai -> pakai EndTime downtime terakhir
-            // - Jika tidak ada downtime sama sekali -> pakai StartTime job
+            // ✅ PERUBAHAN: Hitung lastChangeTime yang sinkron dengan Operating Time untuk OEE
+            // - Jika ada downtime aktif (REST/LINE STOP) -> pakai StartTime downtime (RESET ke 00:00:00)
+            // - Jika sedang RUNNING (tidak ada downtime aktif) -> hitung dari StartTime job dikurangi total downtime
             DateTime lastChangeTime;
+            int sinceLastChangeSeconds;
 
             var openDowntimeForTimer = activeJob.DowntimeEvents
                 .OrderByDescending(d => d.StartTime)
@@ -326,36 +333,48 @@ public class MachineController : Controller
             
             if (openDowntimeForTimer != null)
             {
-                // Sedang REST / LINE STOP
+                // Sedang REST / LINE STOP: RESET durasi ke 00:00:00 (mulai hitung dari awal downtime)
                 lastChangeTime = openDowntimeForTimer.StartTime;
+                var currentTime = DateTime.Now;
+                sinceLastChangeSeconds = (int)(currentTime - lastChangeTime).TotalSeconds;
             }
             else
             {
-                // Cari downtime terakhir yang sudah selesai
-                var lastFinishedDowntime = activeJob.DowntimeEvents
+                // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
+                // Operating Time = JobRun duration - Downtime duration (waktu running murni)
+                var currentTime = DateTime.Now;
+                
+                // Hitung JobRun duration (dari start job sampai sekarang, dalam window shift)
+                var jobStartInShift = activeJob.StartTime < shiftWindow.Start 
+                    ? shiftWindow.Start 
+                    : activeJob.StartTime;
+                var jobEndInShift = currentTime > shiftWindow.End ? shiftWindow.End : currentTime;
+                var jobDuration = jobEndInShift - jobStartInShift;
+                if (jobDuration.TotalSeconds < 0) jobDuration = TimeSpan.Zero;
+                
+                // Hitung total downtime yang sudah selesai di job ini (dalam window shift)
+                var totalDowntimeInShift = activeJob.DowntimeEvents
                     .Where(d => d.EndTime.HasValue)
-                    .OrderByDescending(d => d.EndTime)
-                    .FirstOrDefault();
-
-                if (lastFinishedDowntime != null)
-                {
-                    // Baru saja kembali RUNNING
-                    lastChangeTime = lastFinishedDowntime.EndTime!.Value;
-                }
-                else
-                {
-                    // Tidak pernah downtime
-                    lastChangeTime = activeJob.StartTime;
-                }
+                    .Sum(d =>
+                    {
+                        var dStart = d.StartTime < shiftWindow.Start ? shiftWindow.Start : d.StartTime;
+                        var dEnd = d.EndTime!.Value > shiftWindow.End ? shiftWindow.End : d.EndTime.Value;
+                        var overlap = GetOverlap(dStart, dEnd, shiftWindow.Start, shiftWindow.End);
+                        return overlap.TotalSeconds;
+                    });
+                
+                // Operating Time murni = JobRun duration - Downtime duration (sinkron dengan perhitungan OEE)
+                var operatingTimeSeconds = jobDuration.TotalSeconds - totalDowntimeInShift;
+                sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
+                
+                // LastChangeTime untuk display (backward compatibility)
+                lastChangeTime = currentTime.AddSeconds(-sinceLastChangeSeconds);
             }
             
             // Started time: Jika job dimulai sebelum shift start, gunakan shift start
             DateTime displayStartTime = activeJob.StartTime < shiftWindow.Start 
                 ? shiftWindow.Start 
                 : activeJob.StartTime;
-            
-            var currentTime = DateTime.Now;
-            var sinceLastChangeSeconds = (int)(currentTime - lastChangeTime).TotalSeconds;
             
             // Calculate estimated completion time (sama seperti Operator View)
             string? estimatedCompletion = null;
@@ -366,6 +385,7 @@ public class MachineController : Controller
                 if (remaining > 0)
                 {
                     var productCycleTime = activeJob.WorkOrder.Product.StandarCycleTime;
+                    var currentTime = DateTime.Now;
                     var elapsedTime = (currentTime - activeJob.StartTime).TotalSeconds;
                     var currentRate = elapsedTime > 0 ? goodCount / elapsedTime : 0; // units per second
                     
@@ -657,12 +677,12 @@ public class MachineController : Controller
             .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
             .ToList();
 
-        // 1. Operating Time = Total durasi waktu running (JobRun) yang overlap shift
-        TimeSpan operatingTime = TimeSpan.Zero;
+        // 1. Total JobRun Time = Total durasi waktu JobRun yang overlap shift
+        TimeSpan totalJobRunTime = TimeSpan.Zero;
         foreach (var jr in shiftJobRuns)
         {
             var jrEnd = jr.EndTime ?? effectiveNow;
-            operatingTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
+            totalJobRunTime += GetOverlap(jr.StartTime, jrEnd, shiftWindow.Start, shiftWindow.End);
         }
 
         // 2. Downtime = Total durasi line stop (DowntimeEvents) yang overlap shift
@@ -676,7 +696,14 @@ public class MachineController : Controller
             }
         }
 
-        // 3. Planned Production Time = Operating Time + Downtime
+        // 3. Operating Time = Total JobRun Time - Downtime (waktu running murni, tanpa downtime)
+        TimeSpan operatingTime = totalJobRunTime - downtimeTotal;
+        if (operatingTime.TotalSeconds < 0)
+        {
+            operatingTime = TimeSpan.Zero;
+        }
+
+        // 4. Planned Production Time = Operating Time + Downtime
         TimeSpan plannedProductionTime = operatingTime + downtimeTotal;
 
         // Jika belum ada data, gunakan durasi shift
@@ -694,19 +721,39 @@ public class MachineController : Controller
             ? (downtimeTotal.TotalSeconds / plannedProductionTime.TotalSeconds * 100)
             : 0;
 
-        // ✅ PERUBAHAN: Hitung lastChangeTime dengan logika yang sama seperti Operator View
+        // ✅ PERUBAHAN: Hitung lastChangeTime yang sinkron dengan Operating Time untuk OEE
         DateTime? lastStatusChangeTime = null;
         int? sinceLastChangeSeconds = null;
+
         if (activeJob != null)
         {
-            DateTime lastChangeTime = activeJob.StartTime;
             if (activeDowntime != null)
             {
-                lastChangeTime = activeDowntime.StartTime;
+                // Sedang REST / LINE STOP: RESET durasi ke 00:00:00
+                lastStatusChangeTime = activeDowntime.StartTime;
+                var currentTime = DateTime.Now;
+                sinceLastChangeSeconds = (int)(currentTime - activeDowntime.StartTime).TotalSeconds;
             }
-            lastStatusChangeTime = lastChangeTime;
-            var currentTime = DateTime.Now;
-            sinceLastChangeSeconds = (int)(currentTime - lastChangeTime).TotalSeconds;
+            else
+            {
+                // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
+                var currentTime = DateTime.Now;
+                var jobDuration = (currentTime - activeJob.StartTime).TotalSeconds;
+                
+                // Hitung total downtime yang sudah selesai di job ini
+                var totalDowntimeSeconds = activeJob.DowntimeEvents
+                    .Where(d => d.EndTime.HasValue)
+                    .Sum(d => d.DurationSeconds > 0 
+                        ? d.DurationSeconds 
+                        : (d.EndTime!.Value - d.StartTime).TotalSeconds);
+                
+                // Operating Time murni = JobRun duration - Downtime duration (sinkron dengan perhitungan OEE)
+                var operatingTimeSeconds = jobDuration - totalDowntimeSeconds;
+                sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
+                
+                // LastStatusChangeTime untuk display (backward compatibility)
+                lastStatusChangeTime = currentTime.AddSeconds(-(double)sinceLastChangeSeconds);
+            }
         }
 
         // Return info tentang active job dan downtime untuk real-time calculation
