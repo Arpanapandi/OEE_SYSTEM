@@ -222,6 +222,24 @@
                         <div class="progress-bar" id="operating-progress-bar" style="width: @operatingPercent.ToString("F1")%; background-color: @operatingColor !important; min-width: 2px;"></div>
                     </div>
                 </div>
+                <!-- Nett Operating Time (Cycle Time × Total Produced) -->
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="text-secondary">Nett Operating Time</span>
+                        <span class="fw-semibold text-info" id="nett-operating-time">@Model.NettOperatingTime.ToString(@"hh\:mm\:ss")</span>
+                    </div>
+                    <div class="progress" style="height: 6px; background-color: #e9ecef;">
+                        @{
+                            var nettOperatingPercent = Model.OperatingTime.TotalSeconds > 0
+                                ? (Model.NettOperatingTime.TotalSeconds / Model.OperatingTime.TotalSeconds * 100)
+                                : 0;
+
+                            string nettOperatingColor = "#17a2b8"; // Biru (info)
+                        }
+                        <div class="progress-bar" id="nett-operating-progress-bar" style="width: @Math.Min(100, nettOperatingPercent).ToString("F1")%; background-color: @nettOperatingColor !important; min-width: 2px;"></div>
+                    </div>
+                </div>
+
                 <div class="mb-2">
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-secondary">Downtime</span>
@@ -255,11 +273,13 @@
                 <div class="mb-2">
                     <div class="d-flex justify-content-between mb-1">
                         <span class="text-secondary">Rest Break</span>
-                        <span class="fw-semibold text-warning" id="rest-break-time">00:00:00</span>
+                        <span class="fw-semibold text-warning" id="rest-break-time">@Model.RestBreakTime.ToString(@"hh\:mm\:ss")</span>
                     </div>
                     <div class="progress" style="height: 6px; background-color: #e9ecef;">
                         @{
-                            var restBreakPercent = 0;
+                            var restBreakPercent = Model.PlannedProductionTime.TotalSeconds > 0
+                                ? (Model.RestBreakTime.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100)
+                                : 0;
                         }
                         <div class="progress-bar" id="rest-break-progress-bar" style="width: @restBreakPercent.ToString("F1")%; background-color: #ffc107 !important; min-width: 2px;"></div>
                     </div>
@@ -932,12 +952,14 @@
         const machineId = '@Model.MachineId';
         let timeMetricsInterval = null;
         let realTimeCounter = 0; // Counter yang bertambah setiap detik
-        let basePlannedSeconds = @Model.PlannedProductionTime.TotalSeconds;
-        let baseOperatingSeconds = @Model.OperatingTime.TotalSeconds;
-        let baseDowntimeSeconds = @Model.DowntimeTotal.TotalSeconds;
-        let baseRestBreakSeconds = 0; // ✅ PERBAIKAN: Base Rest Break time dari backend
-        let baseNoLoadingSeconds = 0; // ✅ PERBAIKAN: Base No Loading time dari backend
-        let baseNoLoadingSeconds = 0; // ✅ PERBAIKAN: Base No Loading time dari backend
+        // ✅ PERBAIKAN: Cast ke (int) untuk menghindari comma-separated decimals yang menyebabkan SyntaxError
+        let basePlannedSeconds = @((int)Model.PlannedProductionTime.TotalSeconds);
+        let baseOperatingSeconds = @((int)Model.OperatingTime.TotalSeconds);
+        let baseDowntimeSeconds = @((int)Model.DowntimeTotal.TotalSeconds);
+        let baseRestBreakSeconds = @((int)Model.RestBreakTime.TotalSeconds); // ✅ Base Rest Break time dari backend
+        let baseNoLoadingSeconds = @((int)Model.NoLoadingTime.TotalSeconds); // ✅ Base No Loading time dari backend
+        let baseNettOperatingSeconds = @((int)Model.NettOperatingTime.TotalSeconds); // ✅ Base Nett Operating Time dari backend
+        let baseSinceLastChangeSeconds = @((int)(Model.ActiveJob?.SinceLastChangeSeconds ?? 0)); // ✅ Base durasi sejak status terakhir
         const shiftMetaEl = document.getElementById('shift-meta');
         const shiftDate = shiftMetaEl?.dataset.shiftDate || '';
         const shiftCode = shiftMetaEl?.dataset.shiftCode || '';
@@ -999,7 +1021,7 @@
         }
         let hasActiveDowntime = @(hasActiveDowntimeValue ? "true" : "false");
         let isNoLoading = false; // Track status NoLoading - tidak masuk ke Operating Time atau Downtime
-        let hasActiveRestBreak = false; // ✅ PERBAIKAN: Track status Rest Break aktif
+        let hasActiveRestBreak = @(Model.HasActiveRestBreak ? "true" : "false"); // ✅ PERBAIKAN: Track status Rest Break aktif dari server-side
         let previousHasActiveJob = hasActiveJob;
         let previousHasActiveDowntime = hasActiveDowntime;
 
@@ -1035,9 +1057,18 @@
                     basePlannedSeconds = Number(data.PlannedProductionTimeSeconds) || 0;
                     baseOperatingSeconds = Number(data.OperatingTimeSeconds) || 0;
                     baseDowntimeSeconds = Number(data.DowntimeTotalSeconds) || 0;
-                    // ✅ PERBAIKAN: Update Rest Break dan No Loading dari backend jika ada
+                    // ✅ Update Rest Break, No Loading, dan Nett Operating Time dari backend jika ada
                     baseRestBreakSeconds = Number(data.RestBreakTimeSeconds) || 0;
                     baseNoLoadingSeconds = Number(data.NoLoadingTimeSeconds) || 0;
+                    baseNettOperatingSeconds = Number(data.NettOperatingTimeSeconds) || 0;
+                    
+                    // ✅ Update base durasi sejak status terakhir dari backend
+                    if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
+                        baseSinceLastChangeSeconds = Number(data.SinceLastChangeSeconds) || 0;
+                        // ✅ Update sinceLastStatusSeconds untuk timer khusus
+                        sinceLastStatusSeconds = Number(data.SinceLastChangeSeconds) || 0;
+                        realTimeCounter = 0; // Reset counter karena base sudah update
+                    }
 
                     // Jika shift berubah, reset counter dan simpan shiftKey baru
                     const shiftChanged = newShiftKey && newShiftKey !== lastShiftKey;
@@ -1045,8 +1076,10 @@
                         lastShiftKey = newShiftKey;
                     }
 
-                    // Reset counter karena base sudah mengandung waktu terkini
-                    realTimeCounter = 0;
+                    // Reset counter karena base sudah mengandung waktu terkini (jika belum di-reset di atas)
+                    if (data?.SinceLastChangeSeconds === undefined || data.SinceLastChangeSeconds === null) {
+                        realTimeCounter = 0;
+                    }
 
                     // Update status
                     hasActiveJob = newHasActiveJob;
@@ -1067,104 +1100,56 @@
                     // Update display immediately
                     updateTimeDisplay();
                     
-                    // ✅ Update durasi sejak status terakhir dari backend
-                    if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
-                        updateSinceLastChange(data.SinceLastChangeSeconds);
-                    } else if (data?.LastStatusChangeTime) {
-                        // Fallback
-                        try {
-                            const lastChangeTime = new Date(data.LastStatusChangeTime);
-                            if (!isNaN(lastChangeTime.getTime())) {
-                                const now = new Date();
-                                const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
-                                updateSinceLastChange(Math.max(0, diffSeconds));
-                            }
-                        } catch (dateError) {
-                            console.warn('Error parsing LastStatusChangeTime:', dateError);
-                        }
+                    // ✅ Restart dedicated timer untuk since-last-status
+                    if (hasActiveJob) {
+                        startSinceLastStatusTimer();
+                    } else {
+                        stopSinceLastStatusTimer();
+                        updateSinceLastStatusDisplay(); // Update to 00:00:00
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching time metrics:', error);
                     // Use current values if fetch fails
                     updateTimeDisplay();
+                    // Timer sudah terintegrasi dengan updateTimeDisplay(), tidak perlu restart manual
                 });
         }
         
         // ========== DURASI SEJAK STATUS TERAKHIR ==========
-        // Variabel untuk timer durasi sejak status terakhir
-        let sinceLastChangeInterval = null;
-        let lastChangeTimestamp = null;
+        // ✅ PERBAIKAN: Timer khusus untuk since-last-status (terpisah dari timeMetricsInterval)
+        let sinceLastStatusSeconds = @((int)(Model.ActiveJob?.SinceLastChangeSeconds ?? 0));
+        let sinceLastStatusTimerId = null;
 
-        // 2. Fungsi Update Display (setiap detik)
-        function updateTimerDisplay() {
-            const sinceLastStatusEl = document.getElementById('since-last-status');
-            if (!sinceLastStatusEl || !lastChangeTimestamp) {
-                // Jika element tidak ada atau timestamp belum di-set, tampilkan 00:00:00
-                if (sinceLastStatusEl) {
-                    sinceLastStatusEl.textContent = '00:00:00';
+        function updateSinceLastStatusDisplay() {
+            const el = document.getElementById('since-last-status');
+            if (!el) return;
+            if (hasActiveJob) {
+                el.textContent = formatTime(sinceLastStatusSeconds);
+            } else {
+                el.textContent = formatTime(0);
+            }
+        }
+
+        function startSinceLastStatusTimer() {
+            if (sinceLastStatusTimerId) {
+                clearInterval(sinceLastStatusTimerId);
+                sinceLastStatusTimerId = null;
+            }
+            updateSinceLastStatusDisplay();
+            sinceLastStatusTimerId = setInterval(() => {
+                if (hasActiveJob) {
+                    sinceLastStatusSeconds++;
+                    updateSinceLastStatusDisplay();
                 }
-                return;
-            }
-            
-            const now = new Date();
-            const diffMs = now.getTime() - lastChangeTimestamp.getTime();
-            const totalSeconds = Math.max(0, Math.floor(diffMs / 1000)); // Pastikan tidak negatif
-            
-            const hours = Math.floor(totalSeconds / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
-            const seconds = totalSeconds % 60;
-            
-            const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            sinceLastStatusEl.textContent = timeString;
+            }, 1000);
         }
 
-        // 3. Fungsi Initialize/Update Timer dari Backend
-        function updateSinceLastChange(initialTimeSeconds) {
-            const sinceLastStatusEl = document.getElementById('since-last-status');
-            if (!sinceLastStatusEl) return;
-            
-            // Clear existing interval jika ada
-            if (sinceLastChangeInterval) {
-                clearInterval(sinceLastChangeInterval);
-                sinceLastChangeInterval = null;
+        function stopSinceLastStatusTimer() {
+            if (sinceLastStatusTimerId) {
+                clearInterval(sinceLastStatusTimerId);
+                sinceLastStatusTimerId = null;
             }
-            
-            // Pastikan initialSeconds valid (tidak null, tidak undefined, >= 0)
-            const validSeconds = (initialTimeSeconds !== null && initialTimeSeconds !== undefined && initialTimeSeconds >= 0) 
-                ? initialTimeSeconds 
-                : 0;
-            
-            // Calculate timestamp ketika last change occurred
-            // initialSeconds adalah durasi dalam detik sejak last change
-            const now = new Date();
-            lastChangeTimestamp = new Date(now.getTime() - (validSeconds * 1000));
-            
-            // Update display immediately
-            updateTimerDisplay();
-            
-            // Start interval untuk update setiap detik - PASTIKAN selalu berjalan
-            sinceLastChangeInterval = setInterval(() => {
-                updateTimerDisplay();
-            }, 1000);
-            
-            console.log('✅ Timer initialized:', {
-                initialSeconds: validSeconds,
-                lastChangeTimestamp: lastChangeTimestamp,
-                currentDisplay: sinceLastStatusEl.textContent
-            });
-        }
-        
-        // 5. Initialize dari Server-Side Data (saat page load)
-        @if (Model.ActiveJob != null)
-        {
-            <text>
-            const initialSeconds = @(Model.ActiveJob?.SinceLastChangeSeconds ?? 0);
-            if (initialSeconds >= 0) {
-                updateSinceLastChange(initialSeconds);
-                console.log('✅ Timer initialized from server:', initialSeconds, 'seconds');
-            }
-            </text>
         }
 
         // Update time display with real-time calculation
@@ -1211,6 +1196,14 @@
                 operatingEl.textContent = formatTime(currentOperatingSeconds);
             }
 
+            // Update Nett Operating Time (tidak ikut real-time counter, hanya dari backend)
+            const nettOperatingEl = document.getElementById('nett-operating-time');
+            const nettOperatingProgressBar = document.getElementById('nett-operating-progress-bar');
+            const currentNettOperatingSeconds = Number(baseNettOperatingSeconds) || 0;
+            if (nettOperatingEl) {
+                nettOperatingEl.textContent = formatTime(currentNettOperatingSeconds);
+            }
+
             // Update Downtime
             const downtimeEl = document.getElementById('downtime-total');
             if (downtimeEl) {
@@ -1242,6 +1235,8 @@
             if (noLoadingEl) {
                 noLoadingEl.textContent = formatTime(currentNoLoadingSeconds);
             }
+
+            // ✅ PERBAIKAN: since-last-status sekarang menggunakan timer khusus (tidak di-update di sini)
 
             // Update progress bars dengan warna dinamis
             const operatingProgressBar = document.getElementById('operating-progress-bar');
@@ -1298,6 +1293,17 @@
                     noLoadingProgressBar.style.width = '0%';
                 }
             }
+
+            // Update Nett Operating Time progress bar (persentase terhadap Operating Time)
+            if (nettOperatingProgressBar) {
+                if (currentOperatingSeconds > 0 && currentNettOperatingSeconds >= 0) {
+                    const nettOperatingPercent = (currentNettOperatingSeconds / currentOperatingSeconds * 100);
+                    const safePercent = Math.min(100, Math.max(0, nettOperatingPercent));
+                    nettOperatingProgressBar.style.width = safePercent.toFixed(1) + '%';
+                } else {
+                    nettOperatingProgressBar.style.width = '0%';
+                }
+            }
             
             // Update Good dan Reject progress bars dengan warna dinamis
             const goodProgressBar = document.getElementById('good-progress-bar');
@@ -1343,6 +1349,11 @@
             // Counter akan bertambah setiap detik dan durasi akan update secara real-time
             // Ini memastikan waktu berjalan real-time sejak page load
             startTimeCounter();
+            
+            // ✅ Start dedicated timer untuk since-last-status
+            if (hasActiveJob) {
+                startSinceLastStatusTimer();
+            }
 
             // Fetch initial data to get active job/downtime status
             // Setelah fetch, counter akan di-reset dan mulai dari 0
@@ -1429,11 +1440,6 @@
             // 9. Cleanup saat Page Unload
             window.addEventListener('beforeunload', () => {
                 // Clear interval saat page unload
-                if (sinceLastChangeInterval) {
-                    clearInterval(sinceLastChangeInterval);
-                    sinceLastChangeInterval = null;
-                }
-                
                 // Clear SignalR connection jika ada
                 if (oeeConnection) {
                     oeeConnection.stop();
@@ -1443,6 +1449,9 @@
                 if (timeMetricsInterval) {
                     clearInterval(timeMetricsInterval);
                 }
+                
+                // ✅ Clear dedicated timer untuk since-last-status
+                stopSinceLastStatusTimer();
             });
         });
 
@@ -1601,22 +1610,23 @@
         }
 
         // 4. Fungsi Reset Timer saat Action Diklik
+        // ✅ PERBAIKAN: Sekarang tidak perlu reset manual, karena backend akan update baseSinceLastChangeSeconds
+        // Timer akan otomatis update via fetchTimeMetrics() yang dipanggil setelah action
         function resetTimerOnAction() {
-            // Reset timer ke 00:00:00 secara visual (backend akan konfirmasi nilai yang benar nanti)
-            const now = new Date();
-            lastChangeTimestamp = now; // Reset ke sekarang = 00:00:00
-            updateTimerDisplay(); // Update display immediately
+            // Reset baseSinceLastChangeSeconds ke 0 secara visual (backend akan konfirmasi nilai yang benar nanti)
+            baseSinceLastChangeSeconds = 0;
+            // ✅ Reset dedicated timer untuk since-last-status
+            sinceLastStatusSeconds = 0;
+            realTimeCounter = 0;
+            updateTimeDisplay(); // Update display immediately
+            updateSinceLastStatusDisplay(); // Update since-last-status display immediately
             
-            // Pastikan interval berjalan jika belum ada
-            if (!sinceLastChangeInterval) {
-                sinceLastChangeInterval = setInterval(() => {
-                    updateTimerDisplay();
-                }, 1000);
-            }
-            
-            console.log('🔄 Timer reset to 00:00:00');
+            console.log('🔄 Timer reset to 00:00:00 (will be synced with backend)');
         }
 
+        // ✅ PERBAIKAN: Timer sudah terintegrasi dengan updateTimeDisplay() via timeMetricsInterval
+        // Tidak perlu fungsi ensureTimerRunning() lagi karena timer sudah jalan via startTimeCounter()
+        
         // 8. Event Listeners untuk Reset Timer saat Action Diklik
         document.addEventListener('DOMContentLoaded', function() {
             const runningForm = document.getElementById('running-form');
@@ -1672,23 +1682,9 @@
                 IsNoLoading: isNoLoading
             });
             
-            // ✅ PERBAIKAN: Pastikan timer selalu berjalan setelah DOM ready
-            // Jika timer belum diinisialisasi, inisialisasi sekarang
-            if (!sinceLastChangeInterval) {
-                // Jika lastChangeTimestamp belum di-set, set ke waktu sekarang
-                if (!lastChangeTimestamp) {
-                    lastChangeTimestamp = new Date();
-                }
-                // Pastikan timer berjalan
-                updateTimerDisplay();
-                sinceLastChangeInterval = setInterval(() => {
-                    updateTimerDisplay();
-                }, 1000);
-                console.log('✅ Timer interval started on DOM ready');
-            } else {
-                // ✅ PERBAIKAN: Jika interval sudah ada, pastikan tetap berjalan
-                console.log('✅ Timer interval already running');
-            }
+            // ✅ PERBAIKAN: Timer sudah terintegrasi dengan updateTimeDisplay()
+            // Timer akan otomatis jalan via timeMetricsInterval yang sudah di-start di initializeTimeMetrics()
+            console.log('✅ Event listeners setup completed, timer running via timeMetricsInterval');
         });
 
         // Fetch operator data untuk update action buttons dan production data
