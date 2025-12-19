@@ -1090,7 +1090,7 @@
             // Update immediately
             updateTimerDisplay();
             
-            // Update every second
+            // Update every second - PASTIKAN selalu berjalan
             sinceLastChangeInterval = setInterval(() => {
                 updateTimerDisplay();
             }, 1000);
@@ -1102,7 +1102,7 @@
             
             const now = new Date();
             const diffMs = now.getTime() - lastChangeTimestamp.getTime();
-            const totalSeconds = Math.floor(diffMs / 1000);
+            const totalSeconds = Math.max(0, Math.floor(diffMs / 1000)); // Pastikan tidak negatif
             
             const hours = Math.floor(totalSeconds / 3600);
             const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -1343,8 +1343,9 @@
                 if (timeMetricsInterval) {
                     clearInterval(timeMetricsInterval);
                 }
-                if (sinceLastStatusInterval) {
-                    clearInterval(sinceLastStatusInterval);
+                // Fix typo: sinceLastChangeInterval, bukan sinceLastStatusInterval
+                if (sinceLastChangeInterval) {
+                    clearInterval(sinceLastChangeInterval);
                 }
             });
         });
@@ -1505,10 +1506,17 @@
 
         // Reset timer when action button is clicked
         function resetTimerOnAction() {
-            // Reset timer to 0 when action is triggered
-            if (lastChangeTimestamp) {
-                lastChangeTimestamp = new Date();
-                updateTimerDisplay();
+            // Reset timer immediately untuk UX yang lebih baik
+            // Backend akan mengkonfirmasi dengan nilai yang benar nanti via SignalR/fetch
+            const now = new Date();
+            lastChangeTimestamp = now;
+            updateTimerDisplay();
+            
+            // Pastikan interval berjalan jika belum ada
+            if (!sinceLastChangeInterval) {
+                sinceLastChangeInterval = setInterval(() => {
+                    updateTimerDisplay();
+                }, 1000);
             }
         }
 
@@ -1516,10 +1524,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             const runningForm = document.getElementById('running-form');
             const restForm = document.getElementById('rest-form');
-            const lineStopBtn = document.getElementById('btn-line-stop');
-            const noLoadingBtn = document.getElementById('btn-no-loading');
+            const lineStopForm = document.getElementById('line-stop-start-form'); // Form LINE STOP
             const noLoadingForm = document.getElementById('no-loading-form');
             
+            // RUNNING - Reset timer saat form submit
             if (runningForm) {
                 runningForm.addEventListener('submit', function() {
                     resetTimerOnAction();
@@ -1527,6 +1535,7 @@
                 });
             }
             
+            // REST BREAK - Reset timer saat form submit
             if (restForm) {
                 restForm.addEventListener('submit', function() {
                     resetTimerOnAction();
@@ -1534,23 +1543,19 @@
                 });
             }
             
-            if (lineStopBtn) {
-                lineStopBtn.addEventListener('click', function() {
-                    // Timer akan di-reset setelah line stop dimulai (via SignalR update)
+            // LINE STOP - Reset timer saat form submit (bukan saat button click)
+            if (lineStopForm) {
+                lineStopForm.addEventListener('submit', function() {
+                    resetTimerOnAction();
                     isNoLoading = false; // Reset NoLoading status saat LINE STOP
                 });
             }
             
+            // NO LOADING - Reset timer saat form submit
             if (noLoadingForm) {
                 noLoadingForm.addEventListener('submit', function() {
                     resetTimerOnAction();
                     isNoLoading = true; // Set NoLoading status
-                });
-            }
-            
-            if (noLoadingBtn) {
-                noLoadingBtn.addEventListener('click', function() {
-                    // Timer akan di-reset setelah no loading dimulai (via SignalR update)
                 });
             }
             
