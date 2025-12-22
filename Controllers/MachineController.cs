@@ -208,6 +208,24 @@ public class MachineController : Controller
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.ProductionCounts)
             .FirstOrDefaultAsync(m => m.Id == id);
+        
+        // Load ManPower secara terpisah untuk menghindari error jika tabel belum ada
+        if (machine != null)
+        {
+            try
+            {
+                foreach (var jobRun in machine.JobRuns.Where(j => j.ManPowerId.HasValue))
+                {
+                    await _context.Entry(jobRun)
+                        .Reference(j => j.ManPower)
+                        .LoadAsync();
+                }
+            }
+            catch
+            {
+                // Jika tabel ManPower belum ada, abaikan (ManPower akan null)
+            }
+        }
 
         if (machine == null)
         {
@@ -466,6 +484,8 @@ public class MachineController : Controller
                 ProductName = activeJob.WorkOrder?.Product?.Name ?? "",
                 ProductImageUrl = activeJob.WorkOrder?.Product?.ImageUrl,
                 OperatorName = activeJob.Operator?.Username ?? "",
+                ManPowerId = activeJob.ManPowerId,
+                ManPowerName = activeJob.ManPower?.Name,
                 StartTime = displayStartTime, // Sinkron dengan shift
                 EndTime = activeJob.EndTime,
                 TargetQuantity = targetQuantity,
@@ -528,6 +548,20 @@ public class MachineController : Controller
         vm.NgTypes = await _context.NgTypes
             .OrderBy(n => n.Code)
             .ToListAsync();
+        
+        // ManPowers untuk form
+        try
+        {
+            ViewBag.ManPowers = await _context.ManPowers
+                .Where(m => m.IsActive)
+                .OrderBy(m => m.Value)
+                .ToListAsync();
+        }
+        catch
+        {
+            // Jika tabel ManPowers belum ada (migration belum dijalankan), gunakan empty list
+            ViewBag.ManPowers = new List<ManPower>();
+        }
         
         // Status untuk action buttons
         vm.HasActiveJob = activeJob != null;
