@@ -14,7 +14,7 @@ public class Machine
     public int PlantId { get; set; }
     public Plant? Plant { get; set; }
     public MachineStatus Status { get; set; } = MachineStatus.TidakAktif;
-    public string? ImageUrl { get; set; }
+    public string? ImageUrl { get; set; }  // Path/URL gambar mesin (disimpan di database)
     
     public DateTime? ManufacturingYear { get; set; }  // Tahun Mesin
     public DateTime? InstallationYear { get; set; }   // Tahun Instalasi

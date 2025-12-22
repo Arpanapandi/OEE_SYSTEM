@@ -12,11 +12,40 @@ public class HomeController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly IOeeService _oeeService;
+    private readonly IWebHostEnvironment _environment;
 
-    public HomeController(ApplicationDbContext context, IOeeService oeeService)
+    public HomeController(ApplicationDbContext context, IOeeService oeeService, IWebHostEnvironment environment)
     {
         _context = context;
         _oeeService = oeeService;
+        _environment = environment;
+    }
+    
+    // ✅ Helper method untuk memverifikasi file image ada di filesystem (optional, untuk debugging)
+    private bool ImageFileExists(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return false;
+        
+        try
+        {
+            // Hapus leading slash jika ada
+            var imagePath = imageUrl.TrimStart('/');
+            var fullPath = Path.Combine(_environment.WebRootPath, imagePath);
+            var exists = System.IO.File.Exists(fullPath);
+            
+            if (!exists)
+            {
+                System.Diagnostics.Debug.WriteLine($"Image file not found: {fullPath}");
+            }
+            
+            return exists;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error checking image file: {ex.Message}");
+            return false;
+        }
     }
 
     public async Task<IActionResult> Index(int? shiftId = null, int? plantId = null, string? machineId = null)
@@ -220,6 +249,40 @@ public class HomeController : Controller
         }
         
         var machines = await machinesQuery.ToListAsync();
+        
+        // ✅ PERBAIKAN: Pastikan ImageUrl ter-load dengan benar dari database
+        // Reload ImageUrl untuk setiap machine dari database untuk memastikan data fresh
+        try
+        {
+            var machineIds = machines.Select(m => m.Id).ToList();
+            if (machineIds.Any())
+            {
+                var machineImageUrls = await _context.Machines
+                    .AsNoTracking()
+                    .Where(m => machineIds.Contains(m.Id))
+                    .Select(m => new { m.Id, m.ImageUrl })
+                    .ToDictionaryAsync(m => m.Id, m => m.ImageUrl);
+                
+                foreach (var machine in machines)
+                {
+                    // Ambil ImageUrl langsung dari dictionary (data fresh dari database)
+                    if (machineImageUrls.TryGetValue(machine.Id, out var imageUrl) && !string.IsNullOrWhiteSpace(imageUrl))
+                    {
+                        machine.ImageUrl = imageUrl.Trim();
+                    }
+                    else
+                    {
+                        machine.ImageUrl = null;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log error tapi jangan stop proses
+            System.Diagnostics.Debug.WriteLine($"Warning: Could not reload ImageUrl from database: {ex.Message}");
+            // Biarkan ImageUrl dari query utama digunakan
+        }
 
         var machineCards = new List<MachineCardViewModel>();
 
@@ -259,32 +322,11 @@ public class HomeController : Controller
             string? productImageUrl = null;
             
             // Prioritas 1: Gunakan gambar mesin saat ini (langsung dari machine.ImageUrl)
-            // Pastikan ImageUrl ter-load dengan benar
+            // ImageUrl sudah di-ensure ter-load di loop sebelumnya dari database
             if (!string.IsNullOrWhiteSpace(machine.ImageUrl))
             {
                 productImageUrl = machine.ImageUrl.Trim();
-            }
-            
-            // Jika mesin tidak punya gambar, reload dari database untuk memastikan
-            if (string.IsNullOrEmpty(productImageUrl))
-            {
-                try
-                {
-                    var machineImageUrl = await _context.Machines
-                        .Where(m => m.Id == machine.Id)
-                        .Select(m => m.ImageUrl)
-                        .FirstOrDefaultAsync();
-                    
-                    if (!string.IsNullOrWhiteSpace(machineImageUrl))
-                    {
-                        productImageUrl = machineImageUrl.Trim();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log error tapi jangan stop proses
-                    System.Diagnostics.Debug.WriteLine($"Error loading machine image for {machine.Id}: {ex.Message}");
-                }
+                System.Diagnostics.Debug.WriteLine($"Using machine ImageUrl for {machine.Id}: '{productImageUrl}'");
             }
             
             // Fallback: Jika mesin tidak punya gambar, cari dari mesin lain yang terhubung dengan produk ini
@@ -293,6 +335,7 @@ public class HomeController : Controller
                 try
                 {
                     var productMachine = await _context.ProductMachines
+                        .AsNoTracking()
                         .Include(pm => pm.Machine)
                         .Where(pm => pm.ProductId == currentProduct.Id && !string.IsNullOrEmpty(pm.Machine.ImageUrl))
                         .Select(pm => pm.Machine.ImageUrl)
@@ -301,14 +344,18 @@ public class HomeController : Controller
                     if (!string.IsNullOrWhiteSpace(productMachine))
                     {
                         productImageUrl = productMachine.Trim();
+                        System.Diagnostics.Debug.WriteLine($"Using product machine ImageUrl: '{productImageUrl}'");
                     }
                 }
                 catch (Exception ex)
                 {
                     // Log error tapi jangan stop proses
-                    System.Diagnostics.Debug.WriteLine($"Error loading product machine image: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"Warning: Could not load product machine image: {ex.Message}");
                 }
             }
+            
+            // Debug: Log final ImageUrl yang akan digunakan
+            System.Diagnostics.Debug.WriteLine($"Final ProductImageUrl for machine {machine.Id}: '{productImageUrl ?? "NULL"}'");
 
             // Filter ProductionCounts berdasarkan periode shift
             var allCounts = shiftJobRuns
