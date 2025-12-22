@@ -1334,9 +1334,12 @@
         let basePlannedSeconds = @Model.PlannedProductionTime.TotalSeconds;
         let baseOperatingSeconds = @Model.OperatingTime.TotalSeconds;
         let baseDowntimeSeconds = @Model.DowntimeTotal.TotalSeconds;
-        let baseRestBreakSeconds = 0; // ✅ PERBAIKAN: Base Rest Break time dari backend
-        let baseNoLoadingSeconds = 0; // ✅ PERBAIKAN: Base No Loading time dari backend
-        let baseNoLoadingSeconds = 0; // ✅ PERBAIKAN: Base No Loading time dari backend
+        let baseRestBreakSeconds = @Model.RestBreakTime.TotalSeconds; // ✅ Base Rest Break time dari backend
+        let baseNoLoadingSeconds = @Model.NoLoadingTime.TotalSeconds; // ✅ Base No Loading time dari backend
+        @{
+            var initialSinceLastChangeSeconds = Model.ActiveJob?.SinceLastChangeSeconds ?? 0;
+        }
+        let baseSinceLastChangeSeconds = parseInt('@initialSinceLastChangeSeconds', 10) || 0; // ✅ Base Since Last Change untuk sinkronisasi
         const shiftMetaEl = document.getElementById('shift-meta');
         const shiftDate = shiftMetaEl?.dataset.shiftDate || '';
         const shiftCode = shiftMetaEl?.dataset.shiftCode || '';
@@ -1453,10 +1456,9 @@
                     previousHasActiveJob = hasActiveJob;
                     previousHasActiveDowntime = hasActiveDowntime;
                     
-                    // Update NoLoading status dari data jika ada
-                    if (data.IsNoLoading !== undefined) {
-                        isNoLoading = data.IsNoLoading;
-                    }
+                    // Update NoLoading status: tidak ada active job DAN tidak ada active downtime
+                    // IsNoLoading = !HasActiveJob && !HasActiveDowntime
+                    isNoLoading = !newHasActiveJob && !newHasActiveDowntime;
                     
                     // ✅ PERBAIKAN: Update Rest Break status dari data jika ada
                     if (data.HasActiveRestBreak !== undefined) {
@@ -1466,9 +1468,10 @@
                     // Update display immediately
                     updateTimeDisplay();
                     
-                    // ✅ Update durasi sejak status terakhir dari backend
+                    // ✅ Update baseSinceLastChangeSeconds dari backend
                     if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
-                        updateSinceLastChange(data.SinceLastChangeSeconds);
+                        baseSinceLastChangeSeconds = Number(data.SinceLastChangeSeconds) || 0;
+                        updateSinceLastChange(baseSinceLastChangeSeconds);
                     } else if (data?.LastStatusChangeTime) {
                         // Fallback
                         try {
@@ -1494,16 +1497,33 @@
         // Variabel untuk timer durasi sejak status terakhir
         let sinceLastChangeInterval = null;
         let lastChangeTimestamp = null;
+        let isTimerInitialized = false; // Flag untuk track inisialisasi
 
-        // 2. Fungsi Update Display (setiap detik)
+        // 2. Fungsi Update Display (setiap detik) - Real-time update
         function updateTimerDisplay() {
             const sinceLastStatusEl = document.getElementById('since-last-status');
-            if (!sinceLastStatusEl || !lastChangeTimestamp) {
-                // Jika element tidak ada atau timestamp belum di-set, tampilkan 00:00:00
-                if (sinceLastStatusEl) {
-                    sinceLastStatusEl.textContent = '00:00:00';
-                }
+            if (!sinceLastStatusEl) {
                 return;
+            }
+            
+            // Jika timestamp belum di-set, coba inisialisasi dari nilai yang ada di DOM
+            if (!lastChangeTimestamp) {
+                // Coba parse dari text content yang ada
+                const currentText = sinceLastStatusEl.textContent.trim();
+                const timeMatch = currentText.match(/(\d{2}):(\d{2}):(\d{2})/);
+                if (timeMatch) {
+                    const hours = parseInt(timeMatch[1]);
+                    const minutes = parseInt(timeMatch[2]);
+                    const seconds = parseInt(timeMatch[3]);
+                    const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+                    const now = new Date();
+                    lastChangeTimestamp = new Date(now.getTime() - (totalSeconds * 1000));
+                    console.log('✅ Timer initialized from DOM content:', totalSeconds, 'seconds');
+                } else {
+                    // Jika tidak bisa parse, set ke waktu sekarang (00:00:00)
+                    lastChangeTimestamp = new Date();
+                    console.log('⚠️ Timer timestamp not found, starting from now');
+                }
             }
             
             const now = new Date();
@@ -1518,16 +1538,10 @@
             sinceLastStatusEl.textContent = timeString;
         }
 
-        // 3. Fungsi Initialize/Update Timer dari Backend
+        // 3. Fungsi Initialize/Update Timer dari Backend (sumber kebenaran - sinkron dengan OEE)
         function updateSinceLastChange(initialTimeSeconds) {
             const sinceLastStatusEl = document.getElementById('since-last-status');
             if (!sinceLastStatusEl) return;
-            
-            // Clear existing interval jika ada
-            if (sinceLastChangeInterval) {
-                clearInterval(sinceLastChangeInterval);
-                sinceLastChangeInterval = null;
-            }
             
             // Pastikan initialSeconds valid (tidak null, tidak undefined, >= 0)
             const validSeconds = (initialTimeSeconds !== null && initialTimeSeconds !== undefined && initialTimeSeconds >= 0) 
@@ -1535,38 +1549,162 @@
                 : 0;
             
             // Calculate timestamp ketika last change occurred
-            // initialSeconds adalah durasi dalam detik sejak last change
+            // initialSeconds adalah durasi dalam detik sejak last change (sinkron dengan perhitungan OEE di backend)
             const now = new Date();
             lastChangeTimestamp = new Date(now.getTime() - (validSeconds * 1000));
             
             // Update display immediately
             updateTimerDisplay();
             
+            // Clear existing interval jika ada
+            if (sinceLastChangeInterval) {
+                clearInterval(sinceLastChangeInterval);
+                sinceLastChangeInterval = null;
+            }
+            
             // Start interval untuk update setiap detik - PASTIKAN selalu berjalan
             sinceLastChangeInterval = setInterval(() => {
                 updateTimerDisplay();
             }, 1000);
             
-            console.log('✅ Timer initialized:', {
+            isTimerInitialized = true;
+            
+            console.log('✅ Timer synchronized with backend:', {
                 initialSeconds: validSeconds,
                 lastChangeTimestamp: lastChangeTimestamp,
                 currentDisplay: sinceLastStatusEl.textContent
             });
         }
         
-        // 5. Initialize dari Server-Side Data (saat page load)
-        @if (Model.ActiveJob != null)
-        {
-            <text>
-            const initialSeconds = @(Model.ActiveJob?.SinceLastChangeSeconds ?? 0);
-            if (initialSeconds >= 0) {
-                updateSinceLastChange(initialSeconds);
-                console.log('✅ Timer initialized from server:', initialSeconds, 'seconds');
+        // 4. Fungsi Reset Timer saat Action Diklik (sinkron dengan backend)
+        function resetTimerOnAction() {
+            // Reset timer ke 00:00:00 secara visual (backend akan konfirmasi nilai yang benar nanti via fetchOperatorDataForOee)
+            const now = new Date();
+            lastChangeTimestamp = now; // Reset ke sekarang = 00:00:00
+            updateTimerDisplay(); // Update display immediately
+            
+            // Pastikan interval berjalan jika belum ada
+            if (!sinceLastChangeInterval) {
+                sinceLastChangeInterval = setInterval(() => {
+                    updateTimerDisplay();
+                }, 1000);
             }
-            </text>
+            
+            isTimerInitialized = true;
+            
+            console.log('🔄 Timer reset to 00:00:00 (will sync with backend)');
         }
+        
+        // 5. Initialize Timer - Pastikan selalu berjalan setelah DOM ready
+        // Simpan nilai initial dari server-side untuk digunakan setelah DOM ready
+        @{
+            var initialTimerSeconds = Model.ActiveJob?.SinceLastChangeSeconds ?? 0;
+        }
+        // Gunakan string + parseInt agar tidak pernah memecah syntax JavaScript,
+        // berapapun format output dari Razor (aman dari error seperti "missing variable name").
+        const initialTimerSecondsFromServer = parseInt('@initialTimerSeconds', 10) || 0;
+        
+        // Fungsi untuk memastikan timer selalu berjalan
+        function ensureTimerRunning() {
+            const sinceLastStatusEl = document.getElementById('since-last-status');
+            if (!sinceLastStatusEl) {
+                console.warn('⚠️ Timer element not found, retrying...');
+                return false;
+            }
+            
+            // Jika interval belum berjalan, start sekarang
+            if (!sinceLastChangeInterval) {
+                // Jika timestamp belum di-set, inisialisasi
+                if (!lastChangeTimestamp) {
+                    // Coba gunakan nilai dari server jika ada
+                    if (initialTimerSecondsFromServer > 0) {
+                        const now = new Date();
+                        lastChangeTimestamp = new Date(now.getTime() - (initialTimerSecondsFromServer * 1000));
+                        console.log('✅ Timer initialized from server value:', initialTimerSecondsFromServer, 'seconds');
+                    } else {
+                        // Coba parse dari DOM
+                        const currentText = sinceLastStatusEl.textContent.trim();
+                        const timeMatch = currentText.match(/(\d{2}):(\d{2}):(\d{2})/);
+                        if (timeMatch) {
+                            const hours = parseInt(timeMatch[1]);
+                            const minutes = parseInt(timeMatch[2]);
+                            const seconds = parseInt(timeMatch[3]);
+                            const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+                            const now = new Date();
+                            lastChangeTimestamp = new Date(now.getTime() - (totalSeconds * 1000));
+                            console.log('✅ Timer initialized from DOM:', totalSeconds, 'seconds');
+                        } else {
+                            // Start dari 00:00:00
+                            lastChangeTimestamp = new Date();
+                            console.log('✅ Timer started from now (00:00:00)');
+                        }
+                    }
+                }
+                
+                // Update display immediately
+                updateTimerDisplay();
+                
+                // Start interval untuk update setiap detik
+                sinceLastChangeInterval = setInterval(() => {
+                    updateTimerDisplay();
+                }, 1000);
+                
+                isTimerInitialized = true;
+                console.log('✅ Timer interval started');
+                return true;
+            }
+            return true;
+        }
+        
+        // Initialize timer setelah DOM ready (untuk semua kasus)
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                // Jika ada nilai dari server, gunakan itu
+                if (initialTimerSecondsFromServer >= 0 && !isTimerInitialized) {
+                    updateSinceLastChange(initialTimerSecondsFromServer);
+                    console.log('✅ Timer initialized from server on DOM ready:', initialTimerSecondsFromServer, 'seconds');
+                } else {
+                    // Pastikan timer berjalan dengan fallback
+                    ensureTimerRunning();
+                }
+            }, 100);
+        });
+        
+        // Fallback: Pastikan timer berjalan bahkan jika DOMContentLoaded sudah lewat
+        if (document.readyState === 'loading') {
+            // DOM masih loading, tunggu DOMContentLoaded
+        } else {
+            // DOM sudah ready, langsung inisialisasi
+            setTimeout(() => {
+                if (!isTimerInitialized) {
+                    if (initialTimerSecondsFromServer >= 0) {
+                        updateSinceLastChange(initialTimerSecondsFromServer);
+                    } else {
+                        ensureTimerRunning();
+                    }
+                }
+            }, 100);
+        }
+        
+        // ✅ PERBAIKAN: Periodic check untuk memastikan timer selalu berjalan
+        // Check setiap 2 detik apakah timer masih berjalan, jika tidak, restart
+        setInterval(() => {
+            const sinceLastStatusEl = document.getElementById('since-last-status');
+            if (sinceLastStatusEl) {
+                if (!sinceLastChangeInterval) {
+                    console.warn('⚠️ Timer interval stopped, restarting...');
+                    ensureTimerRunning();
+                }
+                // Juga pastikan timestamp sudah di-set
+                if (!lastChangeTimestamp) {
+                    console.warn('⚠️ Timer timestamp not set, initializing...');
+                    ensureTimerRunning();
+                }
+            }
+        }, 2000);
 
         // Update time display with real-time calculation
+        // ✅ PASTIKAN: Fungsi ini dipanggil setiap detik untuk update semua durasi
         function updateTimeDisplay() {
             // Ensure base values are valid numbers
             const baseOperating = Number(baseOperatingSeconds) || 0;
@@ -1640,6 +1778,17 @@
             const noLoadingEl = document.getElementById('no-loading-time');
             if (noLoadingEl) {
                 noLoadingEl.textContent = formatTime(currentNoLoadingSeconds);
+            }
+            
+            // ✅ PASTIKAN: Timer untuk #since-last-status juga update setiap detik
+            // Jika timer terpisah belum berjalan, update dari base + counter sebagai fallback
+            if (!sinceLastChangeInterval) {
+                const sinceLastStatusEl = document.getElementById('since-last-status');
+                if (sinceLastStatusEl && baseSinceLastChangeSeconds !== undefined) {
+                    // Fallback: hitung dari base + counter jika timer terpisah belum start
+                    const sinceLastSeconds = (baseSinceLastChangeSeconds || 0) + realTimeCounter;
+                    sinceLastStatusEl.textContent = formatTime(sinceLastSeconds);
+                }
             }
 
             // Update progress bars dengan warna dinamis
@@ -1999,22 +2148,6 @@
             }
         }
 
-        // 4. Fungsi Reset Timer saat Action Diklik
-        function resetTimerOnAction() {
-            // Reset timer ke 00:00:00 secara visual (backend akan konfirmasi nilai yang benar nanti)
-            const now = new Date();
-            lastChangeTimestamp = now; // Reset ke sekarang = 00:00:00
-            updateTimerDisplay(); // Update display immediately
-            
-            // Pastikan interval berjalan jika belum ada
-            if (!sinceLastChangeInterval) {
-                sinceLastChangeInterval = setInterval(() => {
-                    updateTimerDisplay();
-                }, 1000);
-            }
-            
-            console.log('🔄 Timer reset to 00:00:00');
-        }
 
         // 8. Event Listeners untuk Reset Timer saat Action Diklik
         document.addEventListener('DOMContentLoaded', function() {
@@ -2072,20 +2205,10 @@
             });
             
             // ✅ PERBAIKAN: Pastikan timer selalu berjalan setelah DOM ready
-            // Jika timer belum diinisialisasi, inisialisasi sekarang
-            if (!sinceLastChangeInterval) {
-                // Jika lastChangeTimestamp belum di-set, set ke waktu sekarang
-                if (!lastChangeTimestamp) {
-                    lastChangeTimestamp = new Date();
-                }
-                // Pastikan timer berjalan
-                updateTimerDisplay();
-                sinceLastChangeInterval = setInterval(() => {
-                    updateTimerDisplay();
-                }, 1000);
-                console.log('✅ Timer interval started on DOM ready');
+            // Gunakan fungsi ensureTimerRunning untuk memastikan timer berjalan
+            if (!isTimerInitialized || !sinceLastChangeInterval) {
+                ensureTimerRunning();
             } else {
-                // ✅ PERBAIKAN: Jika interval sudah ada, pastikan tetap berjalan
                 console.log('✅ Timer interval already running');
             }
         });
@@ -2128,10 +2251,14 @@
                     hasActiveRestBreak = data.HasActiveRestBreak;
                 }
                 
-                // ✅ Update durasi sejak status terakhir dari backend
+                // ✅ Update durasi sejak status terakhir dari backend (sumber kebenaran - sinkron dengan OEE)
                 if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
-                    // Gunakan SinceLastChangeSeconds dari backend (sumber kebenaran)
+                    // Gunakan SinceLastChangeSeconds dari backend (sinkron dengan perhitungan OEE)
+                    // Backend menghitung:
+                    // - Jika ada downtime aktif: reset ke 00:00:00 (hitung dari StartTime downtime)
+                    // - Jika RUNNING: hitung dari Operating Time murni (JobRun duration - Unplanned Downtime)
                     updateSinceLastChange(data.SinceLastChangeSeconds);
+                    console.log('🔄 Timer synced from backend:', data.SinceLastChangeSeconds, 'seconds');
                 } else if (data?.LastStatusChangeTime) {
                     // Fallback: hitung dari LastStatusChangeTime jika SinceLastChangeSeconds tidak ada
                     try {
@@ -2140,10 +2267,15 @@
                             const now = new Date();
                             const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
                             updateSinceLastChange(Math.max(0, diffSeconds));
+                            console.log('🔄 Timer synced from LastStatusChangeTime:', diffSeconds, 'seconds');
                         }
                     } catch (dateError) {
                         console.warn('Error parsing LastStatusChangeTime:', dateError);
                     }
+                } else if (!isTimerInitialized) {
+                    // Jika timer belum diinisialisasi dan tidak ada data dari backend, start dari 00:00:00
+                    updateSinceLastChange(0);
+                    console.log('⚠️ Timer initialized with 0 (no backend data)');
                 }
                 
                 // Update action buttons
