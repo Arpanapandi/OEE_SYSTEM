@@ -90,6 +90,8 @@ public class JobRunViewModel
     public string ProductName { get; set; } = string.Empty;
     public string? ProductImageUrl { get; set; }
     public string OperatorName { get; set; } = string.Empty;
+    public int? ManPowerId { get; set; }
+    public string? ManPowerName { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime? EndTime { get; set; }
     public int TargetQuantity { get; set; }

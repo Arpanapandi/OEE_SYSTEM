@@ -17,6 +17,7 @@ public class CreateWorkOrderViewModel
     public List<Product> Products { get; set; } = new();
     public List<Shift> Shifts { get; set; } = new();
     public List<User> Operators { get; set; } = new();
+    public List<ManPower> ManPowers { get; set; } = new();
 }
 
 public class WorkOrderScheduleItem
@@ -26,5 +27,6 @@ public class WorkOrderScheduleItem
     public int ShiftId { get; set; }
     public int TargetQuantity { get; set; }
     public int? OperatorId { get; set; }
+    public int? ManPowerId { get; set; }
 }
 

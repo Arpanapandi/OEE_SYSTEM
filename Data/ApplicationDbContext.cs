@@ -24,6 +24,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<MachineDowntimeReason> MachineDowntimeReasons => Set<MachineDowntimeReason>();
     public DbSet<Plant> Plants => Set<Plant>();
     public DbSet<NgType> NgTypes => Set<NgType>();
+    public DbSet<ManPower> ManPowers => Set<ManPower>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -84,6 +85,12 @@ public class ApplicationDbContext : DbContext
             .HasOne(j => j.Operator)
             .WithMany(o => o.JobRuns)
             .HasForeignKey(j => j.OperatorId);
+
+        modelBuilder.Entity<JobRun>()
+            .HasOne(j => j.ManPower)
+            .WithMany()
+            .HasForeignKey(j => j.ManPowerId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<DowntimeEvent>()
             .HasOne(d => d.JobRun)

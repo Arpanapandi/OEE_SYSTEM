@@ -1508,7 +1508,8 @@ public class AdminController : Controller
                 .ToListAsync(),
             Products = await _context.Products.ToListAsync(),
             Shifts = await _context.Shifts.ToListAsync(),
-            Operators = await _context.Users.Where(u => u.Role == UserRole.Operator).ToListAsync()
+            Operators = await _context.Users.Where(u => u.Role == UserRole.Operator).ToListAsync(),
+            ManPowers = await GetManPowersSafe()
         };
         
         // Initialize dengan 1 schedule kosong
@@ -1692,6 +1693,7 @@ public class AdminController : Controller
                         WorkOrderId = workOrder.Id,
                         MachineId = vm.MachineId!,
                         OperatorId = schedule.OperatorId ?? 1,
+                        ManPowerId = schedule.ManPowerId,
                         StartTime = startTime,
                         EndTime = null
                     };
@@ -2208,6 +2210,134 @@ public class AdminController : Controller
     }
 
     private bool DowntimeReasonExists(int id) => _context.DowntimeReasons.Any(e => e.Id == id);
+
+    // Helper method untuk query ManPowers dengan error handling
+    private async Task<List<ManPower>> GetManPowersSafe()
+    {
+        try
+        {
+            return await _context.ManPowers
+                .Where(m => m.IsActive)
+                .OrderBy(m => m.Value)
+                .ToListAsync();
+        }
+        catch
+        {
+            // Jika tabel belum ada, return empty list
+            return new List<ManPower>();
+        }
+    }
+
+    // ========== MAN POWER CRUD ==========
+    public async Task<IActionResult> ManPowers()
+    {
+        try
+        {
+            var manPowers = await _context.ManPowers
+                .Where(m => m.IsActive)
+                .OrderBy(m => m.Value)
+                .ToListAsync();
+            return View(manPowers);
+        }
+        catch (Exception ex)
+        {
+            // Jika tabel belum ada, tampilkan pesan error yang user-friendly
+            TempData["ErrorMessage"] = "Tabel ManPower belum tersedia. Silakan jalankan migration terlebih dahulu.";
+            return View(new List<ManPower>());
+        }
+    }
+
+    public IActionResult CreateManPower()
+    {
+        return View();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateManPower(ManPower manPower)
+    {
+        if (ModelState.IsValid)
+        {
+            try
+            {
+                _context.ManPowers.Add(manPower);
+                await _context.SaveChangesAsync();
+                TempData["SuccessMessage"] = "Man Power berhasil ditambahkan.";
+                return RedirectToAction(nameof(ManPowers));
+            }
+            catch (Exception ex)
+            {
+                ModelState.AddModelError("", $"Error: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    ModelState.AddModelError("", $"Detail: {ex.InnerException.Message}");
+                }
+            }
+        }
+        return View(manPower);
+    }
+
+    public async Task<IActionResult> EditManPower(int? id)
+    {
+        if (id == null) return NotFound();
+        try
+        {
+            var manPower = await _context.ManPowers.FindAsync(id);
+            if (manPower == null) return NotFound();
+            return View(manPower);
+        }
+        catch
+        {
+            TempData["ErrorMessage"] = "Tabel ManPower belum tersedia. Silakan jalankan migration terlebih dahulu.";
+            return RedirectToAction(nameof(ManPowers));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditManPower(int id, ManPower manPower)
+    {
+        if (id != manPower.Id) return NotFound();
+        
+        if (ModelState.IsValid)
+        {
+            try
+            {
+                _context.Update(manPower);
+                await _context.SaveChangesAsync();
+                TempData["SuccessMessage"] = "Man Power berhasil diupdate.";
+                return RedirectToAction(nameof(ManPowers));
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!await _context.ManPowers.AnyAsync(m => m.Id == id))
+                    return NotFound();
+                throw;
+            }
+        }
+        return View(manPower);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteManPower(int id)
+    {
+        try
+        {
+            var manPower = await _context.ManPowers.FindAsync(id);
+            if (manPower != null)
+            {
+                manPower.IsActive = false; // Soft delete
+                await _context.SaveChangesAsync();
+                TempData["SuccessMessage"] = "Man Power berhasil dihapus.";
+            }
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Error menghapus Man Power: {ex.Message}";
+        }
+        return RedirectToAction(nameof(ManPowers));
+    }
 
     // ========== INDEX (Admin Dashboard) ==========
     public IActionResult Index()
