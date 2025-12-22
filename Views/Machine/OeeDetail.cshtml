@@ -120,6 +120,137 @@
     </div>
 </div>
 
+<!-- Scan Data Produksi Section -->
+<div class="row mb-4">
+    <!-- Left Side: Man Power & Injection -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header" style="padding: 0.75rem 1rem;">
+                <i class="fa-solid fa-users me-2"></i>Man Power & Injection
+            </div>
+            <div class="card-body" style="padding: 1rem;">
+                <!-- Man Power Field -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">
+                        Man Power <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select" id="select-man-power" required>
+                        <option value="">-- Pilih Man Power --</option>
+                        <option value="1">1 Orang</option>
+                        <option value="2">2 Orang</option>
+                        <option value="3">3 Orang</option>
+                        <option value="4">4 Orang</option>
+                        <option value="5">5 Orang</option>
+                    </select>
+                </div>
+
+                <!-- Injection Field -->
+                <div class="mb-2">
+                    <label class="form-label fw-bold">
+                        Group Injection <span class="text-danger">*</span>
+                    </label>
+                    <div class="d-flex gap-2" role="group" id="injection-group">
+                        <input type="radio" class="btn-check" name="injection" id="injection-merah" value="merah" required>
+                        <label class="btn btn-outline-danger flex-fill" for="injection-merah">
+                            <i class="fa-solid fa-circle me-1" style="color: #dc3545;"></i>Merah
+                        </label>
+
+                        <input type="radio" class="btn-check" name="injection" id="injection-biru" value="biru" required>
+                        <label class="btn btn-outline-primary flex-fill" for="injection-biru">
+                            <i class="fa-solid fa-circle me-1" style="color: #0d6efd;"></i>Biru
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Side: Scan Data Produksi (50% width) -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header" style="padding: 0.75rem 1rem;">
+                <i class="fa-solid fa-qrcode me-2"></i>Scan Data Produksi
+            </div>
+            <div class="card-body" style="padding: 1rem;">
+                <!-- Part Number Field -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">
+                        Part Number <span class="text-danger">*</span>
+                    </label>
+                    <div class="input-group position-relative">
+                        <button type="button" 
+                                class="btn btn-outline-primary border-end-0" 
+                                id="btn-scan-part-number"
+                                style="border-top-right-radius: 0; border-bottom-right-radius: 0; z-index: 1;">
+                            <i class="fa-solid fa-qrcode"></i>
+                        </button>
+                        <input type="text" 
+                               class="form-control border-start-0 border-end-0" 
+                               id="input-part-number" 
+                               placeholder="Tap to scan Part Number"
+                               style="padding-left: 0.5rem;"
+                               required />
+                        <button type="button" 
+                                class="btn btn-outline-primary border-start-0" 
+                                id="btn-edit-part-number"
+                                style="border-top-left-radius: 0; border-bottom-left-radius: 0;">
+                            <i class="fa-solid fa-pencil"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- No Lot Produksi Field -->
+                <div class="mb-2">
+                    <label class="form-label fw-bold">
+                        No Lot Produksi <span class="text-danger">*</span>
+                    </label>
+                    <div class="input-group position-relative">
+                        <button type="button" 
+                                class="btn btn-outline-primary border-end-0" 
+                                id="btn-scan-lot-number"
+                                style="border-top-right-radius: 0; border-bottom-right-radius: 0; z-index: 1;">
+                            <i class="fa-solid fa-qrcode"></i>
+                        </button>
+                        <input type="text" 
+                               class="form-control border-start-0 border-end-0" 
+                               id="input-lot-number" 
+                               placeholder="Tap to scan No Lot Produksi"
+                               style="padding-left: 0.5rem;"
+                               required />
+                        <button type="button" 
+                                class="btn btn-outline-primary border-start-0" 
+                                id="btn-edit-lot-number"
+                                style="border-top-left-radius: 0; border-bottom-left-radius: 0;">
+                            <i class="fa-solid fa-pencil"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Scanner -->
+<div class="modal fade" id="scannerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Scan Barcode/QR Code</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="scanner-container" style="width: 100%; min-height: 300px; position: relative;">
+                    <div id="scanner-reader" style="width: 100%;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btn-stop-scanner">Stop Scanner</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- OEE KPI Cards -->
 <div class="row g-4 mb-4">
     <div class="col-md-3">
@@ -747,10 +878,278 @@
         min-width: 2px;
         transition: background-color 0.3s ease;
     }
+    
+    /* Scan Data Produksi Styles */
+    .input-group .form-control {
+        border-color: #dee2e6;
+    }
+    
+    .input-group .btn-outline-primary {
+        border-color: #0d6efd;
+        color: #0d6efd;
+    }
+    
+    .input-group .btn-outline-primary:hover {
+        background-color: #0d6efd;
+        color: #fff;
+    }
+    
+    .form-control.border-success {
+        border-color: #198754 !important;
+        box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.25);
+    }
+    
+    #scanner-reader {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    #scanner-reader video {
+        border-radius: 8px;
+    }
+    
+    /* Injection Button Group Styles */
+    #injection-group .btn-check:checked + .btn-outline-danger {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: #fff;
+    }
+    
+    #injection-group .btn-check:checked + .btn-outline-primary {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
+    }
+    
+    #injection-group .btn:hover {
+        transform: scale(1.02);
+        transition: transform 0.2s ease;
+    }
 </style>
 
 @section Scripts {
     <script>
+        // ========== SCANNER FUNCTIONALITY ==========
+        let html5QrCode = null;
+        let currentScanTarget = null; // 'part-number' or 'lot-number'
+        let scannerLibraryLoaded = false;
+        
+        // Load scanner library dynamically
+        function loadScannerLibrary() {
+            return new Promise((resolve, reject) => {
+                if (typeof Html5Qrcode !== 'undefined') {
+                    scannerLibraryLoaded = true;
+                    resolve();
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+                script.async = true;
+                script.onload = () => {
+                    scannerLibraryLoaded = true;
+                    resolve();
+                };
+                script.onerror = () => {
+                    console.error('Failed to load html5-qrcode library');
+                    reject(new Error('Failed to load scanner library'));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Initialize scanner functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+            const scannerModal = document.getElementById('scannerModal');
+            
+            // Part Number Scan Button
+            const btnScanPartNumber = document.getElementById('btn-scan-part-number');
+            if (btnScanPartNumber) {
+                btnScanPartNumber.addEventListener('click', function() {
+                    currentScanTarget = 'part-number';
+                    openScanner();
+                });
+            }
+            
+            // Lot Number Scan Button
+            const btnScanLotNumber = document.getElementById('btn-scan-lot-number');
+            if (btnScanLotNumber) {
+                btnScanLotNumber.addEventListener('click', function() {
+                    currentScanTarget = 'lot-number';
+                    openScanner();
+                });
+            }
+            
+            // Edit Buttons - Enable manual input
+            const btnEditPartNumber = document.getElementById('btn-edit-part-number');
+            if (btnEditPartNumber) {
+                btnEditPartNumber.addEventListener('click', function() {
+                    const input = document.getElementById('input-part-number');
+                    if (input) {
+                        input.disabled = false;
+                        input.focus();
+                        input.select();
+                    }
+                });
+            }
+            
+            const btnEditLotNumber = document.getElementById('btn-edit-lot-number');
+            if (btnEditLotNumber) {
+                btnEditLotNumber.addEventListener('click', function() {
+                    const input = document.getElementById('input-lot-number');
+                    if (input) {
+                        input.disabled = false;
+                        input.focus();
+                        input.select();
+                    }
+                });
+            }
+            
+            // Stop Scanner Button
+            const btnStopScanner = document.getElementById('btn-stop-scanner');
+            if (btnStopScanner) {
+                btnStopScanner.addEventListener('click', function() {
+                    stopScanner();
+                });
+            }
+            
+            // Close modal and stop scanner
+            if (scannerModal) {
+                scannerModal.addEventListener('hidden.bs.modal', function() {
+                    stopScanner();
+                });
+            }
+            } catch (error) {
+                console.error('Error initializing scanner functionality:', error);
+            }
+        });
+        
+        async function openScanner() {
+            // Load library if not already loaded
+            if (!scannerLibraryLoaded) {
+                try {
+                    await loadScannerLibrary();
+                } catch (error) {
+                    alert('Gagal memuat library scanner. Silakan refresh halaman.');
+                    return;
+                }
+            }
+            
+            // Check if Html5Qrcode is available
+            if (typeof Html5Qrcode === 'undefined') {
+                alert('Scanner library belum dimuat. Silakan refresh halaman.');
+                return;
+            }
+            
+            // Reset scanner container
+            const scannerReader = document.getElementById('scanner-reader');
+            if (scannerReader) {
+                scannerReader.innerHTML = '';
+            }
+            
+            // Show modal
+            const scannerModalEl = document.getElementById('scannerModal');
+            if (!scannerModalEl) return;
+            
+            const scannerModal = new bootstrap.Modal(scannerModalEl);
+            scannerModal.show();
+            
+            // Initialize scanner after modal is shown
+            setTimeout(() => {
+                try {
+                    html5QrCode = new Html5Qrcode("scanner-reader");
+                    
+                    html5QrCode.start(
+                        { facingMode: "environment" }, // Use back camera
+                        {
+                            fps: 10,
+                            qrbox: { width: 250, height: 250 },
+                            aspectRatio: 1.0
+                        },
+                        (decodedText, decodedResult) => {
+                            // Success callback - handle scanned data
+                            handleScanSuccess(decodedText);
+                        },
+                        (errorMessage) => {
+                            // Error callback - ignore for continuous scanning
+                            // console.log(`Scan error: ${errorMessage}`);
+                        }
+                    ).catch((err) => {
+                        console.error('Error starting scanner:', err);
+                        alert('Gagal mengaktifkan kamera. Pastikan izin kamera sudah diberikan.');
+                        stopScanner();
+                        const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
+                        if (scannerModalInstance) {
+                            scannerModalInstance.hide();
+                        }
+                    });
+                } catch (err) {
+                    console.error('Error initializing scanner:', err);
+                    alert('Gagal menginisialisasi scanner.');
+                }
+            }, 300);
+        }
+        
+        function handleScanSuccess(decodedText) {
+            // Stop scanner
+            stopScanner();
+            
+            // Close modal
+            const scannerModalEl = document.getElementById('scannerModal');
+            if (scannerModalEl) {
+                const scannerModal = bootstrap.Modal.getInstance(scannerModalEl);
+                if (scannerModal) {
+                    scannerModal.hide();
+                }
+            }
+            
+            // Fill input field based on target
+            if (currentScanTarget === 'part-number') {
+                const input = document.getElementById('input-part-number');
+                if (input) {
+                    input.value = decodedText;
+                    input.dispatchEvent(new Event('input'));
+                    showScanSuccess('part-number');
+                }
+            } else if (currentScanTarget === 'lot-number') {
+                const input = document.getElementById('input-lot-number');
+                if (input) {
+                    input.value = decodedText;
+                    input.dispatchEvent(new Event('input'));
+                    showScanSuccess('lot-number');
+                }
+            }
+        }
+        
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                }).catch((err) => {
+                    console.error('Error stopping scanner:', err);
+                    html5QrCode = null;
+                });
+            }
+        }
+        
+        function showScanSuccess(target) {
+            const inputId = target === 'part-number' ? 'input-part-number' : 'input-lot-number';
+            const input = document.getElementById(inputId);
+            
+            if (input) {
+                // Add success class temporarily
+                input.classList.add('border-success');
+                setTimeout(() => {
+                    input.classList.remove('border-success');
+                }, 2000);
+            }
+        }
+        
+        // ========== END SCANNER FUNCTIONALITY ==========
+        
         // Donut Chart: Machine Run Time
         const runTimeCtx = document.getElementById('runTimeDonutChart').getContext('2d');
         new Chart(runTimeCtx, {
