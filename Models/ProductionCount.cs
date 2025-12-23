@@ -14,6 +14,9 @@ public class ProductionCount
     
     public int? NgTypeId { get; set; }
     public NgType? NgType { get; set; }
+    
+    // ✅ Group Injection: "merah" atau "biru"
+    public string? InjectionGroup { get; set; }
 }
 
 

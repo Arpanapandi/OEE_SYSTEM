@@ -435,7 +435,19 @@ public class HomeController : Controller
             avgStandarCycle /= standarCycleCount;
         }
 
-        // ✅ PERBAIKAN: Planned Production Time = Shift Time - Planned Downtime
+        // ✅ FORMULA SESUAI GAMBAR: Total Downtime = Planned + Unplanned
+        TimeSpan totalDowntime = totalPlannedDowntime + totalUnplannedDowntime;
+
+        // ✅ FORMULA SESUAI GAMBAR: Operating Time = Loading Time - Down Time
+        // Loading Time = Total Shift Time
+        // Down Time = Total Downtime (Planned + Unplanned)
+        TimeSpan operatingTimeNew = totalShiftTime - totalDowntime;
+        if (operatingTimeNew.TotalSeconds < 0)
+        {
+            operatingTimeNew = TimeSpan.Zero;
+        }
+
+        // ✅ PERBAIKAN: Planned Production Time tetap dihitung untuk display (tidak digunakan di formula OEE)
         TimeSpan plannedProductionTime = totalShiftTime - totalPlannedDowntime;
         if (plannedProductionTime.TotalSeconds < 0)
         {
@@ -448,9 +460,10 @@ public class HomeController : Controller
             plannedProductionTime = totalShiftTime;
         }
 
+        // ✅ FORMULA SESUAI GAMBAR: Hitung OEE dengan Loading Time dan Down Time
         var oeeResult = _oeeService.CalculateOee(
-            plannedProductionTime,
-            operatingTime,
+            totalShiftTime,      // Loading Time
+            totalDowntime,        // Down Time (Planned + Unplanned)
             totalCount,
             goodCount,
             avgStandarCycle <= 0 ? 1 : avgStandarCycle);
@@ -894,7 +907,19 @@ public class HomeController : Controller
             avgStandarCycle /= standarCycleCount;
         }
 
-        // ✅ PERBAIKAN: Planned Production Time = Shift Time - Planned Downtime
+        // ✅ FORMULA SESUAI GAMBAR: Total Downtime = Planned + Unplanned
+        TimeSpan totalDowntime = totalPlannedDowntime + totalUnplannedDowntime;
+
+        // ✅ FORMULA SESUAI GAMBAR: Operating Time = Loading Time - Down Time
+        // Loading Time = Total Shift Time
+        // Down Time = Total Downtime (Planned + Unplanned)
+        TimeSpan operatingTimeNew = totalShiftTime - totalDowntime;
+        if (operatingTimeNew.TotalSeconds < 0)
+        {
+            operatingTimeNew = TimeSpan.Zero;
+        }
+
+        // ✅ PERBAIKAN: Planned Production Time tetap dihitung untuk display (tidak digunakan di formula OEE)
         TimeSpan plannedProductionTime = totalShiftTime - totalPlannedDowntime;
         if (plannedProductionTime.TotalSeconds < 0)
         {
@@ -907,9 +932,10 @@ public class HomeController : Controller
             plannedProductionTime = totalShiftTime;
         }
 
+        // ✅ FORMULA SESUAI GAMBAR: Hitung OEE dengan Loading Time dan Down Time
         var oeeResult = _oeeService.CalculateOee(
-            plannedProductionTime,
-            operatingTime,
+            totalShiftTime,      // Loading Time
+            totalDowntime,        // Down Time (Planned + Unplanned)
             totalCount,
             goodCount,
             avgStandarCycle <= 0 ? 1 : avgStandarCycle);

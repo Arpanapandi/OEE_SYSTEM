@@ -136,11 +136,23 @@
                     </label>
                     <select class="form-select" id="select-man-power" required>
                         <option value="">-- Pilih Man Power --</option>
-                        <option value="1">1 Orang</option>
-                        <option value="2">2 Orang</option>
-                        <option value="3">3 Orang</option>
-                        <option value="4">4 Orang</option>
-                        <option value="5">5 Orang</option>
+                        @if (ViewBag.ManPowers != null)
+                        {
+                            @foreach (var mp in (List<OeeSystem.Models.ManPower>)ViewBag.ManPowers)
+                            {
+                                @if (mp.IsActive)
+                                {
+                                    @if (Model.ActiveJob?.ManPowerId == mp.Id)
+                                    {
+                                        <option value="@mp.Id" selected>@mp.Name</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="@mp.Id">@mp.Name</option>
+                                    }
+                                }
+                            }
+                        }
                     </select>
                 </div>
 
@@ -699,6 +711,19 @@
                         <div class="mb-3">
                             <label class="form-label">Alasan Reject (optional)</label>
                             <input type="text" class="form-control" name="rejectReason" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Group Injection <span class="text-danger">*</span></label>
+                            <div class="d-flex gap-2" role="group">
+                                <input type="radio" class="btn-check" name="injection" id="modal-injection-merah" value="merah" required>
+                                <label class="btn btn-outline-danger flex-fill" for="modal-injection-merah">
+                                    <i class="fa-solid fa-circle me-1" style="color: #dc3545;"></i>Merah
+                                </label>
+                                <input type="radio" class="btn-check" name="injection" id="modal-injection-biru" value="biru" required>
+                                <label class="btn btn-outline-primary flex-fill" for="modal-injection-biru">
+                                    <i class="fa-solid fa-circle me-1" style="color: #0d6efd;"></i>Biru
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">

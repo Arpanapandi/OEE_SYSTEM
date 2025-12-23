@@ -273,7 +273,19 @@ public class MachineController : Controller
             }
         }
 
-        // 3. Planned Production Time = Shift Time - Planned Downtime
+        // 3. Total Downtime = Planned + Unplanned (sesuai formula di gambar)
+        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
+
+        // 4. Operating Time = Loading Time - Down Time (sesuai formula di gambar)
+        // Loading Time = Total Shift Time
+        TimeSpan operatingTime = totalShiftTime - downtimeTotal;
+        if (operatingTime.TotalSeconds < 0)
+        {
+            operatingTime = TimeSpan.Zero;
+        }
+
+        // ✅ PERBAIKAN: Planned Production Time tetap dihitung untuk display (tidak digunakan di formula OEE)
+        // Planned Production Time = Shift Time - Planned Downtime
         TimeSpan plannedProductionTime = totalShiftTime - plannedDowntime;
         if (plannedProductionTime.TotalSeconds < 0)
         {
@@ -285,16 +297,6 @@ public class MachineController : Controller
         {
             plannedProductionTime = totalShiftTime;
         }
-
-        // 4. Operating Time = Planned Production Time - Unplanned Downtime
-        TimeSpan operatingTime = plannedProductionTime - unplannedDowntime;
-        if (operatingTime.TotalSeconds < 0)
-        {
-            operatingTime = TimeSpan.Zero;
-        }
-
-        // 5. Total Downtime untuk display = Planned + Unplanned
-        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
 
         // ✅ TAMBAHKAN: Hitung Rest Break Time secara terpisah (untuk display)
         // Rest Break tetap termasuk dalam Planned Downtime untuk formula Planned Production Time
@@ -355,10 +357,12 @@ public class MachineController : Controller
             nettOperatingTime = TimeSpan.FromSeconds(nettOperatingSeconds);
         }
 
-        // Hitung OEE
+        // ✅ FORMULA SESUAI GAMBAR: Hitung OEE dengan Loading Time dan Down Time
+        // Loading Time = Total Shift Time
+        // Down Time = Total Downtime (Planned + Unplanned)
         var oeeResult = _oeeService.CalculateOee(
-            plannedProductionTime,
-            operatingTime,
+            totalShiftTime,      // Loading Time
+            downtimeTotal,        // Down Time (Planned + Unplanned)
             totalCount,
             goodCount,
             standarCycleTime > 0 ? standarCycleTime : 1);
@@ -799,7 +803,19 @@ public class MachineController : Controller
             }
         }
 
-        // 3. Planned Production Time = Shift Time - Planned Downtime
+        // 3. Total Downtime = Planned + Unplanned (sesuai formula di gambar)
+        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
+
+        // 4. Operating Time = Loading Time - Down Time (sesuai formula di gambar)
+        // Loading Time = Total Shift Time
+        TimeSpan operatingTime = totalShiftTime - downtimeTotal;
+        if (operatingTime.TotalSeconds < 0)
+        {
+            operatingTime = TimeSpan.Zero;
+        }
+
+        // ✅ PERBAIKAN: Planned Production Time tetap dihitung untuk display (tidak digunakan di formula OEE)
+        // Planned Production Time = Shift Time - Planned Downtime
         TimeSpan plannedProductionTime = totalShiftTime - plannedDowntime;
         if (plannedProductionTime.TotalSeconds < 0)
         {
@@ -811,16 +827,6 @@ public class MachineController : Controller
         {
             plannedProductionTime = totalShiftTime;
         }
-
-        // 4. Operating Time = Planned Production Time - Unplanned Downtime
-        TimeSpan operatingTime = plannedProductionTime - unplannedDowntime;
-        if (operatingTime.TotalSeconds < 0)
-        {
-            operatingTime = TimeSpan.Zero;
-        }
-
-        // 5. Total Downtime untuk display = Planned + Unplanned
-        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
 
         // ✅ TAMBAHKAN: Hitung Rest Break Time secara terpisah (untuk display)
         // Rest Break tetap termasuk dalam Planned Downtime untuk formula Planned Production Time
