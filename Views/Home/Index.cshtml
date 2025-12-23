@@ -170,11 +170,13 @@
                                     </div>
                                     @if (!string.IsNullOrEmpty(m.ProductImageUrl))
                                     {
+                                        @* ✅ Gunakan API endpoint dengan fallback ke ProductImageUrl langsung *@
                                         <div class="text-center mb-2 d-flex justify-content-center align-items-center" style="min-height: 200px;">
-                                            <img src="@m.ProductImageUrl" alt="@(m.ProductName ?? m.MachineName)" 
+                                            <img src="/api/machines/@m.MachineId/image" 
+                                                 alt="@(m.ProductName ?? m.MachineName)" 
                                                  class="img-fluid rounded" 
                                                  style="max-width: 200px; max-height: 200px; object-fit: contain;" 
-                                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                                                 onerror="this.onerror=null; this.src='@m.ProductImageUrl'; this.onerror=function(){this.style.display='none'; this.nextElementSibling.style.display='block';};" />
                                             <div style="display: none; color: #9ca3af; font-size: 0.875rem;">
                                                 <i class="fa-solid fa-image"></i> Image not found
                                             </div>

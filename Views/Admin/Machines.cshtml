@@ -60,8 +60,14 @@
                             <td>
                                 @if (!string.IsNullOrEmpty(machine.ImageUrl))
                                 {
-                                    <img src="@machine.ImageUrl" alt="@machine.Name" 
-                                         style="max-width: 60px; max-height: 60px; object-fit: cover; border-radius: 4px;" />
+                                    @* ✅ Ambil langsung dari ImageUrl di database *@
+                                    <img src="@machine.ImageUrl" 
+                                         alt="@machine.Name" 
+                                         style="max-width: 60px; max-height: 60px; object-fit: cover; border-radius: 4px;" 
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';" />
+                                    <span class="text-secondary" style="display: none;">
+                                        <i class="fa-solid fa-image"></i> Image not found
+                                    </span>
                                 }
                                 else
                                 {

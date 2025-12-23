@@ -110,6 +110,24 @@ using (var scope = app.Services.CreateScope())
                 // Jangan stop aplikasi, biarkan tetap berjalan
             }
 
+            // ✅ PERBAIKAN: Tambahkan kolom InjectionGroup ke tabel ProductionCounts jika belum ada
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'InjectionGroup')
+                    BEGIN
+                        ALTER TABLE ProductionCounts
+                        ADD InjectionGroup NVARCHAR(50) NULL;
+                        PRINT 'Kolom InjectionGroup berhasil ditambahkan ke tabel ProductionCounts';
+                    END");
+                Console.WriteLine("INFO: Kolom InjectionGroup sudah tersedia di tabel ProductionCounts");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat menambahkan kolom InjectionGroup: {ex.Message}");
+                // Jangan stop aplikasi, biarkan tetap berjalan
+            }
+
             // Rename kolom IdealCycleTimeSeconds menjadi StandarCycleTime jika masih ada
             try
             {

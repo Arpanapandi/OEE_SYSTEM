@@ -363,6 +363,7 @@ public class OperatorController : Controller
         int rejectQty,
         string? rejectReason,
         int? ngTypeId = null,
+        string? injection = null,
         string? returnUrl = null)
     {
         var now = DateTime.Now;
@@ -412,7 +413,8 @@ public class OperatorController : Controller
                 GoodCount = goodQty,
                 RejectCount = rejectQty,
                 RejectReason = string.IsNullOrWhiteSpace(rejectReason) ? null : rejectReason,
-                NgTypeId = ngTypeId
+                NgTypeId = ngTypeId,
+                InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToLower()
             };
 
             _context.ProductionCounts.Add(count);

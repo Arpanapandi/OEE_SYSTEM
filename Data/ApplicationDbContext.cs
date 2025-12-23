@@ -107,6 +107,11 @@ public class ApplicationDbContext : DbContext
             .WithMany(j => j.ProductionCounts)
             .HasForeignKey(p => p.JobRunId);
 
+        // ✅ Configure InjectionGroup column
+        modelBuilder.Entity<ProductionCount>()
+            .Property(p => p.InjectionGroup)
+            .HasMaxLength(50);
+
         modelBuilder.Entity<ProductionCount>()
             .HasOne(p => p.NgType)
             .WithMany()

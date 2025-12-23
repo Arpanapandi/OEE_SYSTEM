@@ -4,32 +4,46 @@ namespace OeeSystem.Services;
 
 public class OeeService : IOeeService
 {
+    /// <summary>
+    /// Menghitung OEE sesuai formula standar dari gambar:
+    /// - Availability = (Loading Time - Down Time) / Loading Time × 100
+    /// - Performance = (CT Standar × Product Output) / Operating Time × 100
+    /// - Quality = (Product Unit Processed - Defect Unit) / Product Unit Processed × 100
+    /// - OEE = Availability × Performance × Quality
+    /// </summary>
     public OeeResult CalculateOee(
-        TimeSpan plannedProductionTime,
-        TimeSpan operatingTime,
+        TimeSpan loadingTime,
+        TimeSpan downTime,
         int totalCount,
         int goodCount,
         double standarCycleTime)
     {
-        double plannedSeconds = plannedProductionTime.TotalSeconds;
-        double operatingSeconds = operatingTime.TotalSeconds;
+        double loadingSeconds = loadingTime.TotalSeconds;
+        double downSeconds = downTime.TotalSeconds;
+        
+        // Operating Time = Loading Time - Down Time
+        double operatingSeconds = Math.Max(0, loadingSeconds - downSeconds);
 
-        // ✅ PERBAIKAN: Batasi Availability maksimal 100%
-        double availability = plannedSeconds <= 0
+        // ✅ FORMULA SESUAI GAMBAR: Availability = (Loading Time - Down Time) / Loading Time × 100
+        double availability = loadingSeconds <= 0
             ? 0
-            : Math.Min(100.0, operatingSeconds / plannedSeconds * 100.0);
+            : Math.Min(100.0, (loadingSeconds - downSeconds) / loadingSeconds * 100.0);
 
-        // ✅ PERBAIKAN: Batasi Performance maksimal 100%
-        // Performance > 100% berarti mesin lebih cepat dari standar (standar perlu diupdate)
+        // ✅ FORMULA SESUAI GAMBAR: Performance = (CT Standar × Product Output) / Operating Time × 100
+        // Ideal Output = Operating Time / Standar Cycle Time
+        // Performance = Actual Output / Ideal Output × 100
         double performance = (operatingSeconds <= 0 || standarCycleTime <= 0)
             ? 0
-            : Math.Min(100.0, totalCount / (operatingSeconds / standarCycleTime) * 100.0);
+            : Math.Min(100.0, (standarCycleTime * totalCount) / operatingSeconds * 100.0);
 
-        // ✅ PERBAIKAN: Batasi Quality maksimal 100%
+        // ✅ FORMULA SESUAI GAMBAR: Quality = (Product Unit Processed - Defect Unit) / Product Unit Processed × 100
+        // Defect Unit = Total Count - Good Count = Reject Count
+        // Quality = Good Count / Total Count × 100
         double quality = totalCount <= 0
             ? 0
             : Math.Min(100.0, (double)goodCount / totalCount * 100.0);
 
+        // OEE = Availability × Performance × Quality
         double oee = (availability / 100.0) * (performance / 100.0) * (quality / 100.0) * 100.0;
 
         return new OeeResult(

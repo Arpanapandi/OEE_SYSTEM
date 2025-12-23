@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Hosting;
 using OeeSystem.Data;
 using OeeSystem.Models;
 using OeeSystem.Models.ViewModels;
@@ -16,19 +17,83 @@ public class AdminController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly IHubContext<OeeHub> _hubContext;
+    private readonly IWebHostEnvironment _environment;
 
-    public AdminController(ApplicationDbContext context, IHubContext<OeeHub> hubContext)
+    public AdminController(ApplicationDbContext context, IHubContext<OeeHub> hubContext, IWebHostEnvironment environment)
     {
         _context = context;
         _hubContext = hubContext;
+        _environment = environment;
+    }
+
+    // Helper method untuk reload plants dropdown
+    private void ReloadPlantsDropdown(int? selectedPlantId = null)
+    {
+        var plantsList = _context.Plants.OrderBy(p => p.Name).ToList();
+        var plantSelectListData = plantsList.Select(p => new { 
+            Id = p.Id, 
+            DisplayText = $"{p.Code} - {p.Name}" 
+        }).ToList();
+        ViewData["PlantId"] = new SelectList(plantSelectListData, "Id", "DisplayText", selectedPlantId);
     }
 
     // ========== MACHINES CRUD ==========
+    // ✅ Temporary endpoint untuk cek data ImageUrl di database
+    [HttpGet]
+    public async Task<IActionResult> CheckMachineImages()
+    {
+        var machines = await _context.Machines
+            .AsNoTracking()
+            .Select(m => new
+            {
+                m.Id,
+                m.Name,
+                ImageUrl = m.ImageUrl ?? "NULL",
+                ImageUrlLength = m.ImageUrl != null ? m.ImageUrl.Length : 0,
+                HasImageUrl = !string.IsNullOrWhiteSpace(m.ImageUrl)
+            })
+            .OrderBy(m => m.Id)
+            .ToListAsync();
+
+        var summary = new
+        {
+            TotalMachines = machines.Count,
+            MachinesWithImage = machines.Count(m => m.HasImageUrl),
+            MachinesWithoutImage = machines.Count(m => !m.HasImageUrl),
+            Machines = machines
+        };
+
+        return Json(summary);
+    }
+
     public async Task<IActionResult> Machines()
     {
+        // ✅ PERBAIKAN: Pastikan ImageUrl ter-load dengan benar dari database
         var machines = await _context.Machines
             .Include(m => m.Plant)
             .ToListAsync();
+        
+        // ✅ PERBAIKAN: Reload ImageUrl untuk setiap machine dari database untuk memastikan data fresh
+        var machineIds = machines.Select(m => m.Id).ToList();
+        var machineImageUrls = await _context.Machines
+            .AsNoTracking()
+            .Where(m => machineIds.Contains(m.Id))
+            .Select(m => new { m.Id, m.ImageUrl })
+            .ToDictionaryAsync(m => m.Id, m => m.ImageUrl);
+        
+        foreach (var machine in machines)
+        {
+            // Ambil ImageUrl langsung dari dictionary (data fresh dari database)
+            if (machineImageUrls.TryGetValue(machine.Id, out var imageUrl) && !string.IsNullOrWhiteSpace(imageUrl))
+            {
+                machine.ImageUrl = imageUrl.Trim();
+            }
+            else
+            {
+                machine.ImageUrl = null;
+            }
+        }
+        
         return View(machines);
     }
 
@@ -89,16 +154,30 @@ public class AdminController : Controller
         
         if (ModelState.IsValid)
         {
+            // ✅ PERBAIKAN: Simpan image ke filesystem dan simpan path ke ImageUrl di database
             if (imageFile != null && imageFile.Length > 0)
             {
+                // Validasi ukuran file (max 5MB)
+                const long maxFileSize = 5 * 1024 * 1024; // 5MB
+                if (imageFile.Length > maxFileSize)
+                {
+                    ModelState.AddModelError("imageFile", "Ukuran file maksimal 5MB");
+                    ReloadPlantsDropdown(machine.PlantId);
+                    return View(machine);
+                }
+                
+                // Simpan file ke filesystem
                 var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "machines");
                 Directory.CreateDirectory(uploadsFolder);
                 var fileName = $"{Guid.NewGuid()}{Path.GetExtension(imageFile.FileName)}";
                 var filePath = Path.Combine(uploadsFolder, fileName);
+                
                 using (var stream = new FileStream(filePath, FileMode.Create))
                 {
                     await imageFile.CopyToAsync(stream);
                 }
+                
+                // Simpan path ke ImageUrl di database
                 machine.ImageUrl = $"/images/machines/{fileName}";
             }
 
@@ -125,14 +204,8 @@ public class AdminController : Controller
             return RedirectToAction(nameof(Machines));
         }
         
-        // Jika ada error validation, reload dropdown Plants dari database, diurutkan berdasarkan Name
-        var plants = _context.Plants.OrderBy(p => p.Name).ToList();
-        // Buat SelectList dengan menampilkan Code - Name
-        var plantSelectList = plants.Select(p => new { 
-            Id = p.Id, 
-            DisplayText = $"{p.Code} - {p.Name}" 
-        }).ToList();
-        ViewData["PlantId"] = new SelectList(plantSelectList, "Id", "DisplayText", machine.PlantId);
+        // Jika ada error validation, reload dropdown Plants dari database
+        ReloadPlantsDropdown(machine.PlantId);
         return View(machine);
     }
 
@@ -240,7 +313,7 @@ public class AdminController : Controller
                             "UPDATE MachineDowntimeReasons SET MachineId = {0} WHERE MachineId = {1}", 
                             newId, oldId);
                         
-                        // Handle delete image jika checkbox dicentang
+                        // ✅ PERBAIKAN: Handle delete image dari filesystem dan database
                         var deleteImage = Request.Form.ContainsKey("deleteImage") && Request.Form["deleteImage"].ToString() == "true";
                         string finalImageUrl = existingMachine.ImageUrl ?? "";
                         
@@ -258,16 +331,37 @@ public class AdminController : Controller
                             }
                             catch (Exception ex)
                             {
-                                // Log error tapi jangan gagalkan update
                                 System.Diagnostics.Debug.WriteLine($"Error deleting image file: {ex.Message}");
                             }
                             
                             finalImageUrl = ""; // Set ke empty untuk di-set null nanti
                         }
                         
-                        // Handle image upload jika ada (prioritas lebih tinggi dari delete)
+                        // ✅ PERBAIKAN: Handle image upload ke filesystem dan simpan path ke database
                         if (imageFile != null && imageFile.Length > 0)
                         {
+                            // Validasi ukuran file (max 5MB)
+                            const long maxFileSize = 5 * 1024 * 1024; // 5MB
+                            if (imageFile.Length > maxFileSize)
+                            {
+                                await transaction.RollbackAsync();
+                                ModelState.AddModelError("imageFile", "Ukuran file maksimal 5MB");
+                                // Reload data untuk view
+                                var machineForView = await _context.Machines
+                                    .Include(m => m.Plant)
+                                    .FirstOrDefaultAsync(m => m.Id == id);
+                                if (machineForView != null)
+                                {
+                                    var plants = _context.Plants.OrderBy(p => p.Name).ToList();
+                                    var plantSelectList = plants.Select(p => new { 
+                                        Id = p.Id, 
+                                        DisplayText = $"{p.Code} - {p.Name}" 
+                                    }).ToList();
+                                    ViewData["PlantId"] = new SelectList(plantSelectList, "Id", "DisplayText");
+                                    return View(machineForView);
+                                }
+                            }
+                            
                             // Jika ada image lama, hapus dulu
                             if (!string.IsNullOrEmpty(finalImageUrl))
                             {
@@ -286,14 +380,18 @@ public class AdminController : Controller
                                 }
                             }
                             
+                            // Simpan file ke filesystem
                             var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "machines");
                             Directory.CreateDirectory(uploadsFolder);
                             var fileName = $"{Guid.NewGuid()}{Path.GetExtension(imageFile.FileName)}";
                             var filePath = Path.Combine(uploadsFolder, fileName);
+                            
                             using (var stream = new FileStream(filePath, FileMode.Create))
                             {
                                 await imageFile.CopyToAsync(stream);
                             }
+                            
+                            // Simpan path ke ImageUrl di database
                             finalImageUrl = $"/images/machines/{fileName}";
                         }
                         
@@ -386,7 +484,7 @@ public class AdminController : Controller
                     existingMachine.InstallationYear = machine.InstallationYear;
                     existingMachine.Description = machine.Description;
 
-                    // Handle delete image jika checkbox dicentang
+                    // ✅ PERBAIKAN: Handle delete image dari filesystem dan database
                     var deleteImage = Request.Form.ContainsKey("deleteImage") && Request.Form["deleteImage"].ToString() == "true";
                     if (deleteImage && !string.IsNullOrEmpty(existingMachine.ImageUrl))
                     {
@@ -402,17 +500,24 @@ public class AdminController : Controller
                         }
                         catch (Exception ex)
                         {
-                            // Log error tapi jangan gagalkan update
                             System.Diagnostics.Debug.WriteLine($"Error deleting image file: {ex.Message}");
                         }
                         
-                        // Set ImageUrl ke null
                         existingMachine.ImageUrl = null;
                     }
 
-                    // Handle image upload jika ada (prioritas lebih tinggi dari delete)
+                    // ✅ PERBAIKAN: Handle image upload ke filesystem dan simpan path ke database
                     if (imageFile != null && imageFile.Length > 0)
                     {
+                        // Validasi ukuran file (max 5MB)
+                        const long maxFileSize = 5 * 1024 * 1024; // 5MB
+                        if (imageFile.Length > maxFileSize)
+                        {
+                            ModelState.AddModelError("imageFile", "Ukuran file maksimal 5MB");
+                            ReloadPlantsDropdown(machine.PlantId);
+                            return View(machine);
+                        }
+                        
                         // Jika ada image lama, hapus dulu
                         if (!string.IsNullOrEmpty(existingMachine.ImageUrl))
                         {
@@ -431,14 +536,18 @@ public class AdminController : Controller
                             }
                         }
                         
+                        // Simpan file ke filesystem
                         var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "machines");
                         Directory.CreateDirectory(uploadsFolder);
                         var fileName = $"{Guid.NewGuid()}{Path.GetExtension(imageFile.FileName)}";
                         var filePath = Path.Combine(uploadsFolder, fileName);
+                        
                         using (var stream = new FileStream(filePath, FileMode.Create))
                         {
                             await imageFile.CopyToAsync(stream);
                         }
+                        
+                        // Simpan path ke ImageUrl di database
                         existingMachine.ImageUrl = $"/images/machines/{fileName}";
                     }
 
@@ -2210,6 +2319,68 @@ public class AdminController : Controller
     }
 
     private bool DowntimeReasonExists(int id) => _context.DowntimeReasons.Any(e => e.Id == id);
+
+    // ========== API ENDPOINTS ==========
+    // ✅ Endpoint untuk serve machine image dari filesystem berdasarkan ImageUrl di database
+    [HttpGet]
+    [Route("/api/machines/{machineId}/image")]
+    public async Task<IActionResult> GetMachineImage(string machineId)
+    {
+        try
+        {
+            // Ambil ImageUrl dari database
+            var machine = await _context.Machines
+                .AsNoTracking()
+                .Where(m => m.Id == machineId)
+                .Select(m => new { m.ImageUrl })
+                .FirstOrDefaultAsync();
+            
+            if (machine == null)
+            {
+                return NotFound(new { message = "Machine not found" });
+            }
+            
+            // Serve dari filesystem berdasarkan ImageUrl di database
+            if (!string.IsNullOrWhiteSpace(machine.ImageUrl))
+            {
+                var imagePath = machine.ImageUrl.TrimStart('/');
+                var fullPath = Path.Combine(_environment.WebRootPath, imagePath);
+                
+                if (System.IO.File.Exists(fullPath))
+                {
+                    var fileBytes = await System.IO.File.ReadAllBytesAsync(fullPath);
+                    var contentType = GetContentType(imagePath);
+                    return File(fileBytes, contentType);
+                }
+            }
+            
+            return NotFound(new { 
+                message = "Image not found. ImageUrl: " + (machine.ImageUrl ?? "null")
+            });
+        }
+        catch (Exception ex)
+        {
+            // Log error untuk debugging
+            System.Diagnostics.Debug.WriteLine($"Error in GetMachineImage: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
+            
+            return StatusCode(500, new { message = "Error loading image", error = ex.Message });
+        }
+    }
+    
+    // ✅ Helper method untuk menentukan content type
+    private string GetContentType(string filePath)
+    {
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
+    }
 
     // Helper method untuk query ManPowers dengan error handling
     private async Task<List<ManPower>> GetManPowersSafe()
