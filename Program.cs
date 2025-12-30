@@ -20,15 +20,42 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 
+// DbContext untuk db_HOSS
+var hossConnectionString = builder.Configuration.GetConnectionString("HossConnection")
+    ?? throw new InvalidOperationException("Connection string 'HossConnection' not found.");
+
+// ✅ Aktifkan retry policy untuk koneksi ke DB_HOSS (mengatasi transient failure)
+builder.Services.AddDbContext<HossDbContext>(options =>
+    options.UseSqlServer(hossConnectionString, sqlOptions =>
+    {
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null);
+    }));
+
 // OEE service
 builder.Services.AddScoped<IOeeService, OeeService>();
+
+// Background service untuk Dandori timer
+builder.Services.AddHostedService<DandoriTimerService>();
 
 var app = builder.Build();
 
 // Set default URL jika tidak ada dari command line
+// Gunakan 0.0.0.0 agar bisa diakses dari device lain di jaringan yang sama
 if (app.Urls.Count == 0)
 {
-    app.Urls.Add("http://localhost:6001");
+    app.Urls.Add("http://0.0.0.0:6001");
+    app.Urls.Add("https://0.0.0.0:6002");
+    Console.WriteLine("🌐 Server listening on:");
+    Console.WriteLine("   - HTTP:  http://0.0.0.0:6001");
+    Console.WriteLine("   - HTTPS: https://0.0.0.0:6002");
+    Console.WriteLine("📱 Akses dari device lain di jaringan yang sama:");
+    Console.WriteLine("   - HTTP:  http://[IP_WIFI_PC_ANDA]:6001");
+    Console.WriteLine("   - HTTPS: https://[IP_WIFI_PC_ANDA]:6002");
+    Console.WriteLine("   - Contoh: http://10.14.180.197:6001");
+    Console.WriteLine("   - Contoh: https://10.14.180.197:6002");
 }
 
 // Auto-create database schema & seed minimal data (tanpa CLI migrations)
@@ -69,6 +96,63 @@ using (var scope = app.Services.CreateScope())
         }
         else
         {
+            // ✅ TAMBAHKAN: Tambahkan kolom Dandori ke tabel JobRuns TERLEBIH DAHULU (sebelum query apapun)
+            // Ini penting untuk menghindari error "Token 2000000 is not valid" saat EF Core mencoba memetakan property Dandori
+            try
+            {
+                Console.WriteLine("INFO: Memeriksa dan menambahkan kolom Dandori ke tabel JobRuns...");
+                
+                // Tambahkan kolom Dandori + kolom hasil scan jika belum ada (dalam satu batch untuk efisiensi)
+                var result = await db.Database.ExecuteSqlRawAsync(@"
+                    IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[JobRuns]') AND type in (N'U'))
+                    BEGIN
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'DandoriStartTime')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD DandoriStartTime DATETIME2 NULL;
+                        END
+                        
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'DandoriEndTime')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD DandoriEndTime DATETIME2 NULL;
+                        END
+                        
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'DandoriDurationSeconds')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD DandoriDurationSeconds INT NULL;
+                        END
+
+                        -- Kolom hasil scan produksi dari DB_HOSS
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedPartNumber')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD ScannedPartNumber NVARCHAR(100) NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedLotNumber')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD ScannedLotNumber NVARCHAR(100) NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedKomponenId')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD ScannedKomponenId INT NULL;
+                        END
+
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedJmlKomponen')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD ScannedJmlKomponen INT NULL;
+                        END
+                    END");
+                
+                Console.WriteLine($"INFO: Kolom Dandori sudah tersedia di tabel JobRuns (result: {result})");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: Error saat menambahkan kolom Dandori: {ex.Message}");
+                Console.WriteLine($"ERROR: Stack trace: {ex.StackTrace}");
+                // Jangan stop aplikasi, biarkan tetap berjalan
+                // Tapi log error dengan jelas untuk debugging
+            }
+
             // Create ProductNgTypes table if not exists
             try
             {
@@ -127,6 +211,7 @@ using (var scope = app.Services.CreateScope())
                 Console.WriteLine($"WARNING: Error saat menambahkan kolom InjectionGroup: {ex.Message}");
                 // Jangan stop aplikasi, biarkan tetap berjalan
             }
+
 
             // Rename kolom IdealCycleTimeSeconds menjadi StandarCycleTime jika masih ada
             try
@@ -561,8 +646,30 @@ else
     app.UseHsts();
 }
 
-// Disable HTTPS redirection untuk development (karena menggunakan http://localhost:6001)
-// app.UseHttpsRedirection();
+// Enable HTTPS redirection untuk mendukung HTTPS
+app.UseHttpsRedirection();
+
+// Add Permissions Policy untuk mengizinkan akses kamera di HTTPS
+app.Use(async (context, next) =>
+{
+    // Permissions Policy: Izinkan camera, microphone, dan autoplay
+    context.Response.Headers.Append("Permissions-Policy", 
+        "camera=(self), microphone=(self), autoplay=(self)");
+    
+    // Content Security Policy: Izinkan inline scripts dan external resources untuk scanner
+    context.Response.Headers.Append("Content-Security-Policy", 
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://serratus.github.io; " +
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+        "img-src 'self' data: https: blob:; " +
+        "font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net data:; " +
+        "connect-src 'self' https: wss: ws:; " +
+        "media-src 'self' blob:; " +
+        "frame-src 'self' blob:;");
+    
+    await next();
+});
+
 app.UseStaticFiles();
 
 app.UseRouting();

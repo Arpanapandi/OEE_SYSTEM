@@ -112,6 +112,43 @@ public class ApplicationDbContext : DbContext
             .Property(p => p.InjectionGroup)
             .HasMaxLength(50);
 
+        // ✅ TAMBAHKAN: Configure Dandori columns sebagai optional (nullable)
+        // Ini memastikan EF Core tidak error jika kolom belum ada di database
+        // Gunakan HasColumnType untuk memastikan mapping yang benar
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.DandoriStartTime)
+            .IsRequired(false)
+            .HasColumnType("datetime2");
+        
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.DandoriEndTime)
+            .IsRequired(false)
+            .HasColumnType("datetime2");
+        
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.DandoriDurationSeconds)
+            .IsRequired(false)
+            .HasColumnType("int");
+
+        // ✅ Kolom hasil scan produksi (opsional)
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.ScannedPartNumber)
+            .HasMaxLength(100)
+            .IsRequired(false);
+
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.ScannedLotNumber)
+            .HasMaxLength(100)
+            .IsRequired(false);
+
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.ScannedKomponenId)
+            .IsRequired(false);
+
+        modelBuilder.Entity<JobRun>()
+            .Property(j => j.ScannedJmlKomponen)
+            .IsRequired(false);
+
         modelBuilder.Entity<ProductionCount>()
             .HasOne(p => p.NgType)
             .WithMany()

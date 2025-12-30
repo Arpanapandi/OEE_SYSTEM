@@ -30,5 +30,11 @@ public class OeeHub : Hub
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"machine_{machineId}");
     }
+
+    // Method untuk broadcast Dandori duration update
+    public async Task BroadcastDandoriUpdate(int machineId, int durationSeconds)
+    {
+        await Clients.Group($"machine_{machineId}").SendAsync("DandoriDurationUpdated", machineId, durationSeconds);
+    }
 }
 

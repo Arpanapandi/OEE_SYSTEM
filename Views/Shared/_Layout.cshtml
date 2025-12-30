@@ -27,9 +27,35 @@
         }
         
         .navbar-oee-detail .machine-title {
-            font-size: 1.5rem;
-            line-height: 1.2;
+            font-size: 1.1rem;
+            line-height: 1.3;
             margin-bottom: 0;
+            font-weight: 600;
+        }
+        
+        .navbar-oee-detail .machine-info {
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+        
+        .navbar-oee-detail .machine-info-item {
+            display: inline-flex;
+            align-items: center;
+            margin-right: 1rem;
+        }
+        
+        .navbar-oee-detail .navbar-nav {
+            gap: 0.25rem;
+        }
+        
+        .navbar-oee-detail .navbar-nav .nav-link {
+            font-size: 0.875rem;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .navbar-oee-detail .navbar-nav .btn {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
         }
 
         .card {
@@ -118,11 +144,11 @@
         <div class="container-fluid">
             @if (isOeeDetailPage)
             {
-                <!-- ✅ Layout khusus untuk OEE Detail: Machine info di kiri -->
-                <div class="d-flex flex-column">
-                    <div class="d-flex align-items-center mb-0">
+                <!-- ✅ Layout khusus untuk OEE Detail: Machine info di kiri (2 baris) -->
+                <div class="d-flex flex-column flex-grow-1">
+                    <div class="d-flex align-items-center mb-1">
                         <h2 class="machine-title mb-0 me-2">
-                            <i class="fa-solid fa-microchip me-2"></i>@(ViewData["MachineName"] ?? "Machine")
+                            <i class="fa-solid fa-microchip me-1"></i>@(ViewData["MachineName"] ?? "Machine")
                         </h2>
                         @{
                             var machineStatus = ViewData["MachineStatus"] as OeeSystem.Models.MachineStatus?;
@@ -134,25 +160,27 @@
                             };
                             var statusText = machineStatus == OeeSystem.Models.MachineStatus.Aktif ? "Aktif" : "Tidak Aktif";
                         }
-                        <span class="status-badge @statusClass">@statusText</span>
+                        <span class="status-badge @statusClass" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;">@statusText</span>
                     </div>
-                    <div class="text-secondary small mt-1">
-                        <i class="fa-solid fa-layer-group me-1"></i>@(ViewData["LineId"] ?? "")
-                        <span class="ms-3">
+                    <div class="machine-info text-secondary d-flex flex-wrap align-items-center">
+                        <span class="machine-info-item">
+                            <i class="fa-solid fa-layer-group me-1"></i>Line @(ViewData["LineId"] ?? "")
+                        </span>
+                        <span class="machine-info-item">
                             <i class="fa-solid fa-calendar-day me-1"></i>@(ViewData["ShiftName"] ?? "") (@(ViewData["ShiftTime"] ?? ""))
                         </span>
-                        <span class="ms-3">
-                            <i class="fa-solid fa-clock me-1"></i>Standar Cycle Time Product: @(ViewData["StandarCycleTime"] ?? "0")s
+                        <span class="machine-info-item">
+                            <i class="fa-solid fa-clock me-1"></i>Cycle Time: @(ViewData["StandarCycleTime"] ?? "0")s
                         </span>
                     </div>
                 </div>
                 
-                <!-- ✅ OEE Monitoring dan Back button di kanan -->
+                <!-- ✅ OEE Monitoring dan Back button di kanan (2 baris vertikal) -->
                 <div class="navbar-nav ms-auto d-flex flex-column align-items-end">
-                    <a class="nav-link fw-semibold" asp-controller="Home" asp-action="Index">
-                        <i class="fa-solid fa-industry me-2"></i>OEE Monitoring
+                    <a class="nav-link fw-semibold px-2" asp-controller="Home" asp-action="Index">
+                        <i class="fa-solid fa-industry me-1"></i>OEE Monitoring
                     </a>
-                    <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm mt-1">
+                    <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm">
                         <i class="fa-solid fa-arrow-left me-1"></i>Back to Dashboard
                     </a>
                 </div>

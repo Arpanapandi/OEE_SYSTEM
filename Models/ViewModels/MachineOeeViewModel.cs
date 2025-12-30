@@ -98,6 +98,11 @@ public class JobRunViewModel
     public int CurrentQuantity { get; set; }
     public DateTime LastStatusChangeTime { get; set; } // Durasi sejak status terakhir
     public int SinceLastChangeSeconds { get; set; } // Durasi dalam detik untuk sinkronisasi dengan Operator View
+    
+    // ✅ TAMBAHKAN: Dandori Duration
+    public DateTime? DandoriStartTime { get; set; }
+    public DateTime? DandoriEndTime { get; set; }
+    public int? DandoriDurationSeconds { get; set; }
 }
 
 public class DowntimeEventViewModel
@@ -117,5 +122,12 @@ public class ProductionCountViewModel
     public int GoodCount { get; set; }
     public int RejectCount { get; set; }
     public string? RejectReason { get; set; }
+    
+    // ✅ TAMBAHKAN: Kolom baru untuk tabel (formula akan diimplementasikan nanti)
+    public string? PartCode { get; set; } // Kode Part dari Product.MaterialCode
+    public int PlanningQty { get; set; } // QTY Planning dari WorkOrder.TargetQuantity
+    public double AchieveRate { get; set; } // Achieve Rate = (GoodCount / PlanningQty) * 100 (formula nanti)
+    public double RejectionRate { get; set; } // Rejection Rate = (RejectCount / Total) * 100 (formula nanti)
+    public TimeSpan? LoadingTime { get; set; } // Loading Time (formula nanti)
 }
 

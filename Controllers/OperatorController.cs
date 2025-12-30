@@ -187,6 +187,34 @@ public class OperatorController : Controller
             EndTime = null
         };
 
+        // ✅ TAMBAHKAN: Stop Dandori jika sedang berjalan di job aktif sebelum membuat job baru
+        // Cari job aktif yang mungkin memiliki Dandori yang sedang berjalan
+        var activeJobWithDandori = await _context.JobRuns
+            .Where(j => j.MachineId == machineId && j.EndTime == null)
+            .OrderByDescending(j => j.StartTime)
+            .FirstOrDefaultAsync();
+        
+        if (activeJobWithDandori != null)
+        {
+            try
+            {
+                // Cek apakah ada Dandori yang sedang berjalan
+                if (activeJobWithDandori.DandoriStartTime.HasValue && !activeJobWithDandori.DandoriEndTime.HasValue)
+                {
+                    activeJobWithDandori.DandoriEndTime = now;
+                    var dandoriDuration = (int)(now - activeJobWithDandori.DandoriStartTime.Value).TotalSeconds;
+                    activeJobWithDandori.DandoriDurationSeconds = (activeJobWithDandori.DandoriDurationSeconds ?? 0) + dandoriDuration;
+                    await _context.SaveChangesAsync();
+                    Console.WriteLine($"INFO: Dandori di-stop otomatis saat Start Job (durasi: {dandoriDuration} detik)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat stop Dandori otomatis: {ex.Message}");
+                // Jangan stop proses, biarkan job tetap dibuat
+            }
+        }
+
         _context.JobRuns.Add(newJob);
         await _context.SaveChangesAsync();
 
@@ -696,6 +724,27 @@ public class OperatorController : Controller
         // ✅ PERBAIKAN: Log untuk debugging
         System.Diagnostics.Debug.WriteLine($"GetOperatorData RETURN - MachineId: '{machineId}', MachineStatus: '{machineStatusString}'");
 
+        // ✅ TAMBAHKAN: Get Dandori status untuk GetOperatorData
+        DateTime? dandoriStartTime = null;
+        DateTime? dandoriEndTime = null;
+        int? dandoriDurationSeconds = null;
+        bool isDandoriRunning = false;
+        
+        if (activeJob != null)
+        {
+            try
+            {
+                dandoriStartTime = activeJob.DandoriStartTime;
+                dandoriEndTime = activeJob.DandoriEndTime;
+                dandoriDurationSeconds = activeJob.DandoriDurationSeconds;
+                isDandoriRunning = dandoriStartTime.HasValue && !dandoriEndTime.HasValue;
+            }
+            catch
+            {
+                // Jika kolom belum ada, gunakan default
+            }
+        }
+
         return Json(new
         {
             // Production Data
@@ -709,6 +758,12 @@ public class OperatorController : Controller
             SinceLastChangeSeconds = sinceLastChangeSeconds,
             SinceLastChange = (now - lastChangeTime).ToString(@"hh\:mm\:ss"),
             LastStatusChangeTime = lastStatusChangeTime.ToString("O"), // ✅ ISO 8601 format untuk sinkronisasi timer
+            
+            // ✅ TAMBAHKAN: Dandori Status
+            DandoriStartTime = dandoriStartTime?.ToString("O"),
+            DandoriEndTime = dandoriEndTime?.ToString("O"),
+            DandoriDurationSeconds = dandoriDurationSeconds,
+            IsDandoriRunning = isDandoriRunning,
             
             // Job & Downtime Status
             HasActiveJob = activeJob != null,
@@ -730,6 +785,174 @@ public class OperatorController : Controller
             OperatingTimeSeconds = operatingTime.TotalSeconds,
             DowntimeTotalSeconds = downtimeTotal.TotalSeconds
         });
+    }
+
+    // ✅ TAMBAHKAN: Start Dandori (saat operator mulai persiapan)
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> StartDandori(string machineId, string? returnUrl = null)
+    {
+        var now = DateTime.Now;
+
+        try
+        {
+            // Cari job aktif untuk mesin ini
+            var activeJob = await _context.JobRuns
+                .Where(j => j.MachineId == machineId)
+                .OrderByDescending(j => j.StartTime)
+                .FirstOrDefaultAsync(j => j.EndTime == null);
+
+            if (activeJob == null)
+            {
+                // Jika belum ada job aktif, buat job baru untuk Dandori
+                var activeWorkOrder = await _context.WorkOrders
+                    .Where(w => w.Status == WorkOrderStatus.InProgress)
+                    .FirstOrDefaultAsync();
+
+                if (activeWorkOrder == null)
+                {
+                    TempData["OperationError"] = "Tidak ada Work Order aktif. Silakan buat Work Order terlebih dahulu.";
+                    if (!string.IsNullOrEmpty(returnUrl))
+                        return Redirect(returnUrl);
+                    return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+                }
+
+                var operatorUser = await _context.Users
+                    .Where(u => u.Role == UserRole.Operator)
+                    .FirstOrDefaultAsync();
+
+                activeJob = new JobRun
+                {
+                    MachineId = machineId,
+                    WorkOrderId = activeWorkOrder.Id,
+                    OperatorId = operatorUser?.Id ?? 0,
+                    StartTime = now,
+                    EndTime = null,
+                    DandoriStartTime = now,
+                    DandoriEndTime = null
+                };
+
+                _context.JobRuns.Add(activeJob);
+            }
+            else
+            {
+                // Cek apakah Dandori sudah berjalan
+                if (activeJob.DandoriStartTime.HasValue && !activeJob.DandoriEndTime.HasValue)
+                {
+                    TempData["OperationError"] = "Dandori sudah berjalan. Silakan stop Dandori terlebih dahulu.";
+                    if (!string.IsNullOrEmpty(returnUrl))
+                        return Redirect(returnUrl);
+                    return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+                }
+
+                // Start Dandori
+                activeJob.DandoriStartTime = now;
+                activeJob.DandoriEndTime = null;
+            }
+
+            await _context.SaveChangesAsync();
+
+            // Broadcast SignalR update untuk Dandori started
+            var machineIdInt = int.TryParse(machineId, out var id) ? id : 0;
+            await _hubContext.Clients.Group($"machine_{machineIdInt}").SendAsync("DandoriDurationUpdated", machineIdInt, 0);
+            
+            await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+            {
+                Type = "DandoriStarted",
+                MachineId = machineId,
+                Message = "Dandori telah dimulai",
+                Timestamp = now,
+                RefreshTimeMetrics = true
+            });
+
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: Error saat Start Dandori: {ex.Message}");
+            Console.WriteLine($"ERROR: Stack trace: {ex.StackTrace}");
+            TempData["OperationError"] = $"Error saat start Dandori: {ex.Message}";
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+        }
+    }
+
+    // ✅ TAMBAHKAN: Stop Dandori (saat operator mulai produksi)
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> StopDandori(string machineId, string? returnUrl = null)
+    {
+        var now = DateTime.Now;
+
+        try
+        {
+            // Cari job aktif untuk mesin ini
+            var activeJob = await _context.JobRuns
+                .Where(j => j.MachineId == machineId)
+                .OrderByDescending(j => j.StartTime)
+                .FirstOrDefaultAsync(j => j.EndTime == null);
+
+            if (activeJob == null)
+            {
+                TempData["OperationError"] = "Tidak ada job aktif. Tidak bisa stop Dandori.";
+                if (!string.IsNullOrEmpty(returnUrl))
+                    return Redirect(returnUrl);
+                return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+            }
+
+            // Cek apakah Dandori sedang berjalan
+            if (!activeJob.DandoriStartTime.HasValue || activeJob.DandoriEndTime.HasValue)
+            {
+                TempData["OperationError"] = "Dandori tidak sedang berjalan.";
+                if (!string.IsNullOrEmpty(returnUrl))
+                    return Redirect(returnUrl);
+                return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+            }
+
+            // Stop Dandori
+            activeJob.DandoriEndTime = now;
+            var dandoriDuration = (int)(now - activeJob.DandoriStartTime.Value).TotalSeconds;
+            
+            // ✅ PERBAIKAN: Validasi durasi tidak negatif
+            if (dandoriDuration < 0)
+            {
+                Console.WriteLine($"WARNING: Negative dandori duration detected: {dandoriDuration} seconds. Setting to 0.");
+                dandoriDuration = 0;
+            }
+            
+            activeJob.DandoriDurationSeconds = (activeJob.DandoriDurationSeconds ?? 0) + dandoriDuration;
+
+            await _context.SaveChangesAsync();
+
+            // Broadcast SignalR update untuk Dandori stopped dengan final duration
+            var machineIdInt = int.TryParse(machineId, out var id) ? id : 0;
+            await _hubContext.Clients.Group($"machine_{machineIdInt}").SendAsync("DandoriDurationUpdated", machineIdInt, activeJob.DandoriDurationSeconds ?? 0);
+            
+            await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+            {
+                Type = "DandoriStopped",
+                MachineId = machineId,
+                Message = $"Dandori telah di-stop (durasi: {TimeSpan.FromSeconds(dandoriDuration):hh\\:mm\\:ss})",
+                Timestamp = now,
+                RefreshTimeMetrics = true
+            });
+
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR: Error saat Stop Dandori: {ex.Message}");
+            Console.WriteLine($"ERROR: Stack trace: {ex.StackTrace}");
+            TempData["OperationError"] = $"Error saat stop Dandori: {ex.Message}";
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+            return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+        }
     }
 }
 

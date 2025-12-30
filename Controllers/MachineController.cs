@@ -196,7 +196,9 @@ public class MachineController : Controller
         var shiftWindow = (Start: shiftStart, End: shiftEnd, ShiftDate: shiftDateForWindow, Code: selectedShift?.Name ?? "A", Key: $"{shiftDateForWindow:yyyy-MM-dd}|{selectedShift?.Id ?? 0}");
         var effectiveNow = now < shiftWindow.End ? now : shiftWindow.End;
 
+        // ✅ PERBAIKAN: Gunakan AsNoTracking() untuk menghindari error saat mapping property Dandori yang belum ada
         var machine = await _context.Machines
+            .AsNoTracking()
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.WorkOrder)
                     .ThenInclude(w => w.Product)
@@ -481,12 +483,60 @@ public class MachineController : Controller
                 }
             }
             
+            // ✅ TAMBAHKAN: Hitung Dandori Duration (dengan error handling)
+            int? dandoriDurationSeconds = null;
+            DateTime? dandoriStartTime = null;
+            DateTime? dandoriEndTime = null;
+            int? dandoriDurationSecondsStored = null;
+            
+            try
+            {
+                // Coba akses property Dandori (jika kolom belum ada, akan return null)
+                dandoriStartTime = activeJob.DandoriStartTime;
+                dandoriEndTime = activeJob.DandoriEndTime;
+                dandoriDurationSecondsStored = activeJob.DandoriDurationSeconds;
+                
+                if (dandoriStartTime.HasValue && dandoriEndTime.HasValue)
+                {
+                    // Dandori sudah selesai
+                    dandoriDurationSeconds = (int)(dandoriEndTime.Value - dandoriStartTime.Value).TotalSeconds;
+                }
+                else if (dandoriStartTime.HasValue && !dandoriEndTime.HasValue)
+                {
+                    // Dandori sedang berjalan
+                    var currentTime = DateTime.Now;
+                    var baseDuration = dandoriDurationSecondsStored ?? 0;
+                    dandoriDurationSeconds = baseDuration + (int)(currentTime - dandoriStartTime.Value).TotalSeconds;
+                }
+                else if (dandoriDurationSecondsStored.HasValue)
+                {
+                    // Hanya ada duration (backward compatibility)
+                    dandoriDurationSeconds = dandoriDurationSecondsStored.Value;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Jika kolom Dandori belum ada di database, gunakan nilai default (null)
+                Console.WriteLine($"WARNING: Error saat mengakses property Dandori: {ex.Message}");
+                dandoriDurationSeconds = null;
+                dandoriStartTime = null;
+                dandoriEndTime = null;
+            }
+            
+            // ✅ PERBAIKAN: Tambahkan fallback ke machine image jika Product.ImageUrl null
+            string? productImageUrl = activeJob.WorkOrder?.Product?.ImageUrl;
+            if (string.IsNullOrEmpty(productImageUrl))
+            {
+                // Fallback ke machine image
+                productImageUrl = machine.ImageUrl;
+            }
+            
             vm.ActiveJob = new JobRunViewModel
             {
                 Id = activeJob.Id,
                 WorkOrderNumber = activeJob.WorkOrder?.OrderNumber ?? "",
                 ProductName = activeJob.WorkOrder?.Product?.Name ?? "",
-                ProductImageUrl = activeJob.WorkOrder?.Product?.ImageUrl,
+                ProductImageUrl = productImageUrl, // ✅ PERBAIKAN: Gunakan fallback logic
                 OperatorName = activeJob.Operator?.Username ?? "",
                 ManPowerId = activeJob.ManPowerId,
                 ManPowerName = activeJob.ManPower?.Name,
@@ -495,7 +545,11 @@ public class MachineController : Controller
                 TargetQuantity = targetQuantity,
                 CurrentQuantity = currentQty,
                 LastStatusChangeTime = lastChangeTime, // Tetap ada untuk backward compatibility
-                SinceLastChangeSeconds = sinceLastChangeSeconds // ✅ TAMBAHKAN untuk sinkronisasi dengan Operator View
+                SinceLastChangeSeconds = sinceLastChangeSeconds, // ✅ TAMBAHKAN untuk sinkronisasi dengan Operator View
+                // ✅ TAMBAHKAN: Dandori Duration
+                DandoriStartTime = dandoriStartTime,
+                DandoriEndTime = dandoriEndTime,
+                DandoriDurationSeconds = dandoriDurationSeconds
             };
             
             // Store estimated completion untuk JavaScript
@@ -522,16 +576,32 @@ public class MachineController : Controller
             .ToList();
 
         // Recent Production Counts (20 terakhir) dalam window shift
-        vm.RecentProductionCounts = allCounts
-            .OrderByDescending(p => p.Timestamp)
+        // ✅ PERBAIKAN: Gunakan shiftJobRuns untuk akses relasi yang sudah ter-load
+        vm.RecentProductionCounts = shiftJobRuns
+            .SelectMany(j => j.ProductionCounts
+                .Where(p => p.Timestamp >= shiftWindow.Start && p.Timestamp <= shiftWindow.End)
+                .Select(p => new { ProductionCount = p, JobRun = j }))
+            .OrderByDescending(x => x.ProductionCount.Timestamp)
             .Take(20)
-            .Select(p => new ProductionCountViewModel
+            .Select(x => new ProductionCountViewModel
             {
-                Id = p.Id,
-                Timestamp = p.Timestamp,
-                GoodCount = p.GoodCount,
-                RejectCount = p.RejectCount,
-                RejectReason = p.RejectReason
+                Id = x.ProductionCount.Id,
+                Timestamp = x.ProductionCount.Timestamp,
+                GoodCount = x.ProductionCount.GoodCount,
+                RejectCount = x.ProductionCount.RejectCount,
+                RejectReason = x.ProductionCount.RejectReason,
+                // ✅ TAMBAHKAN: Data baru (formula akan diimplementasikan nanti)
+                PartCode = x.JobRun.WorkOrder != null && x.JobRun.WorkOrder.Product != null
+                    ? x.JobRun.WorkOrder.Product.MaterialCode
+                    : "-",
+                PlanningQty = x.JobRun.WorkOrder != null
+                    ? x.JobRun.WorkOrder.TargetQuantity
+                    : 0,
+                AchieveRate = 0, // ✅ Formula akan diimplementasikan nanti
+                RejectionRate = 0, // ✅ Formula akan diimplementasikan nanti
+                LoadingTime = x.JobRun.StartTime != null
+                    ? (x.ProductionCount.Timestamp - x.JobRun.StartTime)
+                    : null
             })
             .ToList();
 
@@ -753,7 +823,9 @@ public class MachineController : Controller
         var shiftWindow = (Start: shiftStart, End: shiftEnd, ShiftDate: shiftDateForWindow, Code: selectedShift?.Name ?? "A", Key: $"{shiftDateForWindow:yyyy-MM-dd}|{selectedShift?.Id ?? 0}");
         var effectiveNow = now < shiftWindow.End ? now : shiftWindow.End;
 
+        // ✅ PERBAIKAN: Gunakan AsNoTracking() untuk menghindari error saat mapping property Dandori yang belum ada
         var machine = await _context.Machines
+            .AsNoTracking()
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.DowntimeEvents)
             .FirstOrDefaultAsync(m => m.Id == id);
@@ -937,6 +1009,48 @@ public class MachineController : Controller
             ? (noLoadingTime.TotalSeconds / totalShiftTime.TotalSeconds * 100)
             : 0;
 
+        // ✅ TAMBAHKAN: Hitung Dandori Duration untuk GetTimeMetrics (dengan error handling)
+        int? dandoriDurationSecondsForApi = null;
+        DateTime? dandoriStartTimeForApi = null;
+        DateTime? dandoriEndTimeForApi = null;
+        
+        if (activeJob != null)
+        {
+            try
+            {
+                // Coba akses property Dandori (jika kolom belum ada, akan return null)
+                dandoriStartTimeForApi = activeJob.DandoriStartTime;
+                dandoriEndTimeForApi = activeJob.DandoriEndTime;
+                var dandoriDurationSecondsStoredForApi = activeJob.DandoriDurationSeconds;
+                
+                if (dandoriStartTimeForApi.HasValue && dandoriEndTimeForApi.HasValue)
+                {
+                    // Dandori sudah selesai
+                    dandoriDurationSecondsForApi = (int)(dandoriEndTimeForApi.Value - dandoriStartTimeForApi.Value).TotalSeconds;
+                }
+                else if (dandoriStartTimeForApi.HasValue && !dandoriEndTimeForApi.HasValue)
+                {
+                    // Dandori sedang berjalan
+                    var currentTime = DateTime.Now;
+                    var baseDuration = dandoriDurationSecondsStoredForApi ?? 0;
+                    dandoriDurationSecondsForApi = baseDuration + (int)(currentTime - dandoriStartTimeForApi.Value).TotalSeconds;
+                }
+                else if (dandoriDurationSecondsStoredForApi.HasValue)
+                {
+                    // Hanya ada duration (backward compatibility)
+                    dandoriDurationSecondsForApi = dandoriDurationSecondsStoredForApi.Value;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Jika kolom Dandori belum ada di database, gunakan nilai default (null)
+                Console.WriteLine($"WARNING: Error saat mengakses property Dandori di GetTimeMetrics: {ex.Message}");
+                dandoriDurationSecondsForApi = null;
+                dandoriStartTimeForApi = null;
+                dandoriEndTimeForApi = null;
+            }
+        }
+
         // Return info tentang active job dan downtime untuk real-time calculation
         return Json(new
         {
@@ -966,7 +1080,11 @@ public class MachineController : Controller
             HasActiveDowntime = activeDowntime != null,
             LastStatusChangeTime = lastStatusChangeTime?.ToString("O"), // ISO 8601 format (backward compatibility)
             SinceLastChangeSeconds = sinceLastChangeSeconds, // ✅ TAMBAHKAN untuk sinkronisasi dengan Operator View
-            ActiveDowntimeStartTime = activeDowntime?.StartTime.ToString("O") // ISO 8601 format
+            ActiveDowntimeStartTime = activeDowntime?.StartTime.ToString("O"), // ISO 8601 format
+            // ✅ TAMBAHKAN: Dandori Duration
+            DandoriDurationSeconds = dandoriDurationSecondsForApi,
+            DandoriStartTime = dandoriStartTimeForApi?.ToString("O"), // ISO 8601 format
+            DandoriEndTime = dandoriEndTimeForApi?.ToString("O") // ISO 8601 format
         });
     }
 }
