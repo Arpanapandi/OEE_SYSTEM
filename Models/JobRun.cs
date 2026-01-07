@@ -13,6 +13,9 @@ public class JobRun
     public DateTime StartTime { get; set; }
     public DateTime? EndTime { get; set; }
 
+    // ✅ PERBAIKAN: Waktu terakhir status mesin berubah (untuk kalkulasi OEE duration)
+    public DateTime? LastStatusChangeTime { get; set; }
+
     public int OperatorId { get; set; }
     public User? Operator { get; set; }
 

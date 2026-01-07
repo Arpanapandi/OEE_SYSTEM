@@ -3,6 +3,7 @@ using OeeSystem.Data;
 using OeeSystem.Services;
 using OeeSystem.Hubs;
 using System.Threading;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,28 +18,159 @@ builder.Services.AddSignalR();
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
                      ?? "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDbV2;Trusted_Connection=True;MultipleActiveResultSets=true";
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+// Log connection string untuk debugging (tidak log password jika ada)
+var env = builder.Environment.EnvironmentName;
+var connectionStringForLog = connectionString.Contains("Password=") 
+    ? connectionString.Substring(0, connectionString.IndexOf("Password=")) + "Password=***" 
+    : connectionString;
+Console.WriteLine($"🔧 Environment: {env}");
+Console.WriteLine($"🔧 DefaultConnection: {connectionStringForLog}");
 
-// DbContext untuk db_HOSS
+// ✅ PERBAIKAN: Force LocalDB untuk DefaultConnection jika environment adalah Development
+// Atau jika connection string tidak mengandung server name yang valid
+if (env == "Development" || !connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+{
+    // Pastikan selalu gunakan LocalDB untuk development
+    if (!connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+    {
+    Console.WriteLine("🔄 Overriding connection string to use LocalDB for development...");
+    connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb;Trusted_Connection=True;MultipleActiveResultSets=true";
+    connectionStringForLog = connectionString;
+    Console.WriteLine($"🔧 Updated DefaultConnection: {connectionStringForLog}");
+    }
+}
+
+// ✅ Aktifkan retry policy untuk ApplicationDbContext (mengatasi transient failure)
+// Retry hanya untuk transient errors, bukan untuk connection errors
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(connectionString, sqlOptions =>
+    {
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 3, // Kurangi retry count untuk connection errors
+            maxRetryDelay: TimeSpan.FromSeconds(10), // Kurangi delay
+            errorNumbersToAdd: null);
+    }));
+
+// DbContext untuk db_HOSS - dengan fallback ke LocalDB untuk development
 var hossConnectionString = builder.Configuration.GetConnectionString("HossConnection")
-    ?? throw new InvalidOperationException("Connection string 'HossConnection' not found.");
+    ?? "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb_Hoss;Trusted_Connection=True;MultipleActiveResultSets=true";
+
+var hossConnectionStringForLog = hossConnectionString.Contains("Password=") 
+    ? hossConnectionString.Substring(0, hossConnectionString.IndexOf("Password=")) + "Password=***" 
+    : hossConnectionString;
+Console.WriteLine($"🔧 HossConnection: {hossConnectionStringForLog}");
+
+// ✅ PERBAIKAN: Force LocalDB untuk HossConnection jika environment adalah Development
+// Atau jika connection string tidak mengandung server name yang valid
+if (env == "Development" || !hossConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) || hossConnectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+{
+    // Pastikan selalu gunakan LocalDB untuk development
+    if (!hossConnectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+    {
+    Console.WriteLine("🔄 Overriding HossConnection to use LocalDB for development...");
+    hossConnectionString = "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb_Hoss;Trusted_Connection=True;MultipleActiveResultSets=true";
+    hossConnectionStringForLog = hossConnectionString;
+    Console.WriteLine($"🔧 Updated HossConnection: {hossConnectionStringForLog}");
+    }
+}
+
+// ✅ PERBAIKAN: Pastikan LocalDB instance running untuk Development
+if (env == "Development" || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+{
+    try
+    {
+        // Cek status LocalDB terlebih dahulu
+        var checkInfo = new ProcessStartInfo
+        {
+            FileName = "sqllocaldb",
+            Arguments = "info MSSQLLocalDB",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        
+        bool isRunning = false;
+        using (var checkProcess = Process.Start(checkInfo))
+        {
+            if (checkProcess != null)
+            {
+                var output = await checkProcess.StandardOutput.ReadToEndAsync();
+                await checkProcess.WaitForExitAsync();
+                isRunning = output.Contains("State: Running");
+            }
+        }
+        
+        // Jika tidak running, start LocalDB
+        if (!isRunning)
+        {
+            Console.WriteLine("🔄 LocalDB instance tidak berjalan, mencoba start...");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "sqllocaldb",
+            Arguments = "start MSSQLLocalDB",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        
+        using (var process = Process.Start(startInfo))
+        {
+            if (process != null)
+            {
+                await process.WaitForExitAsync();
+                    // Wait lebih lama untuk memastikan instance benar-benar ready
+                    await Task.Delay(5000);
+                    
+                    // Verify instance is running
+                    using (var verifyProcess = Process.Start(checkInfo))
+                    {
+                        if (verifyProcess != null)
+                        {
+                            var verifyOutput = await verifyProcess.StandardOutput.ReadToEndAsync();
+                            await verifyProcess.WaitForExitAsync();
+                            if (verifyOutput.Contains("State: Running"))
+                            {
+                                Console.WriteLine("✅ LocalDB instance started and verified");
+                            }
+                            else
+                            {
+                                Console.WriteLine("⚠️  Warning: LocalDB instance may not be running properly");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            Console.WriteLine("✅ LocalDB instance sudah berjalan");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"⚠️  Warning: Could not auto-start LocalDB: {ex.Message}");
+        Console.WriteLine("   Please run manually: sqllocaldb start MSSQLLocalDB");
+    }
+}
 
 // ✅ Aktifkan retry policy untuk koneksi ke DB_HOSS (mengatasi transient failure)
 builder.Services.AddDbContext<HossDbContext>(options =>
     options.UseSqlServer(hossConnectionString, sqlOptions =>
     {
         sqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
+            maxRetryCount: 3, // Kurangi retry count untuk connection errors
+            maxRetryDelay: TimeSpan.FromSeconds(10), // Kurangi delay
             errorNumbersToAdd: null);
     }));
 
 // OEE service
 builder.Services.AddScoped<IOeeService, OeeService>();
 
-// Background service untuk Dandori timer
-builder.Services.AddHostedService<DandoriTimerService>();
+// ❌ REMOVED: Background service untuk Dandori timer
+// Timer sekarang dihitung di client-side, bukan server-side (Event-Driven Architecture)
+// builder.Services.AddHostedService<DandoriTimerService>();
 
 var app = builder.Build();
 
@@ -69,13 +201,113 @@ using (var scope = app.Services.CreateScope())
         //db.Database.EnsureDeleted();
         //db.Database.EnsureCreated();
         
-        // Test database connection with timeout
+        // ✅ PERBAIKAN: Test database connection with timeout dan auto-start LocalDB
         bool canConnect = false;
         try
         {
-            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            // ✅ PERBAIKAN: Jika menggunakan LocalDB, pastikan instance berjalan
+            if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    // Cek apakah LocalDB instance berjalan
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = "sqllocaldb",
+                        Arguments = "info MSSQLLocalDB",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    using (var process = Process.Start(startInfo))
+                    {
+                        if (process != null)
+                        {
+                            var output = await process.StandardOutput.ReadToEndAsync();
+                            await process.WaitForExitAsync();
+                            
+                            // Jika instance tidak running, coba start
+                            if (!output.Contains("State: Running"))
+                            {
+                                Console.WriteLine("🔄 LocalDB instance tidak berjalan, mencoba start...");
+                                var startProcess = new ProcessStartInfo
+                                {
+                                    FileName = "sqllocaldb",
+                                    Arguments = "start MSSQLLocalDB",
+                                    RedirectStandardOutput = true,
+                                    RedirectStandardError = true,
+                                    UseShellExecute = false,
+                                    CreateNoWindow = true
+                                };
+                                
+                                using (var startProc = Process.Start(startProcess))
+                                {
+                                    if (startProc != null)
+                                    {
+                                        await startProc.WaitForExitAsync();
+                                        // Wait lebih lama untuk memastikan instance benar-benar ready
+                                        await Task.Delay(5000);
+                                        
+                                        // Verify instance is running
+                                        var verifyInfo = new ProcessStartInfo
+                                        {
+                                            FileName = "sqllocaldb",
+                                            Arguments = "info MSSQLLocalDB",
+                                            RedirectStandardOutput = true,
+                                            RedirectStandardError = true,
+                                            UseShellExecute = false,
+                                            CreateNoWindow = true
+                                        };
+                                        
+                                        using (var verifyProc = Process.Start(verifyInfo))
+                                        {
+                                            if (verifyProc != null)
+                                            {
+                                                var verifyOutput = await verifyProc.StandardOutput.ReadToEndAsync();
+                                                await verifyProc.WaitForExitAsync();
+                                                
+                                                if (verifyOutput.Contains("State: Running"))
+                                                {
+                                                    Console.WriteLine("✅ LocalDB instance started and verified");
+                                                }
+                                                else
+                                                {
+                                                    Console.WriteLine("⚠️  Warning: LocalDB instance may not be running properly");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine("✅ LocalDB instance sudah berjalan");
+                            }
+                        }
+                    }
+                }
+                catch (Exception localDbEx)
+                {
+                    Console.WriteLine($"⚠️  Warning: Tidak bisa auto-start LocalDB: {localDbEx.Message}");
+                    Console.WriteLine("   Silakan jalankan manual: sqllocaldb start MSSQLLocalDB");
+                }
+            }
+            
+            // Untuk LocalDB, berikan waktu lebih lama untuk start instance
+            var timeout = connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase) 
+                ? TimeSpan.FromSeconds(30) 
+                : TimeSpan.FromSeconds(10);
+            
+            Console.WriteLine($"🔄 Testing database connection (timeout: {timeout.TotalSeconds}s)...");
+            using (var cts = new CancellationTokenSource(timeout))
             {
                 canConnect = await db.Database.CanConnectAsync(cts.Token);
+                if (canConnect)
+                {
+                    Console.WriteLine("✅ Database connection successful!");
+                }
             }
         }
         catch (OperationCanceledException)
@@ -85,16 +317,112 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"WARNING: Tidak dapat terhubung ke database: {ex.Message}");
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
+            Console.WriteLine($"❌ WARNING: Tidak dapat terhubung ke database");
+            Console.WriteLine($"   Connection String: {connectionStringForLog}");
+            Console.WriteLine($"   Error: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
+            }
+            
+            // Berikan saran berdasarkan connection string
+            if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("");
+                Console.WriteLine("💡 Saran untuk LocalDB:");
+                Console.WriteLine("   1. Pastikan SQL Server LocalDB sudah terinstall");
+                Console.WriteLine("   2. Cek LocalDB instance: sqllocaldb info MSSQLLocalDB");
+                Console.WriteLine("   3. Start LocalDB instance: sqllocaldb start MSSQLLocalDB");
+                Console.WriteLine("   4. Atau install SQL Server Express LocalDB dari Microsoft");
+                Console.WriteLine("   5. Atau jalankan: RUN-DEV.bat untuk setup otomatis");
+            }
+            else
+            {
+                Console.WriteLine("");
+                Console.WriteLine("💡 Saran:");
+                Console.WriteLine("   1. Pastikan SQL Server berjalan dan bisa diakses");
+                Console.WriteLine("   2. Cek connection string di appsettings.json");
+                Console.WriteLine("   3. Untuk development offline, gunakan LocalDB:");
+                Console.WriteLine("      - Ubah appsettings.json ke LocalDB");
+                Console.WriteLine("      - Atau set ASPNETCORE_ENVIRONMENT=Development");
+                Console.WriteLine("      - Atau jalankan: RUN-DEV.bat");
+            }
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
             canConnect = false;
         }
         
         if (!canConnect)
         {
-            Console.WriteLine("WARNING: Tidak dapat terhubung ke database. Pastikan SQL Server berjalan dan connection string benar.");
-            Console.WriteLine("INFO: Aplikasi akan berjalan tanpa database. Fitur yang memerlukan database mungkin tidak berfungsi.");
+            Console.WriteLine("");
+            Console.WriteLine("🔄 Mencoba membuat database...");
+            
+            // Coba buat database jika belum ada (untuk development atau local SQL Server)
+            try
+            {
+                Console.WriteLine("   Attempting to create database...");
+                
+                // Untuk LocalDB, tambahkan retry logic
+                if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+                {
+                    var createRetries = 3;
+                    var createRetryDelay = TimeSpan.FromSeconds(2);
+                    bool dbCreated = false;
+                    
+                    for (int retry = 1; retry <= createRetries; retry++)
+                    {
+                        try
+                        {
+                            await db.Database.EnsureCreatedAsync();
+                            dbCreated = true;
+                            Console.WriteLine($"   ✅ Database created successfully! (attempt {retry})");
+                            break;
+                        }
+                        catch (Exception createEx)
+                        {
+                            if (retry < createRetries)
+                            {
+                                Console.WriteLine($"   ⚠️  Attempt {retry} failed: {createEx.Message}, retrying in {createRetryDelay.TotalSeconds}s...");
+                                await Task.Delay(createRetryDelay);
         }
         else
+                            {
+                                throw; // Re-throw on last attempt
+                            }
+                        }
+                    }
+                    
+                    if (dbCreated)
+                    {
+                        canConnect = true; // Set ke true setelah database dibuat
+                    }
+                }
+                else
+                {
+                    await db.Database.EnsureCreatedAsync();
+                    Console.WriteLine("   ✅ Database created successfully!");
+                    canConnect = true; // Set ke true setelah database dibuat
+                }
+            }
+            catch (Exception createEx)
+            {
+                Console.WriteLine("═══════════════════════════════════════════════════════════");
+                Console.WriteLine($"❌ ERROR: Gagal membuat database");
+                Console.WriteLine($"   Error: {createEx.Message}");
+                if (createEx.InnerException != null)
+                {
+                    Console.WriteLine($"   Inner Exception: {createEx.InnerException.Message}");
+                    Console.WriteLine($"   Inner StackTrace: {createEx.InnerException.StackTrace}");
+                }
+                Console.WriteLine($"   StackTrace: {createEx.StackTrace}");
+                Console.WriteLine("");
+                Console.WriteLine("⚠️  Aplikasi akan berjalan tanpa database.");
+                Console.WriteLine("   Fitur yang memerlukan database mungkin tidak berfungsi.");
+                Console.WriteLine("═══════════════════════════════════════════════════════════");
+            }
+        }
+        
+        if (canConnect)
         {
             // ✅ TAMBAHKAN: Tambahkan kolom Dandori ke tabel JobRuns TERLEBIH DAHULU (sebelum query apapun)
             // Ini penting untuk menghindari error "Token 2000000 is not valid" saat EF Core mencoba memetakan property Dandori
@@ -140,6 +468,12 @@ using (var scope = app.Services.CreateScope())
                         IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedJmlKomponen')
                         BEGIN
                             ALTER TABLE JobRuns ADD ScannedJmlKomponen INT NULL;
+                        END
+
+                        -- ✅ PERBAIKAN: Kolom LastStatusChangeTime untuk kalkulasi OEE duration
+                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'LastStatusChangeTime')
+                        BEGIN
+                            ALTER TABLE JobRuns ADD LastStatusChangeTime DATETIME2 NULL;
                         END
                     END");
                 
@@ -191,6 +525,66 @@ using (var scope = app.Services.CreateScope())
             catch (Exception ex)
             {
                 Console.WriteLine($"WARNING: Error saat membuat tabel ProductNgTypes: {ex.Message}");
+                // Jangan stop aplikasi, biarkan tetap berjalan
+            }
+
+            // Create SCW tables if not exists
+            try
+            {
+                // Create Scw4MTypes table
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Scw4MTypes]') AND type in (N'U'))
+                    BEGIN
+                        CREATE TABLE [dbo].[Scw4MTypes] (
+                            [Id] INT NOT NULL PRIMARY KEY,
+                            [Name] NVARCHAR(100) NOT NULL,
+                            [Code] NVARCHAR(50) NOT NULL,
+                            [DisplayOrder] INT NOT NULL DEFAULT 0
+                        )
+                    END");
+
+                // Create ScwRemarks table
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ScwRemarks]') AND type in (N'U'))
+                    BEGIN
+                        CREATE TABLE [dbo].[ScwRemarks] (
+                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                            [Scw4MTypeId] INT NOT NULL,
+                            [Description] NVARCHAR(200) NOT NULL,
+                            [DisplayOrder] INT NOT NULL DEFAULT 0,
+                            CONSTRAINT [FK_ScwRemarks_Scw4MTypes] FOREIGN KEY ([Scw4MTypeId]) 
+                                REFERENCES [dbo].[Scw4MTypes] ([Id]) ON DELETE NO ACTION
+                        )
+                    END");
+
+                // Create ScwEvents table
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ScwEvents]') AND type in (N'U'))
+                    BEGIN
+                        CREATE TABLE [dbo].[ScwEvents] (
+                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                            [JobRunId] INT NOT NULL,
+                            [Scw4MTypeId] INT NOT NULL,
+                            [ScwRemarkId] INT NOT NULL,
+                            [MachineId] NVARCHAR(4) NOT NULL,
+                            [StartTime] DATETIME2 NOT NULL,
+                            [EndTime] DATETIME2 NULL,
+                            [DurationSeconds] FLOAT NOT NULL DEFAULT 0,
+                            [AdditionalNotes] NVARCHAR(MAX) NULL,
+                            CONSTRAINT [FK_ScwEvents_JobRuns] FOREIGN KEY ([JobRunId]) 
+                                REFERENCES [dbo].[JobRuns] ([Id]) ON DELETE NO ACTION,
+                            CONSTRAINT [FK_ScwEvents_Scw4MTypes] FOREIGN KEY ([Scw4MTypeId]) 
+                                REFERENCES [dbo].[Scw4MTypes] ([Id]) ON DELETE NO ACTION,
+                            CONSTRAINT [FK_ScwEvents_ScwRemarks] FOREIGN KEY ([ScwRemarkId]) 
+                                REFERENCES [dbo].[ScwRemarks] ([Id]) ON DELETE NO ACTION
+                        )
+                    END");
+
+                Console.WriteLine("INFO: Tabel SCW (Scw4MTypes, ScwRemarks, ScwEvents) sudah dibuat atau sudah ada");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat membuat tabel SCW: {ex.Message}");
                 // Jangan stop aplikasi, biarkan tetap berjalan
             }
 
@@ -476,6 +870,59 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 
+    // Seed SCW 4M Types jika belum ada
+    if (!db.Scw4MTypes.Any())
+    {
+        db.Scw4MTypes.AddRange(
+            new OeeSystem.Models.Scw4MType { Id = 1, Name = "Material", Code = "MATERIAL", DisplayOrder = 1 },
+            new OeeSystem.Models.Scw4MType { Id = 2, Name = "Method", Code = "METHOD", DisplayOrder = 2 },
+            new OeeSystem.Models.Scw4MType { Id = 3, Name = "Machine", Code = "MACHINE", DisplayOrder = 3 },
+            new OeeSystem.Models.Scw4MType { Id = 4, Name = "Man", Code = "MAN", DisplayOrder = 4 },
+            new OeeSystem.Models.Scw4MType { Id = 5, Name = "No Problem", Code = "NO_PROBLEM", DisplayOrder = 5 }
+        );
+        db.SaveChanges();
+    }
+
+    // Seed SCW Remarks sesuai spesifikasi - Pastikan data selalu ada
+    try
+    {
+        // Hapus data lama jika ada untuk memastikan data fresh
+        if (db.ScwRemarks.Any())
+        {
+            db.ScwRemarks.RemoveRange(db.ScwRemarks);
+            db.SaveChanges();
+        }
+        
+        // Tambahkan data baru
+        db.ScwRemarks.AddRange(
+            // 1. Material (Id = 1)
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 1, Description = "Rejection", DisplayOrder = 1 },
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 1, Description = "Material Shortage", DisplayOrder = 2 },
+            
+            // 2. Method (Id = 2)
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 2, Description = "SOP Tak Sesuai Standar", DisplayOrder = 1 },
+            
+            // 3. Machine (Id = 3)
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 3, Description = "Problem Mesin", DisplayOrder = 1 },
+            
+            // 4. Man (Id = 4)
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Sakit", DisplayOrder = 1 },
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Izin", DisplayOrder = 2 },
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Alpha", DisplayOrder = 3 },
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Cuti", DisplayOrder = 4 },
+            
+            // 5. No Problem (Id = 5)
+            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 5, Description = "No Problem", DisplayOrder = 1 }
+        );
+        db.SaveChanges();
+        Console.WriteLine("INFO: SCW Remarks data seeded successfully");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"WARNING: Error saat seeding SCW Remarks: {ex.Message}");
+        // Jangan stop aplikasi, biarkan tetap berjalan
+    }
+
     if (!db.JobRuns.Any())
     {
         try
@@ -634,6 +1081,99 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Auto-create HossDbContext database schema (untuk LocalDB development)
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var hossDb = scope.ServiceProvider.GetRequiredService<HossDbContext>();
+        
+        // Test database connection with timeout
+        bool canConnectHoss = false;
+        try
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            {
+                canConnectHoss = await hossDb.Database.CanConnectAsync(cts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("WARNING: HossDbContext connection timeout. Melanjutkan tanpa database...");
+            canConnectHoss = false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"WARNING: Tidak dapat terhubung ke HossDbContext: {ex.Message}");
+            canConnectHoss = false;
+        }
+        
+        if (!canConnectHoss)
+        {
+            Console.WriteLine("WARNING: Tidak dapat terhubung ke HossDbContext. Pastikan SQL Server berjalan dan connection string benar.");
+            Console.WriteLine("INFO: Aplikasi akan berjalan tanpa HossDbContext. Fitur yang memerlukan HossDbContext mungkin tidak berfungsi.");
+        }
+        else
+        {
+            // Auto-create database jika belum ada (untuk LocalDB)
+            try
+            {
+                // Cek apakah database menggunakan LocalDB (untuk development)
+                var currentHossConnectionString = builder.Configuration.GetConnectionString("HossConnection")
+                    ?? "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb_Hoss;Trusted_Connection=True;MultipleActiveResultSets=true";
+                
+                if (currentHossConnectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Untuk LocalDB, buat tabel komponen jika belum ada
+                    await hossDb.Database.ExecuteSqlRawAsync(@"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[komponen]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[komponen] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [Part_Number] NVARCHAR(100) NULL,
+                                [jml_komponen] INT NULL
+                            )
+                        END");
+                    
+                    // Seed dummy data untuk komponen jika belum ada (hanya untuk LocalDB)
+                    var komponenCount = await hossDb.Komponen.CountAsync();
+                    if (komponenCount == 0)
+                    {
+                        // Insert dummy data untuk testing
+                        await hossDb.Database.ExecuteSqlRawAsync(@"
+                            INSERT INTO [dbo].[komponen] ([Part_Number], [jml_komponen]) VALUES
+                            ('BRG-R12', 5),
+                            ('VLV-V55', 3),
+                            ('GRS-X100', 2),
+                            ('RUBBER-001', 4),
+                            ('PLASTIC-002', 6),
+                            ('METAL-003', 1)
+                        ");
+                        Console.WriteLine("INFO: Dummy data komponen berhasil ditambahkan ke HossDbContext (LocalDB)");
+                    }
+                    
+                    Console.WriteLine("INFO: HossDbContext database (LocalDB) sudah siap dengan tabel komponen");
+                }
+                else
+                {
+                    Console.WriteLine("INFO: HossDbContext menggunakan SQL Server production. Tabel akan menggunakan struktur dari database server.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat setup HossDbContext: {ex.Message}");
+                // Jangan stop aplikasi, biarkan tetap berjalan
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"ERROR saat setup HossDbContext: {ex.Message}");
+        Console.WriteLine($"StackTrace: {ex.StackTrace}");
+        // Jangan stop aplikasi, biarkan tetap berjalan
+    }
+}
+
 // Configure the HTTP request pipeline.
 // Enable detailed error pages in development untuk melihat error detail
 if (app.Environment.IsDevelopment())
@@ -645,6 +1185,33 @@ else
     app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
+
+// ✅ TAMBAHKAN: Global error handler untuk menangkap semua exception dan log ke console
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        // Log error ke console dengan detail lengkap
+        Console.WriteLine("═══════════════════════════════════════════════════════════");
+        Console.WriteLine($"❌ ERROR: {ex.Message}");
+        Console.WriteLine($"❌ Type: {ex.GetType().FullName}");
+        if (ex.InnerException != null)
+        {
+            Console.WriteLine($"❌ InnerException: {ex.InnerException.Message}");
+            Console.WriteLine($"❌ InnerException Type: {ex.InnerException.GetType().FullName}");
+        }
+        Console.WriteLine($"❌ StackTrace:");
+        Console.WriteLine(ex.StackTrace);
+        Console.WriteLine("═══════════════════════════════════════════════════════════");
+        
+        // Re-throw untuk ditangani oleh exception handler middleware
+        throw;
+    }
+});
 
 // Enable HTTPS redirection untuk mendukung HTTPS
 app.UseHttpsRedirection();

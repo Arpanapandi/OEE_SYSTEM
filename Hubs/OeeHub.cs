@@ -2,6 +2,14 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace OeeSystem.Hubs;
 
+/// <summary>
+/// SignalR Hub untuk OEE real-time updates (Event-Based Architecture)
+/// 
+/// PRINSIP:
+/// - Hanya broadcast START/STOP events, BUKAN update durasi tiap detik
+/// - Client menghitung durasi dari timestamp UTC
+/// - Server hanya menyimpan timestamp, bukan ticking timer
+/// </summary>
 public class OeeHub : Hub
 {
     public override async Task OnConnectedAsync()
@@ -20,21 +28,66 @@ public class OeeHub : Hub
         await base.OnDisconnectedAsync(exception);
     }
 
-    // Optional: Method untuk join group berdasarkan machineId (untuk broadcast selektif)
+    /// <summary>
+    /// Join group untuk machine tertentu (untuk broadcast selektif)
+    /// Group format: machine_{machineId}
+    /// </summary>
     public async Task JoinMachineGroup(int machineId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, $"machine_{machineId}");
+        Console.WriteLine($"✅ Client {Context.ConnectionId} joined machine_{machineId}");
     }
 
+    /// <summary>
+    /// Leave group untuk machine tertentu
+    /// </summary>
     public async Task LeaveMachineGroup(int machineId)
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"machine_{machineId}");
+        Console.WriteLine($"❌ Client {Context.ConnectionId} left machine_{machineId}");
     }
 
-    // Method untuk broadcast Dandori duration update
-    public async Task BroadcastDandoriUpdate(int machineId, int durationSeconds)
+    // ========== EVENT-BASED METHODS (Hanya untuk internal use dari Controller) ==========
+    // Methods ini dipanggil dari Controller via IHubContext, bukan dari client
+    
+    /// <summary>
+    /// Broadcast DandoriStarted event ke group machine
+    /// Event ini dipanggil saat Dandori dimulai
+    /// </summary>
+    public async Task BroadcastDandoriStarted(int machineId, DateTime startTimeUtc)
     {
-        await Clients.Group($"machine_{machineId}").SendAsync("DandoriDurationUpdated", machineId, durationSeconds);
+        await Clients.Group($"machine_{machineId}").SendAsync("DandoriStarted", machineId, startTimeUtc);
+        Console.WriteLine($"📡 Broadcasted DandoriStarted: machine_{machineId}, startTimeUtc: {startTimeUtc:O}");
+    }
+
+    /// <summary>
+    /// Broadcast DandoriStopped event ke group machine
+    /// Event ini dipanggil saat Dandori di-stop
+    /// </summary>
+    public async Task BroadcastDandoriStopped(int machineId, DateTime endTimeUtc, int totalSeconds)
+    {
+        await Clients.Group($"machine_{machineId}").SendAsync("DandoriStopped", machineId, endTimeUtc, totalSeconds);
+        Console.WriteLine($"📡 Broadcasted DandoriStopped: machine_{machineId}, endTimeUtc: {endTimeUtc:O}, totalSeconds: {totalSeconds}");
+    }
+
+    /// <summary>
+    /// Broadcast RunningStarted event ke group machine
+    /// Event ini dipanggil saat Machine Running dimulai
+    /// </summary>
+    public async Task BroadcastRunningStarted(int machineId, DateTime startTimeUtc)
+    {
+        await Clients.Group($"machine_{machineId}").SendAsync("RunningStarted", machineId, startTimeUtc);
+        Console.WriteLine($"📡 Broadcasted RunningStarted: machine_{machineId}, startTimeUtc: {startTimeUtc:O}");
+    }
+
+    /// <summary>
+    /// Broadcast RunningStopped event ke group machine
+    /// Event ini dipanggil saat Machine Running di-stop
+    /// </summary>
+    public async Task BroadcastRunningStopped(int machineId, DateTime endTimeUtc, int totalSeconds)
+    {
+        await Clients.Group($"machine_{machineId}").SendAsync("RunningStopped", machineId, endTimeUtc, totalSeconds);
+        Console.WriteLine($"📡 Broadcasted RunningStopped: machine_{machineId}, endTimeUtc: {endTimeUtc:O}, totalSeconds: {totalSeconds}");
     }
 }
 

@@ -79,7 +79,7 @@ public class MachineController : Controller
         return (start, end, baseDate, code!, key);
     }
 
-    public async Task<IActionResult> OeeDetail(string id, int? shiftId = null, DateTime? shiftDate = null, string? shiftCode = null)
+    public async Task<IActionResult> OeeDetail(string id, int? shiftId = null, DateTime? shiftDate = null, string? shiftCode = null, string? filterDate = null, string? filterTime = null)
     {
         var now = DateTime.Now;
         var today = now.Date;
@@ -142,9 +142,17 @@ public class MachineController : Controller
                 var shiftStartToday = today + selectedShift.StartTime;
                 var shiftEndToday = today.AddDays(1) + selectedShift.EndTime;
                 
-                // Jika shift dipilih secara eksplisit, tentukan shift hari ini atau kemarin
-                if (shiftId.HasValue)
+                // ✅ PERBAIKAN: Jika ada shiftDate dari parameter (sudah di-resolve oleh JavaScript), gunakan itu
+                if (shiftDate.HasValue)
                 {
+                    // shiftDate sudah di-resolve dengan logika shift melewati tengah malam
+                    shiftDateForWindow = shiftDate.Value.Date;
+                    shiftStart = shiftDateForWindow + selectedShift.StartTime;
+                    shiftEnd = shiftDateForWindow.AddDays(1) + selectedShift.EndTime;
+                }
+                else if (shiftId.HasValue)
+                {
+                    // Jika shift dipilih secara eksplisit, tentukan shift hari ini atau kemarin
                     // Jika sekarang masih dalam periode shift hari ini
                     if (now >= shiftStartToday && now < shiftEndToday)
                     {
@@ -200,7 +208,7 @@ public class MachineController : Controller
         var machine = await _context.Machines
             .AsNoTracking()
             .Include(m => m.JobRuns)
-                .ThenInclude(j => j.WorkOrder)
+                .ThenInclude(j => j.WorkOrder!)
                     .ThenInclude(w => w.Product)
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.Operator)
@@ -426,16 +434,36 @@ public class MachineController : Controller
             else
             {
                 // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
-                // Operating Time = JobRun duration - Unplanned Downtime duration (waktu running murni)
+                // ✅ PERBAIKAN: Reset durasi ke 00:00:00 saat shift baru dimulai
+                // Jika job start time sebelum shift start, gunakan shift start sebagai start time
                 var currentTime = DateTime.Now;
                 
-                // Hitung JobRun duration (dari start job sampai sekarang, dalam window shift)
-                var jobStartInShift = activeJob.StartTime < shiftWindow.Start 
-                    ? shiftWindow.Start 
-                    : activeJob.StartTime;
-                var jobEndInShift = currentTime > shiftWindow.End ? shiftWindow.End : currentTime;
-                var jobDuration = jobEndInShift - jobStartInShift;
-                if (jobDuration.TotalSeconds < 0) jobDuration = TimeSpan.Zero;
+                // ✅ PERBAIKAN: Cek apakah ada downtime yang baru saja selesai (rest break)
+                // Jika ada, gunakan waktu downtime end sebagai start time untuk running
+                var lastDowntime = activeJob.DowntimeEvents
+                    .Where(d => d.EndTime.HasValue)
+                    .OrderByDescending(d => d.EndTime)
+                    .FirstOrDefault();
+                
+                DateTime runningStartTime;
+                if (lastDowntime != null && lastDowntime.EndTime.HasValue)
+                {
+                    // ✅ PERBAIKAN: Gunakan waktu downtime end sebagai start time untuk running
+                    // Ini memastikan durasi running melanjutkan dari waktu rest break selesai
+                    runningStartTime = lastDowntime.EndTime.Value;
+                }
+                else
+                {
+                    // Jika tidak ada downtime sebelumnya, gunakan job start time atau shift start (mana yang lebih besar)
+                    runningStartTime = activeJob.StartTime < shiftWindow.Start 
+                        ? shiftWindow.Start 
+                        : activeJob.StartTime;
+                }
+                
+                // Hitung durasi dari running start time sampai sekarang (dalam window shift)
+                var runningEndInShift = currentTime > shiftWindow.End ? shiftWindow.End : currentTime;
+                var runningDuration = runningEndInShift - runningStartTime;
+                if (runningDuration.TotalSeconds < 0) runningDuration = TimeSpan.Zero;
                 
                 // Hitung total Unplanned downtime yang sudah selesai di job ini (dalam window shift)
                 var totalUnplannedDowntimeInShift = activeJob.DowntimeEvents
@@ -448,8 +476,8 @@ public class MachineController : Controller
                         return overlap.TotalSeconds;
                     });
                 
-                // Operating Time murni = JobRun duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
-                var operatingTimeSeconds = jobDuration.TotalSeconds - totalUnplannedDowntimeInShift;
+                // Operating Time murni = Running duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
+                var operatingTimeSeconds = runningDuration.TotalSeconds - totalUnplannedDowntimeInShift;
                 sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
                 
                 // LastChangeTime untuk display (backward compatibility)
@@ -599,9 +627,7 @@ public class MachineController : Controller
                     : 0,
                 AchieveRate = 0, // ✅ Formula akan diimplementasikan nanti
                 RejectionRate = 0, // ✅ Formula akan diimplementasikan nanti
-                LoadingTime = x.JobRun.StartTime != null
-                    ? (x.ProductionCount.Timestamp - x.JobRun.StartTime)
-                    : null
+                LoadingTime = (x.ProductionCount.Timestamp - x.JobRun.StartTime)
             })
             .ToList();
 
@@ -635,6 +661,32 @@ public class MachineController : Controller
         {
             // Jika tabel ManPowers belum ada (migration belum dijalankan), gunakan empty list
             ViewBag.ManPowers = new List<ManPower>();
+        }
+        
+        // ✅ TAMBAHKAN: Kirim shifts untuk filter dropdown
+        ViewBag.Shifts = await _context.Shifts
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+        
+        // ✅ TAMBAHKAN: Kirim SCW 4M Types untuk dropdown
+        try
+        {
+            if (await _context.Database.CanConnectAsync())
+            {
+                ViewBag.Scw4MTypes = await _context.Scw4MTypes
+                    .OrderBy(t => t.DisplayOrder)
+                    .ToListAsync();
+            }
+            else
+            {
+                ViewBag.Scw4MTypes = new List<Scw4MType>();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Jika tabel Scw4MTypes belum ada atau error, gunakan empty list
+            Console.WriteLine($"Warning: Error loading Scw4MTypes: {ex.Message}");
+            ViewBag.Scw4MTypes = new List<Scw4MType>();
         }
         
         // Status untuk action buttons
@@ -981,8 +1033,36 @@ public class MachineController : Controller
             else
             {
                 // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
+                // ✅ PERBAIKAN: Reset durasi ke 00:00:00 saat shift baru dimulai
+                // Jika job start time sebelum shift start, gunakan shift start sebagai start time
                 var currentTime = DateTime.Now;
-                var jobDuration = (currentTime - activeJob.StartTime).TotalSeconds;
+                
+                // ✅ PERBAIKAN: Cek apakah ada downtime yang baru saja selesai (rest break)
+                // Jika ada, gunakan waktu downtime end sebagai start time untuk running
+                var lastDowntime = activeJob.DowntimeEvents
+                    .Where(d => d.EndTime.HasValue)
+                    .OrderByDescending(d => d.EndTime)
+                    .FirstOrDefault();
+                
+                DateTime runningStartTime;
+                if (lastDowntime != null && lastDowntime.EndTime.HasValue)
+                {
+                    // ✅ PERBAIKAN: Gunakan waktu downtime end sebagai start time untuk running
+                    // Ini memastikan durasi running melanjutkan dari waktu rest break selesai
+                    runningStartTime = lastDowntime.EndTime.Value;
+                }
+                else
+                {
+                    // Jika tidak ada downtime sebelumnya, gunakan job start time atau shift start (mana yang lebih besar)
+                    runningStartTime = activeJob.StartTime < shiftWindow.Start 
+                        ? shiftWindow.Start 
+                        : activeJob.StartTime;
+                }
+                
+                // Hitung durasi dari running start time sampai sekarang (dalam window shift)
+                var runningEndInShift = currentTime > shiftWindow.End ? shiftWindow.End : currentTime;
+                var runningDuration = (runningEndInShift - runningStartTime).TotalSeconds;
+                if (runningDuration < 0) runningDuration = 0;
                 
                 // Hitung total Unplanned downtime yang sudah selesai di job ini
                 var totalUnplannedDowntimeSeconds = activeJob.DowntimeEvents
@@ -995,8 +1075,8 @@ public class MachineController : Controller
                         return overlap.TotalSeconds;
                     });
                 
-                // Operating Time murni = JobRun duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
-                var operatingTimeSeconds = jobDuration - totalUnplannedDowntimeSeconds;
+                // Operating Time murni = Running duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
+                var operatingTimeSeconds = runningDuration - totalUnplannedDowntimeSeconds;
                 sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
                 
                 // LastStatusChangeTime untuk display (backward compatibility)

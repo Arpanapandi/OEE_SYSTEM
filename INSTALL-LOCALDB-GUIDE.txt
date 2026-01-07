@@ -1,0 +1,47 @@
+========================================
+  PANDUAN INSTALL LOCALDB
+  Via Visual Studio Installer
+========================================
+
+LANGKAH-LANGKAH:
+
+1. Di Visual Studio Installer yang sudah terbuka:
+   - Tutup dialog error (klik "Close")
+   
+2. Klik tombol "Modify" pada Visual Studio yang terinstall
+   (Biasanya Visual Studio 2022 atau versi lainnya)
+
+3. Setelah jendela Modify terbuka:
+   - Klik tab "Individual Components" di bagian atas
+   (Bukan "Workloads" atau "Language packs")
+
+4. Di tab "Individual Components":
+   - Gunakan kotak pencarian di bagian atas
+   - Ketik: "LocalDB" atau "SQL Server Express LocalDB"
+   - Atau scroll ke bagian "Database" atau "SDKs, libraries, and frameworks"
+   - Centang checkbox "SQL Server Express LocalDB"
+
+5. Klik tombol "Modify" di kanan bawah jendela
+   (Bukan tombol Cancel atau Close)
+
+6. Tunggu proses install selesai:
+   - Progress bar akan menunjukkan status
+   - Waktu install: ~1-2 menit
+   - Jangan tutup installer selama proses
+
+7. Setelah install selesai:
+   - Tutup Visual Studio Installer
+   - Restart command prompt/PowerShell
+   - Jalankan: RUN-DEV.bat
+
+========================================
+  CATATAN PENTING
+========================================
+
+✓ Pastikan memilih "Individual Components", bukan "Workloads"
+✓ Centang "SQL Server Express LocalDB" (bukan yang lain)
+✓ Restart command prompt setelah install selesai
+✓ Jalankan RUN-DEV.bat untuk setup dan run aplikasi
+
+========================================
+

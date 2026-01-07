@@ -5,6 +5,9 @@ using OeeSystem.Models;
 using OeeSystem.Services;
 using OeeSystem.Models.ViewModels;
 using ViewModels = OeeSystem.Models.ViewModels;
+using Microsoft.Extensions.Configuration;
+using System.Threading;
+using System.Diagnostics;
 
 namespace OeeSystem.Controllers;
 
@@ -13,12 +16,14 @@ public class HomeController : Controller
     private readonly ApplicationDbContext _context;
     private readonly IOeeService _oeeService;
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
 
-    public HomeController(ApplicationDbContext context, IOeeService oeeService, IWebHostEnvironment environment)
+    public HomeController(ApplicationDbContext context, IOeeService oeeService, IWebHostEnvironment environment, IConfiguration configuration)
     {
         _context = context;
         _oeeService = oeeService;
         _environment = environment;
+        _configuration = configuration;
     }
     
     // ✅ Helper method untuk memverifikasi file image ada di filesystem (optional, untuk debugging)
@@ -54,6 +59,149 @@ public class HomeController : Controller
         {
             var now = DateTime.Now;
             var today = now.Date;
+
+            // ✅ PERBAIKAN: Cek database connection terlebih dahulu dengan retry logic yang lebih robust
+            var maxRetries = 5; // Increase retries
+            var retryDelay = TimeSpan.FromSeconds(3); // Increase delay
+            bool canConnect = false;
+            Exception lastException = null;
+            var connectionString = _configuration?.GetConnectionString("DefaultConnection") ?? "";
+            var isLocalDb = connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase);
+            
+            // Jika LocalDB, pastikan instance running sebelum retry
+            if (isLocalDb)
+            {
+                try
+                {
+                    // Quick check: try to start LocalDB if not running
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = "sqllocaldb",
+                        Arguments = "start MSSQLLocalDB",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    using (var process = Process.Start(startInfo))
+                    {
+                        if (process != null)
+                        {
+                            await process.WaitForExitAsync();
+                            await Task.Delay(2000); // Wait for instance to fully start
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore if sqllocaldb command fails
+                }
+            }
+            
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    // Increase timeout for LocalDB
+                    var timeout = isLocalDb ? TimeSpan.FromSeconds(15) : TimeSpan.FromSeconds(10);
+                    using (var cts = new CancellationTokenSource(timeout))
+                    {
+                        canConnect = await _context.Database.CanConnectAsync(cts.Token);
+                        if (canConnect)
+                        {
+                            Console.WriteLine($"✅ Database connection successful (attempt {attempt})");
+                            break; // Success, exit retry loop
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    lastException = new Exception("Database connection timeout. Pastikan LocalDB berjalan: sqllocaldb start MSSQLLocalDB");
+                    if (attempt < maxRetries)
+                    {
+                        Console.WriteLine($"⚠️  Database connection timeout (attempt {attempt}/{maxRetries}), retrying in {retryDelay.TotalSeconds}s...");
+                        await Task.Delay(retryDelay);
+                        continue;
+                    }
+                }
+                catch (Exception dbEx)
+                {
+                    lastException = dbEx;
+                    if (attempt < maxRetries)
+                    {
+                        Console.WriteLine($"⚠️  Database connection error (attempt {attempt}/{maxRetries}): {dbEx.Message}");
+                        if (dbEx.InnerException != null)
+                        {
+                            Console.WriteLine($"   Inner: {dbEx.InnerException.Message}");
+                        }
+                        Console.WriteLine($"   Retrying in {retryDelay.TotalSeconds}s...");
+                        await Task.Delay(retryDelay);
+                        continue;
+                    }
+                }
+            }
+            
+            if (!canConnect)
+            {
+                var env = _environment?.EnvironmentName ?? "Unknown";
+                // connectionString dan isLocalDb sudah dideklarasikan di scope di atas
+                
+                // ✅ PERBAIKAN: Jika Development mode tapi tidak menggunakan LocalDB, beri warning
+                if (env == "Development" && !isLocalDb)
+                {
+                    var errorMsg = "⚠️  KONFIGURASI SALAH: Environment adalah Development tapi tidak menggunakan LocalDB!\n\n";
+                    errorMsg += "💡 SOLUSI:\n";
+                    errorMsg += "   1. Pastikan ASPNETCORE_ENVIRONMENT=Development\n";
+                    errorMsg += "   2. Pastikan appsettings.Development.json menggunakan LocalDB\n";
+                    errorMsg += "   3. Atau jalankan: RUN-DEV.bat (akan auto-setup LocalDB)\n";
+                    errorMsg += "   4. Restart aplikasi setelah perubahan\n\n";
+                    errorMsg += $"Current Environment: {env}\n";
+                    errorMsg += $"Current Connection: {connectionString.Substring(0, Math.Min(50, connectionString.Length))}...\n\n";
+                    
+                    if (lastException != null)
+                    {
+                        errorMsg += $"Detail Error: {lastException.Message}";
+                    }
+                    
+                    throw new Exception(errorMsg);
+                }
+                
+                var errorMsg2 = "Database tidak dapat diakses setelah beberapa kali percobaan.\n\n";
+                if (isLocalDb)
+                {
+                    errorMsg2 += "💡 SOLUSI untuk LocalDB:\n";
+                    errorMsg2 += "   1. Pastikan LocalDB berjalan: sqllocaldb info MSSQLLocalDB\n";
+                    errorMsg2 += "   2. Start LocalDB: sqllocaldb start MSSQLLocalDB\n";
+                    errorMsg2 += "   3. Verifikasi: sqllocaldb info MSSQLLocalDB (harus menunjukkan State: Running)\n";
+                    errorMsg2 += "   4. Restart aplikasi setelah LocalDB di-start\n";
+                    errorMsg2 += "   5. Atau jalankan: RUN-DEV.bat untuk auto-setup\n\n";
+                    errorMsg2 += $"Environment: {env}\n";
+                    errorMsg2 += $"Connection String: (localdb)\\MSSQLLocalDB\n\n";
+                }
+                else
+                {
+                    errorMsg2 += "💡 SOLUSI:\n";
+                    errorMsg2 += "   1. Pastikan SQL Server berjalan dan dapat diakses\n";
+                    errorMsg2 += "   2. Cek connection string di appsettings.json\n";
+                    errorMsg2 += "   3. Untuk development offline, gunakan LocalDB:\n";
+                    errorMsg2 += "      - Set ASPNETCORE_ENVIRONMENT=Development\n";
+                    errorMsg2 += "      - Atau jalankan: RUN-DEV.bat\n\n";
+                    errorMsg2 += $"Environment: {env}\n";
+                    errorMsg2 += $"Connection String: {connectionString.Substring(0, Math.Min(50, connectionString.Length))}...\n\n";
+                }
+                
+                if (lastException != null)
+                {
+                    errorMsg2 += $"Detail Error: {lastException.Message}";
+                    if (lastException.InnerException != null)
+                    {
+                        errorMsg2 += $"\nInner Exception: {lastException.InnerException.Message}";
+                    }
+                }
+                
+                throw new Exception(errorMsg2);
+            }
 
             // Ambil semua shifts untuk dropdown
             var shifts = await _context.Shifts.ToListAsync();
@@ -636,29 +784,28 @@ public class HomeController : Controller
         }
         catch (Exception ex)
         {
-            // Log error untuk debugging
-            System.Diagnostics.Debug.WriteLine($"Error di HomeController.Index: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"StackTrace: {ex.StackTrace}");
+            // Log error ke console untuk debugging
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
+            Console.WriteLine($"❌ ERROR di HomeController.Index: {ex.Message}");
+            Console.WriteLine($"❌ Type: {ex.GetType().FullName}");
+            Console.WriteLine($"❌ StackTrace: {ex.StackTrace}");
             if (ex.InnerException != null)
             {
-                System.Diagnostics.Debug.WriteLine($"InnerException: {ex.InnerException.Message}");
+                Console.WriteLine($"❌ InnerException: {ex.InnerException.Message}");
+                Console.WriteLine($"❌ InnerException Type: {ex.InnerException.GetType().FullName}");
+                Console.WriteLine($"❌ InnerException StackTrace: {ex.InnerException.StackTrace}");
             }
+            Console.WriteLine("═══════════════════════════════════════════════════════════");
             
-            // Jika development, throw exception untuk melihat detail error
-            var env = HttpContext.RequestServices.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
-            if (env.IsDevelopment())
-            {
-                // Return error view dengan detail error untuk development
-                return View("Error", new ViewModels.ErrorViewModel 
-                { 
-                    RequestId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
-                    ErrorMessage = ex.Message,
-                    StackTrace = ex.StackTrace
-                });
-            }
+            // Return error view dengan detail error (baik development maupun production)
+            var errorViewModel = new ViewModels.ErrorViewModel 
+            { 
+                RequestId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                ErrorMessage = ex.Message + (ex.InnerException != null ? $"\n\nInner Exception: {ex.InnerException.Message}" : ""),
+                StackTrace = ex.StackTrace
+            };
             
-            // Jika production, redirect ke error page
-            return RedirectToAction("Error");
+            return View("Error", errorViewModel);
         }
     }
 
@@ -1381,13 +1528,64 @@ public class HomeController : Controller
         if (exceptionHandlerPathFeature != null)
         {
             var exception = exceptionHandlerPathFeature.Error;
-            errorViewModel.ErrorMessage = exception.Message;
+            var errorMessage = exception.Message;
             errorViewModel.StackTrace = exception.StackTrace;
             
-            if (exception.InnerException != null)
+            // Deteksi error retry yang melebihi batas
+            if (errorMessage.Contains("maximum number of retries") || errorMessage.Contains("SqlServerRetryingExecutionStrategy"))
             {
-                errorViewModel.ErrorMessage += $"\n\nInner Exception: {exception.InnerException.Message}";
+                errorMessage = "❌ Database Connection Error: Gagal terhubung ke database setelah beberapa kali percobaan.\n\n";
+                
+                // ✅ PERBAIKAN: Cek apakah ini LocalDB error dengan lebih akurat
+                var isLocalDbError = false;
+                var connectionString = _configuration?.GetConnectionString("DefaultConnection") ?? "";
+                
+                // Cek dari connection string atau exception message
+                if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase) ||
+                    exception.Message.Contains("(localdb)", StringComparison.OrdinalIgnoreCase) ||
+                    exception.InnerException?.Message?.Contains("(localdb)", StringComparison.OrdinalIgnoreCase) == true ||
+                    exception.Message.Contains("localdb", StringComparison.OrdinalIgnoreCase) ||
+                    exception.InnerException?.Message?.Contains("localdb", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    isLocalDbError = true;
+                }
+                
+                if (isLocalDbError)
+                {
+                    errorMessage += "💡 SOLUSI untuk LocalDB:\n";
+                    errorMessage += "   1. Pastikan SQL Server LocalDB sudah terinstall\n";
+                    errorMessage += "   2. Cek status: sqllocaldb info MSSQLLocalDB\n";
+                    errorMessage += "   3. Start LocalDB: sqllocaldb start MSSQLLocalDB\n";
+                    errorMessage += "   4. Atau install LocalDB: https://go.microsoft.com/fwlink/?LinkID=866658\n";
+                    errorMessage += "   5. Restart aplikasi setelah LocalDB di-start\n\n";
+                    errorMessage += "   💡 TIP: Jalankan RUN-DEV.bat untuk auto-setup LocalDB\n\n";
+                }
+                else
+                {
+                    errorMessage += "💡 SOLUSI:\n";
+                    errorMessage += "   1. Pastikan SQL Server berjalan dan bisa diakses\n";
+                    errorMessage += "   2. Cek connection string di appsettings.json\n";
+                    errorMessage += "   3. Untuk development offline, gunakan LocalDB:\n";
+                    errorMessage += "      - Set ASPNETCORE_ENVIRONMENT=Development\n";
+                    errorMessage += "      - Atau jalankan: RUN-DEV.bat\n\n";
+                }
+                
+                errorMessage += "Detail Error:\n" + exception.Message;
+                if (exception.InnerException != null)
+                {
+                    errorMessage += $"\n\nInner Exception: {exception.InnerException.Message}";
+                }
             }
+            else
+            {
+                errorMessage = exception.Message;
+                if (exception.InnerException != null)
+                {
+                    errorMessage += $"\n\nInner Exception: {exception.InnerException.Message}";
+                }
+            }
+            
+            errorViewModel.ErrorMessage = errorMessage;
         }
         
         return View(errorViewModel);

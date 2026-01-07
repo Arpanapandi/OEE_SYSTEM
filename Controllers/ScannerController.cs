@@ -340,7 +340,12 @@ public class ScannerController : ControllerBase
         [FromForm] string machineId,
         [FromForm] string partNumber,
         [FromForm] string lotNumber,
-        [FromForm] int komponenId)
+        [FromForm] int komponenId,
+        [FromForm] int? manPowerId = null,
+        [FromForm] string? namaCompound = null,
+        [FromForm] string? beratAct = null,
+        [FromForm] string? injection = null,
+        [FromForm] int? durasiSeconds = null)
     {
         try
         {
@@ -411,7 +416,9 @@ public class ScannerController : ControllerBase
                     ScannedPartNumber = partNumber,
                     ScannedLotNumber = lotNumber,
                     ScannedKomponenId = komponenId,
-                    ScannedJmlKomponen = komponen.JmlKomponen
+                    ScannedJmlKomponen = komponen.JmlKomponen,
+                    // ✅ TAMBAHKAN: Simpan Man Power
+                    ManPowerId = manPowerId
                 };
 
                 _context.JobRuns.Add(activeJob);
@@ -423,6 +430,11 @@ public class ScannerController : ControllerBase
                 activeJob.ScannedLotNumber = lotNumber;
                 activeJob.ScannedKomponenId = komponenId;
                 activeJob.ScannedJmlKomponen = komponen.JmlKomponen;
+                // ✅ TAMBAHKAN: Update Man Power jika ada
+                if (manPowerId.HasValue)
+                {
+                    activeJob.ManPowerId = manPowerId;
+                }
             }
 
             await _context.SaveChangesAsync();
@@ -434,6 +446,7 @@ public class ScannerController : ControllerBase
                 jobRunId = activeJob.Id,
                 partNumber,
                 lotNumber,
+                durasiSeconds = durasiSeconds ?? 0,
                 komponen = new
                 {
                     id = komponenId,

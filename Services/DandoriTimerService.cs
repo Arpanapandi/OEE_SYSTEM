@@ -1,3 +1,8 @@
+// ❌ DEPRECATED: Service ini tidak digunakan lagi karena menggunakan Event-Driven Architecture
+// Timer sekarang dihitung di client-side, bukan server-side
+// File ini dipertahankan untuk referensi, tapi tidak di-register di Program.cs
+
+/*
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using OeeSystem.Data;
@@ -46,8 +51,9 @@ public class DandoriTimerService : BackgroundService
                         {
                             try
                             {
+                                // ✅ PERBAIKAN: Broadcast tanpa cancellation token untuk memastikan update terkirim
                                 await hubContext.Clients.Group($"machine_{machineId}")
-                                    .SendAsync("DandoriDurationUpdated", machineId, totalSeconds, stoppingToken);
+                                    .SendAsync("DandoriDurationUpdated", machineId, totalSeconds);
                                 
                                 // Log setiap 10 detik untuk debugging
                                 if (totalSeconds % 10 == 0)
@@ -77,4 +83,5 @@ public class DandoriTimerService : BackgroundService
         }
     }
 }
+*/
 

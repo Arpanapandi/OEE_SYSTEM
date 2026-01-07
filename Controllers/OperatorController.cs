@@ -107,7 +107,11 @@ public class OperatorController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Start(string machineId, string? returnUrl = null)
     {
-        var now = DateTime.Now;
+        // ✅ EVENT-DRIVEN: Gunakan UTC untuk konsistensi
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = DateTime.Now; // Untuk display/logging
+
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 
         // Cek apakah sudah ada job aktif
         var existingJob = await _context.JobRuns
@@ -127,31 +131,66 @@ public class OperatorController : Controller
             if (openDowntime != null)
             {
                 // End downtime yang aktif
-                openDowntime.EndTime = now;
-                openDowntime.DurationSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
+                openDowntime.EndTime = nowLocal;
+                openDowntime.DurationSeconds = (int)(nowLocal - openDowntime.StartTime).TotalSeconds;
+                
+                // ✅ PERBAIKAN: Update LastStatusChangeTime untuk kalkulasi OEE operating time
+                existingJob.LastStatusChangeTime = nowLocal;
                 
                 await _context.SaveChangesAsync();
                 
-                // Broadcast SignalR update untuk downtime ended
+                // ✅ EVENT-DRIVEN: Broadcast RunningStarted event (downtime ended = running started)
+                // ✅ PERBAIKAN: Gunakan waktu downtime end sebagai start time untuk running
+                // Ini memastikan durasi running melanjutkan dari waktu rest break selesai, bukan dari job start time
+                var machineIdInt = int.TryParse(machineId, out var id) ? id : 0;
+                if (machineIdInt > 0)
+                {
+                    // Convert to ISO 8601 string untuk konsistensi dengan JavaScript Date parsing
+                    // Gunakan waktu downtime end (nowUtc) sebagai start time untuk running
+                    var startTimeUtcString = nowUtc.ToString("O"); // ISO 8601 format
+                    await _hubContext.Clients.Group($"machine_{machineIdInt}")
+                        .SendAsync("RunningStarted", machineIdInt, startTimeUtcString);
+                    Console.WriteLine($"📡 Broadcasted RunningStarted (after downtime end): machine_{machineIdInt}, startTimeUtc: {startTimeUtcString}");
+                }
+                
+                // ✅ PERBAIKAN FINAL: Update machine status ke Aktif saat downtime end (running start)
+                var machineForDowntime = await _context.Machines.FindAsync(machineId);
+                if (machineForDowntime != null && machineForDowntime.Status != MachineStatus.Aktif)
+                {
+                    machineForDowntime.Status = MachineStatus.Aktif;
+                    await _context.SaveChangesAsync();
+                }
+                
                 await _hubContext.Clients.All.SendAsync("OeeUpdated", new
                 {
                     Type = "DowntimeEnded",
                     MachineId = machineId,
                     MachineName = existingJob.Machine?.Name,
                     Message = $"Downtime berakhir pada mesin {existingJob.Machine?.Name}",
-                    Timestamp = now,
-                    RefreshOperatorData = true
+                    Timestamp = nowLocal,
+                    RefreshOperatorData = true,
+                    MachineStatus = "Aktif" // ✅ PERBAIKAN FINAL: Kirim status update
                 });
                 
-                // Setelah end downtime, machine akan running (job sudah aktif, downtime sudah di-end)
-                // Redirect kembali ke operator view
+                if (isAjax)
+                {
+                    return Json(new { success = true, message = "Downtime berakhir, machine running" });
+                }
+                
                 if (!string.IsNullOrEmpty(returnUrl))
                     return Redirect(returnUrl);
                 return RedirectToAction(nameof(Index), new { machineId });
             }
             else
             {
-                // Sudah ada job aktif TANPA downtime, tidak bisa start lagi
+                // ✅ PERBAIKAN: Jika job sudah aktif dan tidak ada downtime, update LastStatusChangeTime
+                existingJob.LastStatusChangeTime = nowLocal;
+                await _context.SaveChangesAsync();
+                
+                if (isAjax)
+                {
+                    return Json(new { success = true, message = "Machine sudah running" });
+                }
                 TempData["OperationError"] = "Sudah ada job aktif. Tidak bisa start job baru.";
                 if (!string.IsNullOrEmpty(returnUrl))
                     return Redirect(returnUrl);
@@ -167,6 +206,10 @@ public class OperatorController : Controller
 
         if (activeWorkOrder == null)
         {
+            if (isAjax)
+            {
+                return Json(new { success = false, message = "Tidak ada Work Order aktif. Silakan buat Work Order terlebih dahulu." });
+            }
             TempData["OperationError"] = "Tidak ada Work Order aktif. Silakan buat Work Order terlebih dahulu.";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -178,17 +221,25 @@ public class OperatorController : Controller
             .FirstOrDefaultAsync();
 
         var machine = await _context.Machines.FindAsync(machineId);
+        
+        // ✅ PERBAIKAN FINAL: Update machine status ke Aktif saat running start
+        if (machine != null && machine.Status != MachineStatus.Aktif)
+        {
+            machine.Status = MachineStatus.Aktif;
+        }
+        
         var newJob = new JobRun
         {
             MachineId = machineId,
             WorkOrderId = activeWorkOrder.Id,
             OperatorId = operatorUser?.Id ?? 0,
-            StartTime = now,
-            EndTime = null
+            StartTime = nowLocal, // Simpan local time untuk display
+            EndTime = null,
+            // ✅ PERBAIKAN: Set LastStatusChangeTime untuk kalkulasi OEE operating time
+            LastStatusChangeTime = nowLocal
         };
 
         // ✅ TAMBAHKAN: Stop Dandori jika sedang berjalan di job aktif sebelum membuat job baru
-        // Cari job aktif yang mungkin memiliki Dandori yang sedang berjalan
         var activeJobWithDandori = await _context.JobRuns
             .Where(j => j.MachineId == machineId && j.EndTime == null)
             .OrderByDescending(j => j.StartTime)
@@ -198,46 +249,59 @@ public class OperatorController : Controller
         {
             try
             {
-                // Cek apakah ada Dandori yang sedang berjalan
                 if (activeJobWithDandori.DandoriStartTime.HasValue && !activeJobWithDandori.DandoriEndTime.HasValue)
                 {
-                    activeJobWithDandori.DandoriEndTime = now;
-                    var dandoriDuration = (int)(now - activeJobWithDandori.DandoriStartTime.Value).TotalSeconds;
+                    activeJobWithDandori.DandoriEndTime = nowLocal;
+                    var dandoriDuration = (int)(nowLocal - activeJobWithDandori.DandoriStartTime.Value).TotalSeconds;
                     activeJobWithDandori.DandoriDurationSeconds = (activeJobWithDandori.DandoriDurationSeconds ?? 0) + dandoriDuration;
                     await _context.SaveChangesAsync();
+                    
+                    // ✅ EVENT-DRIVEN: Broadcast DandoriStopped event
+                    var machineIdInt2 = int.TryParse(machineId, out var id2) ? id2 : 0;
+                    if (machineIdInt2 > 0)
+                    {
+                        await _hubContext.Clients.Group($"machine_{machineIdInt2}")
+                            .SendAsync("DandoriStopped", machineIdInt2, nowUtc, activeJobWithDandori.DandoriDurationSeconds ?? 0);
+                    }
+                    
                     Console.WriteLine($"INFO: Dandori di-stop otomatis saat Start Job (durasi: {dandoriDuration} detik)");
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"WARNING: Error saat stop Dandori otomatis: {ex.Message}");
-                // Jangan stop proses, biarkan job tetap dibuat
             }
         }
 
         _context.JobRuns.Add(newJob);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(); // ✅ PERBAIKAN FINAL: Save machine status update
 
-        // Reload job dengan Include untuk memastikan data lengkap
-        var reloadedJob = await _context.JobRuns
-            .Include(j => j.WorkOrder)
-                .ThenInclude(w => w.Product)
-            .Include(j => j.Operator)
-            .Include(j => j.DowntimeEvents)
-            .Include(j => j.ProductionCounts)
-            .FirstOrDefaultAsync(j => j.Id == newJob.Id);
-
-        // Broadcast SignalR update
+        // ✅ EVENT-DRIVEN: Broadcast RunningStarted event
+        var machineIdInt3 = int.TryParse(machineId, out var id3) ? id3 : 0;
+        if (machineIdInt3 > 0)
+        {
+            // Convert to ISO 8601 string untuk konsistensi dengan JavaScript Date parsing
+            var startTimeUtcString = nowUtc.ToString("O"); // ISO 8601 format
+            await _hubContext.Clients.Group($"machine_{machineIdInt3}")
+                .SendAsync("RunningStarted", machineIdInt3, startTimeUtcString);
+            Console.WriteLine($"📡 Broadcasted RunningStarted: machine_{machineIdInt3}, startTimeUtc: {startTimeUtcString}");
+        }
+        
         await _hubContext.Clients.All.SendAsync("OeeUpdated", new
         {
             Type = "MachineStarted",
             MachineId = machineId,
             MachineName = machine?.Name,
             Message = $"Mesin {machine?.Name} telah dimulai",
-            Timestamp = now,
-            RefreshTimeMetrics = true, // Flag untuk trigger refresh Time Metrics di OEE View
-            RefreshOperatorData = true // Flag untuk trigger refresh Operator Data
+            Timestamp = nowLocal,
+            RefreshTimeMetrics = true,
+            RefreshOperatorData = true
         });
+
+        if (isAjax)
+        {
+            return Json(new { success = true, message = "Machine started successfully" });
+        }
 
         if (!string.IsNullOrEmpty(returnUrl))
             return Redirect(returnUrl);
@@ -269,8 +333,15 @@ public class OperatorController : Controller
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
 
+        // Check if this is an AJAX request
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+
         if (job == null)
         {
+            if (isAjax)
+            {
+                return Json(new { success = false, message = "Tidak ada job aktif. Silakan start RUNNING PROCESS terlebih dahulu." });
+            }
             TempData["OperationError"] = "Tidak ada job aktif. Silakan start RUNNING PROCESS terlebih dahulu.";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -281,6 +352,10 @@ public class OperatorController : Controller
         var openDowntime = job.DowntimeEvents.FirstOrDefault(d => d.EndTime == null);
         if (openDowntime != null)
         {
+            if (isAjax)
+            {
+                return Json(new { success = false, message = "Sudah ada downtime aktif. Tidak bisa start downtime baru." });
+            }
             TempData["OperationError"] = "Sudah ada downtime aktif. Tidak bisa start downtime baru.";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -291,6 +366,10 @@ public class OperatorController : Controller
         var reason = await _context.DowntimeReasons.FindAsync(reasonId);
         if (reason == null)
         {
+            if (isAjax)
+            {
+                return Json(new { success = false, message = "Alasan downtime tidak ditemukan." });
+            }
             TempData["OperationError"] = "Alasan downtime tidak ditemukan.";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -322,6 +401,12 @@ public class OperatorController : Controller
             RefreshOperatorData = true // ✅ TAMBAHKAN untuk trigger refresh Operator Data
         });
 
+        // Return JSON for AJAX requests
+        if (isAjax)
+        {
+            return Json(new { success = true, message = $"Downtime: {reason.Description} dimulai" });
+        }
+
         if (!string.IsNullOrEmpty(returnUrl))
             return Redirect(returnUrl);
         return RedirectToAction(nameof(Index), new { machineId });
@@ -333,6 +418,9 @@ public class OperatorController : Controller
     {
         var now = DateTime.Now;
 
+        // Check if this is an AJAX request
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+
         // Cari job aktif untuk mesin ini
         var activeJob = await _context.JobRuns
             .Include(j => j.Machine)
@@ -343,6 +431,10 @@ public class OperatorController : Controller
 
         if (activeJob == null)
         {
+            if (isAjax)
+            {
+                return Json(new { success = false, message = "Tidak ada job aktif. Tidak bisa set NO LOADING." });
+            }
             TempData["OperationError"] = "Tidak ada job aktif. Tidak bisa set NO LOADING.";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -361,8 +453,13 @@ public class OperatorController : Controller
             openDowntime.DurationSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
         }
 
-        // End job aktif (NO LOADING = menghentikan mesin)
-        activeJob.EndTime = now;
+        // ✅ PERBAIKAN: JANGAN end job aktif saat NO LOADING
+        // NO LOADING hanya set flag/status, tidak menghentikan job
+        // Ini memungkinkan mesin bisa di-running kembali setelah NO LOADING
+        // activeJob.EndTime tetap null agar job tetap aktif dan bisa di-running kembali
+        
+        // ✅ PERBAIKAN: Update LastStatusChangeTime untuk kalkulasi OEE
+        activeJob.LastStatusChangeTime = now;
 
         await _context.SaveChangesAsync();
 
@@ -377,6 +474,12 @@ public class OperatorController : Controller
             RefreshTimeMetrics = true, // Flag untuk trigger refresh Time Metrics di OEE View
             RefreshOperatorData = true // Flag untuk trigger refresh Operator Data
         });
+
+        // Return JSON for AJAX requests
+        if (isAjax)
+        {
+            return Json(new { success = true, message = "NO LOADING dimulai" });
+        }
 
         if (!string.IsNullOrEmpty(returnUrl))
             return Redirect(returnUrl);
@@ -593,9 +696,19 @@ public class OperatorController : Controller
         else if (activeJob != null)
         {
             // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
-            // Operating Time = JobRun duration - Unplanned Downtime duration (waktu running murni)
+            // ✅ PERBAIKAN: Gunakan LastStatusChangeTime jika ada (lebih akurat)
+            // Jika tidak ada, hitung dari StartTime dikurangi downtime
             
-            // Hitung JobRun duration
+            if (activeJob.LastStatusChangeTime.HasValue)
+            {
+                // ✅ PERBAIKAN: Gunakan LastStatusChangeTime sebagai start time untuk durasi running
+                // Ini memastikan durasi bisa start kapan saja, tidak terpaku dengan shift start
+                lastStatusChangeTime = activeJob.LastStatusChangeTime.Value;
+                sinceLastChangeSeconds = Math.Max(0, (int)(now - lastStatusChangeTime).TotalSeconds);
+            }
+            else
+            {
+                // Fallback: Hitung dari StartTime dikurangi downtime (untuk backward compatibility)
             var jobDuration = (now - activeJob.StartTime).TotalSeconds;
             
             // Hitung total Unplanned downtime yang sudah selesai di job ini
@@ -611,6 +724,7 @@ public class OperatorController : Controller
             
             // LastStatusChangeTime untuk display (backward compatibility)
             lastStatusChangeTime = now.AddSeconds(-sinceLastChangeSeconds);
+            }
         }
         else
         {
@@ -787,16 +901,19 @@ public class OperatorController : Controller
         });
     }
 
-    // ✅ TAMBAHKAN: Start Dandori (saat operator mulai persiapan)
+    // ✅ EVENT-DRIVEN: Start Dandori (saat operator mulai persiapan)
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> StartDandori(string machineId, string? returnUrl = null)
     {
-        var now = DateTime.Now;
+        // ✅ EVENT-DRIVEN: Gunakan UTC untuk konsistensi
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = DateTime.Now; // Untuk display/logging
+
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 
         try
         {
-            // Cari job aktif untuk mesin ini
             var activeJob = await _context.JobRuns
                 .Where(j => j.MachineId == machineId)
                 .OrderByDescending(j => j.StartTime)
@@ -804,13 +921,16 @@ public class OperatorController : Controller
 
             if (activeJob == null)
             {
-                // Jika belum ada job aktif, buat job baru untuk Dandori
                 var activeWorkOrder = await _context.WorkOrders
                     .Where(w => w.Status == WorkOrderStatus.InProgress)
                     .FirstOrDefaultAsync();
 
                 if (activeWorkOrder == null)
                 {
+                    if (isAjax)
+                    {
+                        return Json(new { success = false, message = "Tidak ada Work Order aktif. Silakan buat Work Order terlebih dahulu." });
+                    }
                     TempData["OperationError"] = "Tidak ada Work Order aktif. Silakan buat Work Order terlebih dahulu.";
                     if (!string.IsNullOrEmpty(returnUrl))
                         return Redirect(returnUrl);
@@ -826,9 +946,9 @@ public class OperatorController : Controller
                     MachineId = machineId,
                     WorkOrderId = activeWorkOrder.Id,
                     OperatorId = operatorUser?.Id ?? 0,
-                    StartTime = now,
+                    StartTime = nowLocal,
                     EndTime = null,
-                    DandoriStartTime = now,
+                    DandoriStartTime = nowLocal, // Simpan local time untuk display
                     DandoriEndTime = null
                 };
 
@@ -836,34 +956,54 @@ public class OperatorController : Controller
             }
             else
             {
-                // Cek apakah Dandori sudah berjalan
                 if (activeJob.DandoriStartTime.HasValue && !activeJob.DandoriEndTime.HasValue)
                 {
+                    if (isAjax)
+                    {
+                        return Json(new { success = false, message = "Dandori sudah berjalan. Silakan stop Dandori terlebih dahulu." });
+                    }
                     TempData["OperationError"] = "Dandori sudah berjalan. Silakan stop Dandori terlebih dahulu.";
                     if (!string.IsNullOrEmpty(returnUrl))
                         return Redirect(returnUrl);
                     return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
                 }
 
-                // Start Dandori
-                activeJob.DandoriStartTime = now;
+                activeJob.DandoriStartTime = nowLocal;
                 activeJob.DandoriEndTime = null;
             }
 
             await _context.SaveChangesAsync();
 
-            // Broadcast SignalR update untuk Dandori started
+            // ✅ EVENT-DRIVEN: Broadcast DandoriStarted event dengan UTC timestamp (ISO 8601 string)
             var machineIdInt = int.TryParse(machineId, out var id) ? id : 0;
-            await _hubContext.Clients.Group($"machine_{machineIdInt}").SendAsync("DandoriDurationUpdated", machineIdInt, 0);
+            if (machineIdInt > 0)
+            {
+                // Convert to ISO 8601 string untuk konsistensi dengan JavaScript Date parsing
+                var startTimeUtcString = nowUtc.ToString("O"); // ISO 8601 format
+                await _hubContext.Clients.Group($"machine_{machineIdInt}")
+                    .SendAsync("DandoriStarted", machineIdInt, startTimeUtcString);
+                Console.WriteLine($"📡 Broadcasted DandoriStarted: machine_{machineIdInt}, startTimeUtc: {startTimeUtcString}");
+            }
             
             await _hubContext.Clients.All.SendAsync("OeeUpdated", new
             {
                 Type = "DandoriStarted",
                 MachineId = machineId,
                 Message = "Dandori telah dimulai",
-                Timestamp = now,
+                Timestamp = nowLocal,
                 RefreshTimeMetrics = true
             });
+
+            if (isAjax)
+            {
+                // ✅ PERBAIKAN: Return startTimeUtc dalam response untuk client langsung start timer
+                var startTimeUtcString = nowUtc.ToString("O"); // ISO 8601 format
+                return Json(new { 
+                    success = true, 
+                    message = "Dandori started successfully",
+                    startTimeUtc = startTimeUtcString
+                });
+            }
 
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -873,6 +1013,12 @@ public class OperatorController : Controller
         {
             Console.WriteLine($"ERROR: Error saat Start Dandori: {ex.Message}");
             Console.WriteLine($"ERROR: Stack trace: {ex.StackTrace}");
+            
+            if (isAjax)
+            {
+                return Json(new { success = false, message = $"Error saat start Dandori: {ex.Message}" });
+            }
+            
             TempData["OperationError"] = $"Error saat start Dandori: {ex.Message}";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -880,16 +1026,19 @@ public class OperatorController : Controller
         }
     }
 
-    // ✅ TAMBAHKAN: Stop Dandori (saat operator mulai produksi)
+    // ✅ EVENT-DRIVEN: Stop Dandori (saat operator mulai produksi)
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> StopDandori(string machineId, string? returnUrl = null)
     {
-        var now = DateTime.Now;
+        // ✅ EVENT-DRIVEN: Gunakan UTC untuk konsistensi
+        var nowUtc = DateTime.UtcNow;
+        var nowLocal = DateTime.Now; // Untuk display/logging
+
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 
         try
         {
-            // Cari job aktif untuk mesin ini
             var activeJob = await _context.JobRuns
                 .Where(j => j.MachineId == machineId)
                 .OrderByDescending(j => j.StartTime)
@@ -897,26 +1046,32 @@ public class OperatorController : Controller
 
             if (activeJob == null)
             {
+                if (isAjax)
+                {
+                    return Json(new { success = false, message = "Tidak ada job aktif. Tidak bisa stop Dandori." });
+                }
                 TempData["OperationError"] = "Tidak ada job aktif. Tidak bisa stop Dandori.";
                 if (!string.IsNullOrEmpty(returnUrl))
                     return Redirect(returnUrl);
                 return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
             }
 
-            // Cek apakah Dandori sedang berjalan
             if (!activeJob.DandoriStartTime.HasValue || activeJob.DandoriEndTime.HasValue)
             {
+                if (isAjax)
+                {
+                    return Json(new { success = false, message = "Dandori tidak sedang berjalan." });
+                }
                 TempData["OperationError"] = "Dandori tidak sedang berjalan.";
                 if (!string.IsNullOrEmpty(returnUrl))
                     return Redirect(returnUrl);
                 return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
             }
 
-            // Stop Dandori
-            activeJob.DandoriEndTime = now;
-            var dandoriDuration = (int)(now - activeJob.DandoriStartTime.Value).TotalSeconds;
+            // ✅ EVENT-DRIVEN: Hitung durasi 1x saja saat STOP
+            activeJob.DandoriEndTime = nowLocal;
+            var dandoriDuration = (int)(nowLocal - activeJob.DandoriStartTime.Value).TotalSeconds;
             
-            // ✅ PERBAIKAN: Validasi durasi tidak negatif
             if (dandoriDuration < 0)
             {
                 Console.WriteLine($"WARNING: Negative dandori duration detected: {dandoriDuration} seconds. Setting to 0.");
@@ -927,18 +1082,30 @@ public class OperatorController : Controller
 
             await _context.SaveChangesAsync();
 
-            // Broadcast SignalR update untuk Dandori stopped dengan final duration
+            // ✅ EVENT-DRIVEN: Broadcast DandoriStopped event dengan UTC timestamp dan total seconds
             var machineIdInt = int.TryParse(machineId, out var id) ? id : 0;
-            await _hubContext.Clients.Group($"machine_{machineIdInt}").SendAsync("DandoriDurationUpdated", machineIdInt, activeJob.DandoriDurationSeconds ?? 0);
+            if (machineIdInt > 0)
+            {
+                // Convert to ISO 8601 string untuk konsistensi dengan JavaScript Date parsing
+                var endTimeUtcString = nowUtc.ToString("O"); // ISO 8601 format
+                await _hubContext.Clients.Group($"machine_{machineIdInt}")
+                    .SendAsync("DandoriStopped", machineIdInt, endTimeUtcString, activeJob.DandoriDurationSeconds ?? 0);
+                Console.WriteLine($"📡 Broadcasted DandoriStopped: machine_{machineIdInt}, endTimeUtc: {endTimeUtcString}, totalSeconds: {activeJob.DandoriDurationSeconds ?? 0}");
+            }
             
             await _hubContext.Clients.All.SendAsync("OeeUpdated", new
             {
                 Type = "DandoriStopped",
                 MachineId = machineId,
                 Message = $"Dandori telah di-stop (durasi: {TimeSpan.FromSeconds(dandoriDuration):hh\\:mm\\:ss})",
-                Timestamp = now,
+                Timestamp = nowLocal,
                 RefreshTimeMetrics = true
             });
+
+            if (isAjax)
+            {
+                return Json(new { success = true, message = "Dandori stopped successfully", duration = activeJob.DandoriDurationSeconds ?? 0 });
+            }
 
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
@@ -948,10 +1115,133 @@ public class OperatorController : Controller
         {
             Console.WriteLine($"ERROR: Error saat Stop Dandori: {ex.Message}");
             Console.WriteLine($"ERROR: Stack trace: {ex.StackTrace}");
+            
+            if (isAjax)
+            {
+                return Json(new { success = false, message = $"Error saat stop Dandori: {ex.Message}" });
+            }
+            
             TempData["OperationError"] = $"Error saat stop Dandori: {ex.Message}";
             if (!string.IsNullOrEmpty(returnUrl))
                 return Redirect(returnUrl);
             return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+        }
+    }
+
+    // ========== SCW (Stop Call Waiting) ENDPOINTS ==========
+    
+    // GET: Get SCW Remarks berdasarkan 4M Type
+    [HttpGet]
+    [Route("/api/Operator/GetScwRemarks")]
+    public async Task<IActionResult> GetScwRemarks(int scw4MTypeId)
+    {
+        try
+        {
+            var remarks = await _context.ScwRemarks
+                .Where(r => r.Scw4MTypeId == scw4MTypeId)
+                .OrderBy(r => r.DisplayOrder)
+                .ThenBy(r => r.Description)
+                .Select(r => new
+                {
+                    id = r.Id,
+                    description = r.Description
+                })
+                .ToListAsync();
+            
+            return Json(new { success = true, remarks = remarks });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // POST: Start SCW
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Scw(string machineId, int scw4MTypeId, int scwRemarkId, string? additionalNotes = null, string? returnUrl = null)
+    {
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+        var now = DateTime.Now;
+        
+        try
+        {
+            // Validasi
+            var scw4MType = await _context.Scw4MTypes.FindAsync(scw4MTypeId);
+            var scwRemark = await _context.ScwRemarks.FindAsync(scwRemarkId);
+            
+            if (scw4MType == null || scwRemark == null)
+            {
+                if (isAjax)
+                    return Json(new { success = false, message = "Jenis 4M atau Remark tidak ditemukan" });
+                TempData["OperationError"] = "Jenis 4M atau Remark tidak ditemukan";
+                return RedirectToAction(nameof(Index), new { machineId });
+            }
+            
+            // Validasi: Remark harus sesuai dengan 4M Type
+            if (scwRemark.Scw4MTypeId != scw4MTypeId)
+            {
+                if (isAjax)
+                    return Json(new { success = false, message = "Remark tidak sesuai dengan kategori 4M yang dipilih" });
+                TempData["OperationError"] = "Remark tidak sesuai dengan kategori 4M yang dipilih";
+                return RedirectToAction(nameof(Index), new { machineId });
+            }
+            
+            // Cari active job
+            var activeJob = await _context.JobRuns
+                .Where(j => j.MachineId == machineId && j.EndTime == null)
+                .OrderByDescending(j => j.StartTime)
+                .FirstOrDefaultAsync();
+            
+            if (activeJob == null)
+            {
+                if (isAjax)
+                    return Json(new { success = false, message = "Tidak ada job aktif" });
+                TempData["OperationError"] = "Tidak ada job aktif";
+                return RedirectToAction(nameof(Index), new { machineId });
+            }
+            
+            // Buat SCW Event
+            var scwEvent = new ScwEvent
+            {
+                JobRunId = activeJob.Id,
+                Scw4MTypeId = scw4MTypeId,
+                ScwRemarkId = scwRemarkId,
+                MachineId = machineId,
+                StartTime = now,
+                EndTime = null,
+                DurationSeconds = 0,
+                AdditionalNotes = additionalNotes
+            };
+            
+            _context.ScwEvents.Add(scwEvent);
+            await _context.SaveChangesAsync();
+            
+            // Broadcast event
+            await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+            {
+                Type = "ScwStarted",
+                MachineId = machineId,
+                Scw4MType = scw4MType.Name,
+                ScwRemark = scwRemark.Description,
+                Message = $"SCW: {scw4MType.Name} - {scwRemark.Description}",
+                Timestamp = now
+            });
+            
+            if (isAjax)
+                return Json(new { success = true, message = $"SCW: {scw4MType.Name} - {scwRemark.Description} dimulai" });
+            
+            TempData["OperationSuccess"] = $"SCW: {scw4MType.Name} - {scwRemark.Description} dimulai";
+            if (!string.IsNullOrEmpty(returnUrl))
+                return Redirect(returnUrl);
+            return RedirectToAction(nameof(Index), new { machineId });
+        }
+        catch (Exception ex)
+        {
+            if (isAjax)
+                return Json(new { success = false, message = $"Error: {ex.Message}" });
+            TempData["OperationError"] = $"Error: {ex.Message}";
+            return RedirectToAction(nameof(Index), new { machineId });
         }
     }
 }

@@ -25,6 +25,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Plant> Plants => Set<Plant>();
     public DbSet<NgType> NgTypes => Set<NgType>();
     public DbSet<ManPower> ManPowers => Set<ManPower>();
+    public DbSet<Scw4MType> Scw4MTypes => Set<Scw4MType>();
+    public DbSet<ScwRemark> ScwRemarks => Set<ScwRemark>();
+    public DbSet<ScwEvent> ScwEvents => Set<ScwEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -201,6 +204,38 @@ public class ApplicationDbContext : DbContext
             .WithMany(n => n.ProductNgTypes)
             .HasForeignKey(pn => pn.NgTypeId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // SCW 4M Type configuration
+        modelBuilder.Entity<Scw4MType>()
+            .HasMany(s => s.Remarks)
+            .WithOne(r => r.Scw4MType)
+            .HasForeignKey(r => r.Scw4MTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // SCW Remark configuration
+        modelBuilder.Entity<ScwRemark>()
+            .HasMany(r => r.ScwEvents)
+            .WithOne(e => e.ScwRemark)
+            .HasForeignKey(e => e.ScwRemarkId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // SCW Event configuration
+        modelBuilder.Entity<ScwEvent>()
+            .HasOne(e => e.JobRun)
+            .WithMany()
+            .HasForeignKey(e => e.JobRunId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ScwEvent>()
+            .HasOne(e => e.Scw4MType)
+            .WithMany()
+            .HasForeignKey(e => e.Scw4MTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ScwEvent>()
+            .Property(e => e.MachineId)
+            .HasMaxLength(4)
+            .IsRequired();
 
         // ========== DATA DUMMY PLANT & MACHINE ==========
         // Plant wajib ada karena Machine memiliki FK PlantId
