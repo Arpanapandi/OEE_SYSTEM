@@ -1,7 +1,6 @@
 @model OeeSystem.Models.ViewModels.MachineOeeViewModel
 @{
     ViewData["Title"] = "OEE Detail - " + Model.MachineName;
-    // ✅ Set ViewData untuk menandai ini adalah halaman OEE Detail
     ViewData["IsOeeDetailPage"] = true;
     ViewData["MachineName"] = Model.MachineName;
     ViewData["LineId"] = Model.LineId;
@@ -15,6 +14,27 @@
     var shiftEndStr = Model.ShiftEnd.ToString("HH:mm");
 }
 
+<!-- Additional styles for OEE Detail specific components -->
+<style>
+    /* Ensure main content uses full width without sidebar */
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding-top: calc(var(--top-navbar-height) + 1rem) !important;
+    }
+    
+    /* Hide sidebar for OEE Detail page */
+    .sidebar {
+        display: none !important;
+    }
+    
+    /* Adjust top navbar for full width */
+    .top-navbar {
+        left: 0 !important;
+    }
+</style>
+
+
 <!-- ✅ Status badge dan back button sudah dipindahkan ke navbar -->
 
 <div id="shift-meta"
@@ -27,11 +47,11 @@
 <!-- Card Filter: Shift, Jam (kiri), Tanggal (kanan) -->
 <div class="row mb-3">
     <div class="col-12">
-        <div class="card" id="filter-card">
-            <div class="card-header" style="padding: 0.75rem 1rem;">
+        <div class="glass-card" id="filter-card">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
                 <i class="fa-solid fa-clock me-2"></i>Input Waktu Kerja Operator
             </div>
-            <div class="card-body" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
                 <div class="row g-3 align-items-end">
                     <!-- Time Input (Kiri) - 50%: Live timer dengan detik, styling sama dengan tanggal -->
                     <div class="col-6 col-sm-6 col-md-6 col-lg-6 col-xl-6">
@@ -39,7 +59,7 @@
                             <i class="fa-solid fa-clock me-1"></i>Jam Proses
                         </label>
                         <input type="text" 
-                               class="form-control" 
+                               class="form-control-glass" 
                                id="filter-time-display"
                                readonly
                                value="@DateTime.Now.ToString("HH:mm:ss")" />
@@ -59,7 +79,7 @@
                             <i class="fa-solid fa-calendar me-1"></i>Tanggal
                         </label>
                         <input type="date" 
-                               class="form-control" 
+                               class="form-control-glass" 
                                id="filter-date" 
                                name="filterDate"
                                value="@DateTime.Now.ToString("yyyy-MM-dd")" />
@@ -73,8 +93,8 @@
 <!-- Machine Actions Section - Compact with Inline Status -->
 <div class="row mb-3">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center" style="padding: 0.75rem 1rem;">
+        <div class="glass-card">
+            <div class="glass-card-header d-flex justify-content-between align-items-center" style="padding: 0.75rem 1rem;">
                 <div>
                     <i class="fa-solid fa-sliders me-2"></i>Machine Actions
                 </div>
@@ -96,7 +116,7 @@
                     }
                 </div>
             </div>
-            <div class="card-body" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
                 <!-- ✅ CRITICAL: Define handleRunningClickDirect INLINE sebelum button agar tersedia saat onclick -->
                 <script>
                     // ✅ PERBAIKAN: Fungsi updateMachineStatusUI didefinisikan INLINE terlebih dahulu
@@ -219,7 +239,7 @@
                                 return false;
                             }
                             
-                            const machineId = '@Model.MachineId';
+                            const machineId = '@Html.Raw(Model.MachineId)';
                             const originalText = button.innerHTML;
                             const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
                             
@@ -556,46 +576,48 @@
 <!-- SCW (Stop Call Waiting) Section -->
 <div class="row mb-3">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header" style="padding: 0.75rem 1rem;">
+        <div class="glass-card">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
                 <i class="fa-solid fa-exclamation-triangle me-2"></i>SCW (Stop Call Waiting)
                 </div>
-            <div class="card-body" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
                 <div class="row g-3">
                     <!-- Jenis 4M Dropdown (50%) -->
                     <div class="col-md-6">
                         <label class="form-label fw-bold mb-1">
                             <i class="fa-solid fa-list me-1"></i>Jenis 4M <span class="text-danger">*</span>
                         </label>
-                        <select class="form-select" id="scw-4m-type" name="scw4MTypeId" required>
+                        <select class="form-control-glass" id="scw-4m-type" name="scw4MTypeId" required>
                             <option value="">-- Pilih Jenis 4M --</option>
-                            @if (ViewBag.Scw4MTypes != null && ((List<OeeSystem.Models.Scw4MType>)ViewBag.Scw4MTypes).Any())
+                            @if (ViewBag.Scw4MTypes != null)
                             {
-                                @foreach (var type in ((List<OeeSystem.Models.Scw4MType>)ViewBag.Scw4MTypes)
-                                    .OrderBy(t => t.DisplayOrder))
+                                @foreach (var type in ((List<OeeSystem.Models.Scw4MType>)ViewBag.Scw4MTypes).OrderBy(t => t.DisplayOrder))
                                 {
                                     <option value="@type.Id">@type.Name</option>
                                 }
                             }
-                            @if (ViewBag.Scw4MTypes == null || !((List<OeeSystem.Models.Scw4MType>)ViewBag.Scw4MTypes).Any())
-                            {
-                                <option value="" disabled>-- Data belum tersedia --</option>
-                            }
                         </select>
-            </div>
+                    </div>
                     
                     <!-- Jenis Remark Dropdown (50%) -->
                     <div class="col-md-6 mb-2">
                         <label class="form-label fw-bold mb-1">
                             <i class="fa-solid fa-comment-dots me-1"></i>Jenis Remark <span class="text-danger">*</span>
                         </label>
-                        <select class="form-select" id="scw-remark" name="scwRemarkId" required>
+                        <select class="form-control-glass" id="scw-remark" name="scwRemarkId" required>
                             <option value="">-- Pilih Jenis 4M terlebih dahulu --</option>
+                            @if (ViewBag.ScwRemarks != null)
+                            {
+                                @foreach (var remark in (List<OeeSystem.Models.ScwRemark>)ViewBag.ScwRemarks)
+                                {
+                                    <option value="@remark.Id" data-parent-id="@remark.Scw4MTypeId" class="scw-remark-option" style="display:none;">@remark.Description</option>
+                                }
+                            }
                         </select>
                     </div>
                 </div>
                 
-                <!-- Action Button (di bawah Jenis Remark, sisi kanan, width kecil) -->
+                <!-- Action Button -->
                 <div class="row mt-3">
                     <div class="col-md-6 offset-md-6 d-flex justify-content-end">
                         <button type="button" 
@@ -617,16 +639,16 @@
     <!-- Left Side: Man Power & Injection -->
     <div class="col-md-6">
         <div class="card h-100">
-            <div class="card-header" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
                 <i class="fa-solid fa-users me-2"></i>Man Power & Injection
             </div>
-            <div class="card-body" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
                 <!-- Man Power Field -->
                 <div class="mb-2">
                     <label class="form-label fw-bold">
                         Man Power <span class="text-danger">*</span>
                     </label>
-                    <select class="form-select" id="select-man-power" required>
+                    <select class="form-control-glass" id="select-man-power" required>
                         <option value="">-- Pilih Man Power --</option>
                         @if (ViewBag.ManPowers != null)
                         {
@@ -673,10 +695,10 @@
     <!-- Right Side: Scan Data Produksi (50% width) -->
     <div class="col-md-6">
         <div class="card h-100">
-            <div class="card-header" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
                 <i class="fa-solid fa-qrcode me-2"></i>Input Data Produksi
             </div>
-            <div class="card-body" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
                 <!-- Nomor Lot Field (dipindahkan ke atas) -->
                 <div class="mb-3">
                     <label class="form-label fw-bold mb-2">
@@ -833,13 +855,17 @@
                     <label class="form-label fw-bold mb-2">
                         Keterangan <span class="text-danger">*</span>
                     </label>
-                    <select class="form-select" id="select-keterangan" required>
+                    <select class="form-control-glass" id="select-keterangan" required>
                         <option value="">-- Pilih Keterangan --</option>
-                        <option value="normal">Oke</option>
-                        <option value="rework">Rework</option>
-                        <option value="sample">Sample</option>
-                        <option value="trial">Trial</option>
-                        <option value="urgent">Urgent</option>
+                        <option value="Oke">Oke</option>
+                        <option value="CHAMBER A">CHAMBER A</option>
+                        <option value="CHAMBER E">CHAMBER E</option>
+                        <option value="CHAMBER N">CHAMBER N</option>
+                        <option value="NG Berat">NG Berat</option>
+                        <option value="NG Kontaminasi">NG Kontaminasi</option>
+                        <option value="NG Scorch">NG Scorch</option>
+                        <option value="NG Warna">NG Warna</option>
+                        <option value="Giling Ulang">Giling Ulang</option>
                     </select>
                 </div>
 
@@ -923,7 +949,7 @@
                     <label class="form-label fw-bold">
                         Komponen <span class="text-danger">*</span>
                     </label>
-                    <select class="form-select" id="select-komponen" required>
+                    <select class="form-control-glass" id="select-komponen" required>
                         <option value="">-- Pilih Komponen --</option>
                     </select>
                     <div class="text-danger small mt-1" id="komponen-error" style="display: none;"></div>
@@ -939,7 +965,7 @@
     <!-- Current Job -->
     <div class="col-md-6">
         <div class="card h-100" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 0.75rem 1rem;">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
                 <i class="fa-solid fa-clipboard-list me-2"></i>Current Job
             </div>
             <div class="card-body d-flex flex-column" style="padding: 0.75rem 1rem;">
@@ -1071,7 +1097,7 @@
 <div class="row g-3 mb-3">
     <div class="col-md-3">
         <div class="card kpi-card border-primary" style="margin-bottom: 0;">
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">OEE</div>
@@ -1084,7 +1110,7 @@
     </div>
     <div class="col-md-3">
         <div class="card kpi-card border-success" style="margin-bottom: 0;">
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Availability</div>
@@ -1097,7 +1123,7 @@
     </div>
     <div class="col-md-3">
         <div class="card kpi-card border-warning" style="margin-bottom: 0;">
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Performance</div>
@@ -1110,7 +1136,7 @@
     </div>
     <div class="col-md-3">
         <div class="card kpi-card border-info" style="margin-bottom: 0;">
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Quality</div>
@@ -1127,7 +1153,7 @@
     <!-- Time Metrics -->
     <div class="col-md-3">
         <div class="card h-100" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-clock me-2"></i>Time Metrics
             </div>
             <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
@@ -1231,7 +1257,7 @@
     <!-- Production Metrics -->
     <div class="col-md-3">
         <div class="card h-100" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-boxes me-2"></i>Production Metrics
             </div>
             <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
@@ -1324,7 +1350,7 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label">Pilih Alasan Line Stop:</label>
-                            <select class="form-select" name="reasonId" required>
+                            <select class="form-control-glass" name="reasonId" required>
                                 <option value="">-- Pilih Alasan --</option>
                                 @foreach (var r in Model.LineStopReasons)
                                 {
@@ -1395,15 +1421,15 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label">Good Qty</label>
-                            <input type="number" class="form-control" name="goodQty" value="0" min="0" required />
+                            <input type="number" class="form-control-glass" name="goodQty" value="0" min="0" required />
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Reject Qty</label>
-                            <input type="number" class="form-control" name="rejectQty" value="0" min="0" required />
+                            <input type="number" class="form-control-glass" name="rejectQty" value="0" min="0" required />
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Jenis NG (jika ada reject)</label>
-                            <select class="form-select" name="ngTypeId">
+                            <select class="form-control-glass" name="ngTypeId">
                                 <option value="">-- Pilih Jenis NG --</option>
                                 @foreach (var ng in Model.NgTypes)
                                 {
@@ -1413,7 +1439,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Alasan Reject (optional)</label>
-                            <input type="text" class="form-control" name="rejectReason" />
+                            <input type="text" class="form-control-glass" name="rejectReason" />
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -1429,10 +1455,10 @@
     <!-- Recent Downtimes -->
     <div class="col-md-6">
         <div class="card h-100" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-triangle-exclamation me-2"></i>Recent Downtimes
             </div>
-            <div class="card-body" style="padding: 1.25rem; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+            <div class="glass-card-body" style="padding: 1.25rem; display: flex; flex-direction: column; height: 100%; overflow: hidden;">
                 @if (Model.RecentDowntimes != null && Model.RecentDowntimes.Any())
                 {
                     <div class="table-responsive" style="height: 200px !important; max-height: 400px !important; overflow-y: auto; overflow-x: hidden; flex-shrink: 0;">
@@ -1495,11 +1521,11 @@
 <!-- ✅ PERBAIKAN: Recent Production Counts (full width) -->
 <div class="row g-4 mb-4">
     <div class="col-12">
-        <div class="card" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-chart-column me-2"></i>Recent Production Counts
             </div>
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 @if (Model.RecentProductionCounts != null && Model.RecentProductionCounts.Any())
                 {
                     <div class="table-responsive">
@@ -1567,11 +1593,11 @@
     <!-- Machine Run Time Donut Chart -->
 <div class="row g-4 mb-4">
     <div class="col-12">
-        <div class="card" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-clock me-2"></i>Machine Run Time (min)
             </div>
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <canvas id="runTimeDonutChart" style="height: 250px !important; max-height: 250px !important;"></canvas>
                 <div class="text-center mt-3">
                     <div class="fw-bold">Total @((Model.ChartData?.RunTimeMinutes ?? 0) + (Model.ChartData?.IdleTimeMinutes ?? 0) + (Model.ChartData?.OffTimeMinutes ?? 0))</div>
@@ -1584,11 +1610,11 @@
     <!-- OEE Analysis Bar Chart -->
 <div class="row g-4 mb-4">
     <div class="col-12">
-        <div class="card" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-chart-bar me-2"></i>OEE Analysis
             </div>
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <canvas id="oeeBarChart" style="height: 250px !important; max-height: 250px !important;"></canvas>
             </div>
             </div>
@@ -1598,11 +1624,11 @@
     <!-- Machine Operation Trend -->
 <div class="row g-4 mb-4">
     <div class="col-12">
-        <div class="card" style="margin-bottom: 0;">
-            <div class="card-header" style="padding: 1rem 1.25rem;">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
                 <i class="fa-solid fa-chart-line me-2"></i>Machine Operation Trend
             </div>
-            <div class="card-body" style="padding: 1.25rem;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
                 <canvas id="weeklyTrendChart" style="height: 250px !important; max-height: 250px !important;"></canvas>
             </div>
         </div>
@@ -1824,7 +1850,7 @@
     /* Line Button Group Styles */
 </style>
 
-@section Scripts {
+
     <script>
         // ========== HELPER FUNCTION: Show Warning Notification ==========
         function showWarningNotification(message) {
@@ -1950,7 +1976,7 @@
                 return false;
             }
             
-            const machineId = '@Model.MachineId';
+            const machineId = '@Html.Raw(Model.MachineId)';
             const originalText = button.innerHTML;
             const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
             
@@ -2869,391 +2895,98 @@
                             currentCameraId = selectedCameraId;
                             cameraIndex = selectedCameraId ? availableCameras.findIndex(c => c.deviceId === selectedCameraId) : 0;
                             
-                            // ✅ PERBAIKAN: Initialize scanner dengan kombinasi Quagga2 (barcode) + html5-qrcode (QR code)
-                            const scannerContainer = document.getElementById('scanner-container');
-                            const containerWidth = scannerContainer ? scannerContainer.offsetWidth : 640;
-                            const containerHeight = scannerContainer ? scannerContainer.offsetHeight : 480;
-                            const qrboxWidth = Math.max(250, Math.min(containerWidth * 0.7, 300));
-                            const qrboxHeight = qrboxWidth;
                             
-                            // ✅ PERBAIKAN: Prioritas: html5-qrcode (support QR + barcode) sebagai primary, Quagga2 sebagai fallback untuk barcode dengan bounding box
-                            // html5-qrcode lebih baik karena support QR code dan barcode sekaligus
-                            if (typeof Html5Qrcode !== 'undefined') {
-                                // Gunakan html5-qrcode sebagai primary scanner (support QR code dan barcode)
-                                try {
-                                    html5QrCode = new Html5Qrcode("scanner-reader");
-                                    
-                                    const cameraConfig = selectedCameraId 
-                                        ? { deviceId: { exact: selectedCameraId } }
-                                        : { facingMode: "environment" };
-                                    
-                                    html5QrCode.start(
-                                        cameraConfig,
-                                        {
-                                            fps: 10,
-                                            qrbox: { width: qrboxWidth, height: qrboxHeight },
-                                            aspectRatio: 1.0,
-                                            formatsToSupport: [
-                                                Html5QrcodeSupportedFormats.QR_CODE,
-                                                Html5QrcodeSupportedFormats.CODE_128,
-                                                Html5QrcodeSupportedFormats.CODE_39
-                                            ]
-                                        },
-                                        async (decodedText, decodedResult) => {
-                                            if (scanCooldown) return; // Prevent duplicate scans
-                                            
-                                            console.log('✅ QR Code/Barcode detected (html5-qrcode):', decodedText);
-                                            
-                                            // Cooldown untuk mencegah scan duplikat
-                                            scanCooldown = true;
-                                            setTimeout(() => {
-                                                scanCooldown = false;
-                                            }, 2000);
-                                            
-                                            // ✅ DUMMY MODE: Bypass validasi untuk testing
-                                            const USE_DUMMY_VALIDATION = true; // Set ke false untuk menggunakan API real
-                                            
-                                            // ✅ PERBAIKAN: Validasi Part Number ke database jika target adalah part-number
-                                            if (currentScanTarget === 'part-number') {
-                                                if (!USE_DUMMY_VALIDATION) {
-                                                    try {
-                                                        const validateResponse = await fetch(`/api/Scanner/komponen/validate/${encodeURIComponent(decodedText.trim())}`);
-                                                        const validateResult = await validateResponse.json();
-                                                        
-                                                        if (!validateResult.success) {
-                                                            alert('Part Number tidak ditemukan di database: ' + decodedText);
-                                                            return; // Jangan proses lebih lanjut jika tidak valid
-                                                        }
-                                                        
-                                                        console.log('✅ Part Number validated:', decodedText);
-                                                    } catch (err) {
-                                                        console.error('❌ Error validating Part Number:', err);
-                                                        alert('Error saat validasi Part Number. Silakan coba lagi.');
-                                                        return;
-                                                    }
-                                                } else {
-                                                    console.log(`✅ Part Number validated (DUMMY): "${decodedText}"`);
-                                                }
-                                            }
-                                            
-                                            // Visual feedback - highlight QR box
-                                            const qrShadedRegion = document.querySelector('#scanner-reader #qr-shaded-region');
-                                            if (qrShadedRegion) {
-                                                qrShadedRegion.style.borderColor = '#00ff00';
-                                                qrShadedRegion.style.boxShadow = '0 0 0 6px rgba(0, 255, 0, 0.8), 0 0 40px rgba(0, 255, 0, 0.9)';
-                                                
-                                                setTimeout(() => {
-                                                    qrShadedRegion.style.borderColor = '#00ff00';
-                                                    qrShadedRegion.style.boxShadow = '0 0 0 4px rgba(0, 255, 0, 0.3), 0 0 20px rgba(0, 255, 0, 0.5), inset 0 0 20px rgba(0, 255, 0, 0.1)';
-                                                }, 500);
-                                            }
-                                            
-                                            // Process scanned code
-                                            handleScanSuccess(decodedText);
-                                        },
-                                        (errorMessage) => {
-                                            // Error callback - ignore for continuous scanning
-                                        }
-                                    ).then(() => {
-                                        console.log('✅ html5-qrcode started successfully (supports QR code and barcode)');
-                                    }).catch(err => {
-                                        console.warn('⚠️ html5-qrcode start error, trying Quagga2 as fallback:', err);
-                                        // Fallback ke Quagga2 jika html5-qrcode gagal
-                                        initializeQuagga2();
-                                    });
-                                } catch (err) {
-                                    console.warn('⚠️ html5-qrcode initialization error, trying Quagga2 as fallback:', err);
-                                    // Fallback ke Quagga2 jika html5-qrcode gagal
-                                    if (typeof Quagga !== 'undefined') {
-                                        initializeQuagga2();
-                                    } else {
-                                        alert('Gagal menginisialisasi scanner: ' + (err.message || err));
-                                        stopScanner();
-                                        const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
-                                        if (scannerModalInstance) {
-                                            scannerModalInstance.hide();
-                                        }
-                                    }
-                                }
-                            } else if (typeof Quagga !== 'undefined') {
-                                // Fallback: gunakan Quagga2 jika html5-qrcode tidak tersedia
-                                initializeQuagga2();
-                            } else {
-                                alert('Tidak ada library scanner yang tersedia. Silakan refresh halaman.');
-                                stopScanner();
-                                const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
-                                if (scannerModalInstance) {
-                                    scannerModalInstance.hide();
-                                }
-                            }
-                            
-                            // ✅ PERBAIKAN: Helper function untuk initialize Quagga2
-                            function initializeQuagga2() {
-                                if (typeof Quagga === 'undefined') return;
+                            // ✅ ULTIMATE SCANNER WATERFALL
+                            async function startScanning() {
+                                const scannerReader = document.getElementById('scanner-reader');
+                                if (!scannerReader) return;
                                 
-                                Quagga.init({
-                                    inputStream: {
-                                        name: "Live",
-                                        type: "LiveStream",
-                                        target: document.querySelector('#scanner-reader'),
-                                        constraints: {
-                                            width: containerWidth,
-                                            height: containerHeight,
-                                            facingMode: selectedCameraId ? undefined : "environment",
-                                            deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined
-                                        }
-                                    },
-                                    locator: {
-                                        patchSize: "medium",
-                                        halfSample: true
-                                    },
-                                    numOfWorkers: 2,
-                                    decoder: {
-                                        readers: [
-                                            "code_128_reader",
-                                            "ean_reader",
-                                            "ean_8_reader",
-                                            "code_39_reader",
-                                            "code_39_vin_reader",
-                                            "codabar_reader",
-                                            "upc_reader",
-                                            "upc_e_reader",
-                                            "i2of5_reader"
-                                        ]
-                                    },
-                                    locate: true
-                                }, function(err) {
-                                    if (err) {
-                                        console.warn('⚠️ Quagga2 initialization error (will use html5-qrcode):', err);
-                                        // Continue dengan html5-qrcode saja
-                                    } else {
-                                        console.log('✅ Quagga2 initialized successfully');
-                                        quaggaInitialized = true;
-                                        Quagga.start();
+                                const scannerContainer = document.getElementById('scanner-container');
+                                const containerWidth = scannerContainer ? scannerContainer.offsetWidth : 640;
+                                const containerHeight = scannerContainer ? scannerContainer.offsetHeight : 480;
+                                const qrboxWidth = Math.max(250, Math.min(containerWidth * 0.7, 300));
+                                const qrboxHeight = qrboxWidth;
+
+                                // 1. Try html5-qrcode as primary (supports QR + Barcode)
+                                if (typeof Html5Qrcode !== 'undefined') {
+                                    try {
+                                        console.log('🔧 Starting html5-qrcode...');
+                                        html5QrCode = new Html5Qrcode("scanner-reader");
+                                        const cameraConfig = currentCameraId ? { deviceId: { exact: currentCameraId } } : { facingMode: "environment" };
                                         
-                                        // ✅ PERBAIKAN: Setup bounding box yang mengikuti barcode
-                                        Quagga.onProcessed(function(result) {
-                                            const overlay = document.getElementById('scanner-overlay');
-                                            if (!overlay) return;
-                                            
-                                            // Draw bounding boxes untuk setiap detected code
-                                            if (result && result.codeResult && result.codeResult.code) {
-                                                const drawingCtx = Quagga.canvas.ctx.overlay;
-                                                const drawingCanvas = Quagga.canvas.dom.overlay;
-                                                
-                                                if (result.boxes && drawingCtx && drawingCanvas) {
-                                                    drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
-                                                    result.boxes.forEach(function(box) {
-                                                        if (box !== result.box) {
-                                                            Quagga.ImageDebug.drawPath(box, {x: 0, y: 1}, drawingCtx, {color: "green", lineWidth: 2});
-                                                        }
-                                                    });
-                                                    
-                                                    if (result.box) {
-                                                        Quagga.ImageDebug.drawPath(result.box, {x: 0, y: 1}, drawingCtx, {color: "#00F", lineWidth: 2});
-                                                    }
-                                                    
-                                                    if (result.codeResult && result.codeResult.code) {
-                                                        Quagga.ImageDebug.drawPath(result.line, {x: 'x', y: 'y'}, drawingCtx, {color: 'red', lineWidth: 3});
-                                                    }
-                                                }
-                                            } else {
-                                                // Clear canvas jika tidak ada barcode terdeteksi
-                                                const drawingCtx = Quagga.canvas.ctx.overlay;
-                                                const drawingCanvas = Quagga.canvas.dom.overlay;
-                                                if (drawingCtx && drawingCanvas) {
-                                                    drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
+                                        await html5QrCode.start(
+                                            cameraConfig,
+                                            {
+                                                fps: 10,
+                                                qrbox: { width: qrboxWidth, height: qrboxHeight },
+                                                aspectRatio: 1.0,
+                                                formatsToSupport: [
+                                                    Html5QrcodeSupportedFormats.QR_CODE,
+                                                    Html5QrcodeSupportedFormats.CODE_128,
+                                                    Html5QrcodeSupportedFormats.CODE_39
+                                                ]
+                                            },
+                                            (text) => {
+                                                if (!scanCooldown) {
+                                                    console.log('✅ Local Scan Result:', text);
+                                                    handleScanSuccess(text);
                                                 }
                                             }
-                                        });
-                                        
-                                        // ✅ PERBAIKAN: Handle barcode detection dengan validasi database
-                                        Quagga.onDetected(async function(result) {
-                                            if (scanCooldown) return; // Prevent duplicate scans
-                                            
-                                            const code = result.codeResult.code;
-                                            console.log('✅ Barcode detected:', code);
-                                            
-                                            // Cooldown untuk mencegah scan duplikat
-                                            scanCooldown = true;
-                                            setTimeout(() => {
-                                                scanCooldown = false;
-                                            }, 2000);
-                                            
-                                            // ✅ DUMMY MODE: Bypass validasi untuk testing
-                                            const USE_DUMMY_VALIDATION = true; // Set ke false untuk menggunakan API real
-                                            
-                                            // ✅ PERBAIKAN: Validasi Part Number ke database jika target adalah part-number
-                                            if (currentScanTarget === 'part-number') {
-                                                if (!USE_DUMMY_VALIDATION) {
-                                                try {
-                                                    const validateResponse = await fetch(`/api/Scanner/komponen/validate/${encodeURIComponent(code.trim())}`);
-                                                    const validateResult = await validateResponse.json();
-                                                    
-                                                    if (!validateResult.success) {
-                                                        alert('Part Number tidak ditemukan di database: ' + code);
-                                                        return; // Jangan proses lebih lanjut jika tidak valid
-                                                    }
-                                                    
-                                                    console.log('✅ Part Number validated:', code);
-                                                } catch (err) {
-                                                    console.error('❌ Error validating Part Number:', err);
-                                                    alert('Error saat validasi Part Number. Silakan coba lagi.');
-                                                    return;
-                                                }
-                                                } else {
-                                                    console.log(`✅ Part Number validated (DUMMY): "${code}"`);
-                                                }
-                                            }
-                                            
-                                            // ✅ PERBAIKAN: Visual feedback - highlight bounding box
-                                            const drawingCtx = Quagga.canvas.ctx.overlay;
-                                            const drawingCanvas = Quagga.canvas.dom.overlay;
-                                            if (result.box && drawingCtx && drawingCanvas) {
-                                                // Draw green highlight
-                                                Quagga.ImageDebug.drawPath(result.box, {x: 0, y: 1}, drawingCtx, {color: "#00ff00", lineWidth: 4});
-                                                
-                                                // Reset setelah 500ms
-                                                setTimeout(() => {
-                                                    if (drawingCtx && drawingCanvas) {
-                                                        drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
-                                                    }
-                                                }, 500);
-                                            }
-                                            
-                                            // Process scanned code
-                                            handleScanSuccess(code);
-                                        });
-                                    }
-                                    
-                                    // ✅ Fallback to html5-qrcode if Quagga2 fails or as an alternative
-                                    if (typeof Html5Qrcode !== 'undefined') {
-                                        if (!quaggaInitialized) {
-                                            try {
-                                                html5QrCode = new Html5Qrcode("scanner-reader");
-                                                const cameraConfig = selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: "environment" };
-                                                
-                                                html5QrCode.start(
-                                                    cameraConfig,
-                                                    {
-                                                        fps: 10,
-                                                        qrbox: { width: qrboxWidth, height: qrboxHeight },
-                                                        aspectRatio: 1.0,
-                                                        formatsToSupport: [
-                                                            Html5QrcodeSupportedFormats.QR_CODE,
-                                                            Html5QrcodeSupportedFormats.CODE_128,
-                                                            Html5QrcodeSupportedFormats.CODE_39
-                                                        ]
-                                                    },
-                                                    async (decodedText) => {
-                                                        if (scanCooldown) return;
-                                                        handleScanSuccess(decodedText);
-                                                    },
-                                                    (errorMessage) => { /* ignore */ }
-                                                ).catch(err => console.warn('⚠️ html5-qrcode start error:', err));
-                                            } catch (err) {
-                                                console.error('❌ Error starting html5-qrcode:', err);
-                                            }
-                                        } else {
-                                            console.log('ℹ️ Quagga2 is running, html5-qrcode available as backup');
+                                        );
+                                        console.log('✅ html5-qrcode started');
+                                        return; 
+                                    } catch (err) {
+                                        console.warn('⚠️ html5-qrcode failed, trying Quagga2...', err);
+                                        if (html5QrCode) {
+                                            try { await html5QrCode.stop(); } catch(e){}
+                                            html5QrCode = null;
                                         }
                                     }
-                                });
-                            } else if (typeof Html5Qrcode !== 'undefined') {
-                                // Fallback: hanya pakai html5-qrcode jika Quagga2 tidak tersedia
-                                try {
-                                    html5QrCode = new Html5Qrcode("scanner-reader");
-                                    
-                                    const cameraConfig = selectedCameraId 
-                                        ? { deviceId: { exact: selectedCameraId } }
-                                        : { facingMode: "environment" };
-                                    
-                                    html5QrCode.start(
-                                        cameraConfig,
-                                        {
-                                            fps: 10,
-                                            qrbox: { width: qrboxWidth, height: qrboxHeight },
-                                            aspectRatio: 1.0,
-                                            formatsToSupport: [
-                                                Html5QrcodeSupportedFormats.QR_CODE,
-                                                Html5QrcodeSupportedFormats.CODE_128,
-                                                Html5QrcodeSupportedFormats.CODE_39
-                                            ]
-                                        },
-                                        async (decodedText, decodedResult) => {
-                                            if (scanCooldown) return;
-                                            
-                                            console.log('✅ QR Code/Barcode detected:', decodedText);
-                                            
-                                            scanCooldown = true;
-                                            setTimeout(() => { scanCooldown = false; }, 2000);
-                                            
-                                            // ✅ DUMMY MODE: Bypass validasi untuk testing
-                                            const USE_DUMMY_VALIDATION = true; // Set ke false untuk menggunakan API real
-                                            
-                                            if (currentScanTarget === 'part-number') {
-                                                if (!USE_DUMMY_VALIDATION) {
-                                                try {
-                                                    const validateResponse = await fetch(`/api/Scanner/komponen/validate/${encodeURIComponent(decodedText.trim())}`);
-                                                    const validateResult = await validateResponse.json();
-                                                    
-                                                    if (!validateResult.success) {
-                                                        alert('Part Number tidak ditemukan di database: ' + decodedText);
-                                                        return;
-                                                    }
-                                                } catch (err) {
-                                                    console.error('❌ Error validating Part Number:', err);
-                                                    alert('Error saat validasi Part Number. Silakan coba lagi.');
-                                                    return;
+                                }
+
+                                // 2. Try Quagga2 as fallback
+                                if (typeof Quagga !== 'undefined') {
+                                    try {
+                                        console.log('🔧 Starting Quagga2...');
+                                        scannerReader.innerHTML = '<div id="quagga-reader" style="width:100%;height:100%;"></div>';
+                                        
+                                        Quagga.init({
+                                            inputStream: {
+                                                name: "Live", type: "LiveStream",
+                                                target: document.querySelector('#quagga-reader'),
+                                                constraints: {
+                                                    width: containerWidth, height: containerHeight,
+                                                    facingMode: "environment",
+                                                    deviceId: currentCameraId ? { exact: currentCameraId } : undefined
                                                 }
-                                                } else {
-                                                    console.log(`✅ Part Number validated (DUMMY): "${decodedText}"`);
-                                                }
+                                            },
+                                            decoder: { readers: ["code_128_reader", "code_39_reader", "ean_reader"] }
+                                        }, function(err) {
+                                            if (err) {
+                                                console.error('❌ Quagga2 init failed:', err);
+                                                return;
                                             }
-                                            
-                                            handleScanSuccess(decodedText);
-                                        },
-                                        (errorMessage) => {
-                                            // Ignore scan errors
-                                        }
-                                    ).then(() => {
-                                        console.log('✅ html5-qrcode started successfully');
-                                    }).catch(err => {
-                                        console.error('❌ html5-qrcode start error:', err);
-                                        alert('Gagal menginisialisasi scanner: ' + (err.message || err));
-                        stopScanner();
-                        const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
-                        if (scannerModalInstance) {
-                            scannerModalInstance.hide();
-                        }
-                    });
-                } catch (err) {
-                                    console.error('❌ html5-qrcode initialization error:', err);
-                                    alert('Gagal menginisialisasi scanner: ' + (err.message || err));
-                                    stopScanner();
-                                    const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
-                                    if (scannerModalInstance) {
-                                        scannerModalInstance.hide();
+                                            Quagga.start();
+                                            quaggaInitialized = true;
+                                            Quagga.onDetected((res) => {
+                                                if (!scanCooldown && res.codeResult.code) {
+                                                    handleScanSuccess(res.codeResult.code);
+                                                }
+                                            });
+                                        });
+                                    } catch (err) {
+                                        console.error('❌ Quagga2 failed:', err);
                                     }
                                 }
                             }
+
+                            // Execute start
+                            startScanning();
                         }).catch(err => {
                             console.error('❌ Error enumerating cameras:', err);
-                            alert('Gagal mengakses kamera: ' + (err.message || err));
-                            stopScanner();
-                            const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
-                            if (scannerModalInstance) {
-                                scannerModalInstance.hide();
-                            }
                         });
                     } catch (err) {
-                        console.error('❌ Error initializing Quagga2 scanner:', err);
-                        alert('Gagal menginisialisasi scanner: ' + (err.message || err));
-                        stopScanner();
-                        const scannerModalInstance = bootstrap.Modal.getInstance(scannerModalEl);
-                        if (scannerModalInstance) {
-                            scannerModalInstance.hide();
-                        }
+                        console.error('❌ Error initializing scanner:', err);
                     }
                 }, 500);
             }, { once: true });
@@ -4701,7 +4434,7 @@
                         const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
                         const formData = new FormData();
                         
-                        formData.append('machineId', '@Model.MachineId');
+                        formData.append('machineId', '@Html.Raw(Model.MachineId)');
                         formData.append('lotNumber', lotNumber);
                         formData.append('partNumber', partNumber); // Maps to LotBo
                         formData.append('namaCompound', namaCompound);
@@ -5000,12 +4733,12 @@
 
     <script>
         // ========== REAL-TIME TIME METRICS UPDATE ==========
-        const machineId = '@Model.MachineId';
+        const machineId = '@Html.Raw(Model.MachineId)';
         let timeMetricsInterval = null;
         let realTimeCounter = 0; // Counter yang bertambah setiap detik
-        let basePlannedSeconds = @Model.PlannedProductionTime.TotalSeconds.ToString("F0");
-        let baseOperatingSeconds = @Model.OperatingTime.TotalSeconds.ToString("F0");
-        let baseDowntimeSeconds = @Model.DowntimeTotal.TotalSeconds.ToString("F0");
+        let basePlannedSeconds = @Html.Raw(Model.PlannedProductionTime.TotalSeconds.ToString("F0"));
+        let baseOperatingSeconds = @Html.Raw(Model.OperatingTime.TotalSeconds.ToString("F0"));
+        let baseDowntimeSeconds = @Html.Raw(Model.DowntimeTotal.TotalSeconds.ToString("F0"));
         let baseRestBreakSeconds = 0; // ✅ PERBAIKAN: Base Rest Break time dari backend
         let baseNoLoadingSeconds = 0; // ✅ PERBAIKAN: Base No Loading time dari backend
         const shiftMetaEl = document.getElementById('shift-meta');
@@ -5089,7 +4822,7 @@
         let oeeConnection = null;
         // ✅ PERBAIKAN: machineId sudah dideklarasikan di atas (line 4063), gunakan yang sudah ada
         const machineIdInt = parseInt(machineId) || 0;
-        const currentMachineId = '@Model.MachineId';
+        const currentMachineId = '@Html.Raw(Model.MachineId)';
         
         // ========== RUNNING TIMER FUNCTIONS ==========
         /**
@@ -5681,9 +5414,9 @@
                 // ✅ CRITICAL: Ambil LastStatusChangeTime dari Model untuk set runningStartTimeUtc saat page load
                 var lastStatusChangeTimeInitial = Model.ActiveJob?.LastStatusChangeTime;
             }
-            var initialSeconds = @initialSeconds;
-            var isRunningInitial = @(isRunningInitial ? "true" : "false");
-            var lastStatusChangeTimeInitial = @(lastStatusChangeTimeInitial.HasValue ? $"\"{lastStatusChangeTimeInitial.Value.ToString("O")}\"" : "null");
+            var initialSeconds = @Html.Raw(initialSeconds);
+            var isRunningInitial = @Html.Raw(isRunningInitial ? "true" : "false");
+            var lastStatusChangeTimeInitial = @Html.Raw(lastStatusChangeTimeInitial.HasValue ? $"\"{lastStatusChangeTimeInitial.Value.ToString("O")}\"" : "null");
             
             // ✅ CRITICAL: Jika Running dan ada LastStatusChangeTime, set runningStartTimeUtc SEBELUM memanggil updateSinceLastChange
             // Ini memastikan durasi selalu sinkron dengan waktu saat Running diklik di backend, bahkan setelah refresh
@@ -5737,10 +5470,10 @@
                 // ✅ CRITICAL: Ambil LastStatusChangeTime dari Model untuk set runningStartTimeUtc saat immediate init
                 var lastStatusChangeTimeImmediate = Model.ActiveJob?.LastStatusChangeTime;
             }
-            var initialSecondsImmediate = @initialSecondsImmediate;
-            var hasActiveJobImmediate = @(hasActiveJobImmediate ? "true" : "false");
-            var isRunningImmediate = @(isRunningImmediate ? "true" : "false");
-            var lastStatusChangeTimeImmediate = @(lastStatusChangeTimeImmediate.HasValue ? $"\"{lastStatusChangeTimeImmediate.Value.ToString("O")}\"" : "null");
+            var initialSecondsImmediate = @Html.Raw(initialSecondsImmediate);
+            var hasActiveJobImmediate = @Html.Raw(hasActiveJobImmediate ? "true" : "false");
+            var isRunningImmediate = @Html.Raw(isRunningImmediate ? "true" : "false");
+            var lastStatusChangeTimeImmediate = @Html.Raw(lastStatusChangeTimeImmediate.HasValue ? $"\"{lastStatusChangeTimeImmediate.Value.ToString("O")}\"" : "null");
             
             // ✅ CRITICAL: Jika Running dan ada LastStatusChangeTime, set runningStartTimeUtc SEBELUM memanggil updateSinceLastChange
             if (isRunningImmediate && lastStatusChangeTimeImmediate) {
@@ -6124,9 +5857,9 @@
         // ========== ACTION BUTTONS & TIMER SYNCHRONIZATION ==========
         // ========== ACTION BUTTONS & TIMER SYNCHRONIZATION ==========
         // FIX: Use string comparison to avoid syntax errors from raw Razor output
-        let hasActiveJobOee = '@Model.HasActiveJob'.toLowerCase() === 'true';
-        let hasActiveDowntimeOee = '@Model.HasActiveDowntime'.toLowerCase() === 'true';
-        let machineStatusOee = '@Model.MachineStatus';
+        let hasActiveJobOee = '@Html.Raw(Model.HasActiveJob)'.toLowerCase() === 'true';
+        let hasActiveDowntimeOee = '@Html.Raw(Model.HasActiveDowntime)'.toLowerCase() === 'true';
+        let machineStatusOee = '@Html.Raw(Model.MachineStatus)';
 
         // Update action buttons state
         // FRONTEND: semua tombol selalu bisa diklik.
@@ -6913,7 +6646,7 @@
 
         // Fetch operator data untuk update action buttons dan production data
         async function fetchOperatorDataForOee() {
-            const machineId = '@Model.MachineId';
+            const machineId = '@Html.Raw(Model.MachineId)';
             if (!machineId) {
                 console.warn('Machine ID is not available');
                 return;
@@ -7056,7 +6789,7 @@
             // ✅ PERBAIKAN: Fungsi untuk sync ulang serverTimeOffset secara berkala
             function syncServerTimeOffset() {
                 // Ambil waktu server dari Razor (fallback ke waktu client jika null)
-                const serverTimeStr = '@(DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"))';
+                const serverTimeStr = '@Html.Raw(DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"))';
                 const serverTime = new Date(serverTimeStr);
                 const clientTime = new Date();
 
@@ -7159,160 +6892,127 @@
 
         // ========== ULTIMATE SCW (Stop Call Waiting) HANDLER ==========
         
-        // ========== SCW HANDLER (FINAL ROBUST VERSION) ==========
-        
+        // ========== SCW HANDLER (ULTIMATE SYNC VERSION) ==========
         (function() {
-            // Define data inside IIFE to avoid global scope pollution/collisions
-            const RAW_DATA = {
-                Material: [{id:1, text:"Rejection"}, {id:2, text:"Material Shortage"}],
-                Method: [{id:3, text:"SOP Tak Sesuai Standar"}],
-                Machine: [{id:4, text:"Problem Mesin"}],
-                Man: [{id:5, text:"Sakit"}, {id:6, text:"Izin"}, {id:7, text:"Alpha"}, {id:8, text:"Cuti"}],
-                NoProblem: [{id:9, text:"No Problem"}]
-            };
-
-            // Expose Mapping Global for Debugging if needed, but safe to reassignment
-            window.SCW_MAPPING_DATA = {
-                // ID Keys (1-5)
-                "1": RAW_DATA.Material,
-                "2": RAW_DATA.Method,
-                "3": RAW_DATA.Machine,
-                "4": RAW_DATA.Man,
-                "5": RAW_DATA.NoProblem,
+            window.handleScw4MChange = async function(val) {
+                const $target = $('#scw-remark');
+                const $source = $('#scw-4m-type');
                 
-                // Text Keys (Exact)
-                "Material": RAW_DATA.Material,
-                "Method": RAW_DATA.Method,
-                "Methode": RAW_DATA.Method,
-                "Machine": RAW_DATA.Machine,
-                "Mesin": RAW_DATA.Machine,
-                "Man": RAW_DATA.Man,
-                "Manpower": RAW_DATA.Man,
-                "No Problem": RAW_DATA.NoProblem,
-                "NoProblem": RAW_DATA.NoProblem
-            };
+                const typeId = val || $source.val();
+                console.log(`[SCW] Handler Triggered | TypeId: "${typeId}"`);
 
-            // Main Handler
-            window.handleScw4MChange = async function(argValue) {
-                const $scw4m = $('#scw-4m-type');
-                const $remark = $('#scw-remark');
+                // 1. Reset state
+                $target.empty();
                 
-                // Getter
-                let typeId = argValue !== undefined ? argValue : $scw4m.val();
-                const typeText = $scw4m.find('option:selected').text().trim();
-                
-                console.log(`🎯 SCW Trigger | ID: "${typeId}" | Text: "${typeText}"`);
-
-                // Reset
-                $remark.empty();
-                $remark.append('<option value="">-- Pilih Jenis Remark --</option>');
-
-                // Validate
-                if ((!typeId || typeId == "") && (typeText == "" || typeText.includes("--"))) {
-                    $remark.append('<option value="">-- Pilih Jenis 4M terlebih dahulu --</option>');
-                    $remark.prop('disabled', true);
+                if (!typeId || typeId === "") {
+                    $target.append('<option value="">-- Pilih Jenis 4M terlebih dahulu --</option>');
+                    $target.prop('disabled', true);
                     return;
                 }
 
-                // Enable
-                $remark.prop('disabled', false).removeAttr('disabled');
-                
-                // Lookup
-                let items = window.SCW_MAPPING_DATA[typeId] 
-                        || window.SCW_MAPPING_DATA[typeText]
-                        || window.SCW_MAPPING_DATA[typeText.split(' ')[0]]
-                        || [];
+                // 2. Enable
+                $target.prop('disabled', false).removeAttr('disabled');
+                $target.append('<option value="">-- Pilih Jenis Remark --</option>');
 
-                // Populate
-                if (items.length > 0) {
-                    items.forEach(function(item) {
-                         $remark.append($('<option>', { 
-                             value: item.id,
-                             text : item.text 
-                         }));
-                    });
-                    console.log(`⚡ Populated ${items.length} items.`);
-                } else {
-                    $remark.append('<option value="" disabled>-- Memuat data... --</option>');
-                }
+                // 3. Populate from Server-Rendered Data (Bulletproof)
+                // We look for options that were rendered by Razor but hidden
+                const $allOptions = $('.scw-remark-option');
+                let foundCount = 0;
 
-                // Server Sync (Background)
-                if (typeId && /^\d+$/.test(typeId)) {
+                $allOptions.each(function() {
+                    const parentId = $(this).data('parent-id');
+                    if (parentId == typeId) {
+                        // Clone and show the option
+                        const $opt = $(this).clone().show().removeAttr('style');
+                        $target.append($opt);
+                        foundCount++;
+                    }
+                });
+
+                console.log(`[SCW] Found ${foundCount} pre-rendered items in HTML`);
+
+                // 4. Background Sync for Data Integrity (API)
+                if (/^\d+$/.test(typeId)) {
                     try {
-                        const res = await fetch(`/api/Operator/GetScwRemarks?scw4MTypeId=${typeId}`);
-                        if (res.ok) {
-                            const json = await res.json();
-                            if (json.success && json.remarks && json.remarks.length > 0) {
-                                const curVal = $remark.val();
-                                $remark.empty().append('<option value="">-- Pilih Jenis Remark --</option>');
-                                json.remarks.forEach(r => {
-                                    $remark.append($('<option>', { value: r.id, text: r.description }));
-                                });
-                                if (curVal) $remark.val(curVal);
+                        const response = await fetch(`/api/Operator/GetScwRemarks?scw4MTypeId=${typeId}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.success && data.remarks && data.remarks.length > 0) {
+                                console.log(`[SCW] API Sync success: ${data.remarks.length} items from server`);
+                                
+                                // Jika data di HTML kosong atau berbeda, kita seragamkan dengan API
+                                if (foundCount === 0 || data.remarks.length !== foundCount) {
+                                    const currentVal = $target.val();
+                                    $target.empty().append('<option value="">-- Pilih Jenis Remark --</option>');
+                                    data.remarks.forEach(r => {
+                                        $target.append($('<option>', { value: r.id, text: r.description }));
+                                    });
+                                    if (currentVal) $target.val(currentVal);
+                                }
                             }
                         }
-                    } catch (e) {
-                         console.warn("API Sync error", e);
+                    } catch (err) {
+                        console.warn('[SCW] Silent sync failed', err);
                     }
                 }
             };
 
-            // Initialize on jQuery Ready
-            $(function() {
-                const $scw4m = $('#scw-4m-type');
-                
-                // Bind Change
-                $scw4m.off('change.scw').on('change.scw', function() {
+            // Init & Event Binding
+            $(document).ready(function() {
+                // Delegate binding for better robustness
+                $(document).on('change', '#scw-4m-type', function() {
                     window.handleScw4MChange($(this).val());
                 });
 
-                // Init Check
-                if ($scw4m.val()) {
-                    window.handleScw4MChange($scw4m.val());
+                // Init check if already selected
+                if ($('#scw-4m-type').val()) {
+                    window.handleScw4MChange($('#scw-4m-type').val());
                 }
-
-                // Submit Handler
-                $('#btn-scw-submit').off('click').on('click', async function() {
-                    const typeId = $('#scw-4m-type').val();
-                    const remarkId = $('#scw-remark').val();
-
-                    if (!typeId || !remarkId) {
-                        alert('Harap lengkapi semua field!');
-                        return;
-                    }
-
-                    const $btn = $(this);
-                    const oldText = $btn.html();
-                    $btn.prop('disabled', true).html('Menyimpan...');
-
-                    try {
-                        const fd = new FormData();
-                        fd.append('machineId', '@Model.MachineId');
-                        fd.append('scw4MTypeId', typeId);
-                        fd.append('scwRemarkId', remarkId);
-                        const token = $('input[name="__RequestVerificationToken"]').val();
-                        if(token) fd.append('__RequestVerificationToken', token);
-
-                        const res = await fetch('/Operator/Scw', {
-                            method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}
-                        });
-                        const json = await res.json();
-                        
-                        if(json.success) {
-                            alert('✅ Sukses!');
-                            $('#scw-4m-type').val('').trigger('change');
-                        } else {
-                            throw new Error(json.message);
-                        }
-                    } catch(e) {
-                        alert('❌ Error: ' + e.message);
-                    } finally {
-                        $btn.prop('disabled', false).html(oldText);
-                    }
-                });
             });
 
+            // Submit Handler
+            $(document).on('click', '#btn-scw-submit', async function() {
+                const $btn = $(this);
+                const typeId = $('#scw-4m-type').val();
+                const remarkId = $('#scw-remark').val();
+
+                if (!typeId || !remarkId) {
+                    showWarningNotification('Pilih Jenis 4M dan Remark terlebih dahulu!');
+                    return;
+                }
+
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan...');
+
+                try {
+                    const fd = new FormData();
+                    fd.append('machineId', '@Html.Raw(Model.MachineId)');
+                    fd.append('scw4MTypeId', typeId);
+                    fd.append('scwRemarkId', remarkId);
+                    
+                    const token = $('input[name="__RequestVerificationToken"]').val();
+                    if (token) fd.append('__RequestVerificationToken', token);
+
+                    const res = await fetch('/Operator/Scw', {
+                        method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+
+                    const json = await res.json();
+                    if (json.success) {
+                        showSuccessNotification('Data SCW berhasil disimpan');
+                        $('#scw-4m-type').val('').trigger('change');
+                    } else {
+                        showErrorNotification(json.message || 'Gagal menyimpan data');
+                    }
+                } catch (e) {
+                    showErrorNotification('Terjadi kesalahan koneksi');
+                } finally {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
         })();
+        // ========== END SCW HANDLER ==========
+        // ========== END SCW HANDLER ==========
         // ========== END SCW HANDLER ==========
     </script>
     
@@ -7982,7 +7682,42 @@
             });
         }
     </script>
-}
+    </script>
+    
+    <!-- Design System Scripts -->
+    <script>
+        // Sidebar Toggle Logic
+        document.getElementById('sidebarToggle').addEventListener('click', () => {
+            const wrapper = document.getElementById('appWrapper');
+            if (window.innerWidth <= 767) {
+                wrapper.classList.toggle('mobile-nav-active');
+            } else {
+                wrapper.classList.toggle('collapsed');
+            }
+        });
+
+        // Real-time Clock for Navbar
+        function updateRealtimeClock() {
+            const clockEl = document.getElementById('realtimeClock');
+            if(clockEl) {
+                const now = new Date();
+                // Format: HH:mm:ss
+                const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                              now.getMinutes().toString().padStart(2, '0') + ':' + 
+                              now.getSeconds().toString().padStart(2, '0');
+                clockEl.textContent = timeStr;
+            }
+        }
+        setInterval(updateRealtimeClock, 1000);
+        updateRealtimeClock(); // Initial call
+
+        // Responsive adjustment
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 767) {
+                document.getElementById('appWrapper')?.classList.remove('mobile-nav-active');
+            }
+        });
+    </script>
 
 
 

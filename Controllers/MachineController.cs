@@ -668,26 +668,33 @@ public class MachineController : Controller
             .OrderBy(s => s.Name)
             .ToListAsync();
         
-        // ✅ TAMBAHKAN: Kirim SCW 4M Types untuk dropdown
-        try
-        {
-            if (await _context.Database.CanConnectAsync())
+            // ✅ TAMBAHKAN: Kirim SCW 4M Types & Remarks untuk dropdown
+            try
             {
-                ViewBag.Scw4MTypes = await _context.Scw4MTypes
-                    .OrderBy(t => t.DisplayOrder)
-                    .ToListAsync();
+                if (await _context.Database.CanConnectAsync())
+                {
+                    ViewBag.Scw4MTypes = await _context.Scw4MTypes
+                        .OrderBy(t => t.DisplayOrder)
+                        .ToListAsync();
+
+                    ViewBag.ScwRemarks = await _context.ScwRemarks
+                        .OrderBy(r => r.Scw4MTypeId)
+                        .ThenBy(r => r.DisplayOrder)
+                        .ToListAsync();
+                }
+                else
+                {
+                    ViewBag.Scw4MTypes = new List<Scw4MType>();
+                    ViewBag.ScwRemarks = new List<ScwRemark>();
+                }
             }
-            else
+            catch (Exception ex)
             {
+                // Jika tabel Scw4MTypes/ScwRemarks belum ada atau error, gunakan empty list
+                Console.WriteLine($"Warning: Error loading SCW Data: {ex.Message}");
                 ViewBag.Scw4MTypes = new List<Scw4MType>();
+                ViewBag.ScwRemarks = new List<ScwRemark>();
             }
-        }
-        catch (Exception ex)
-        {
-            // Jika tabel Scw4MTypes belum ada atau error, gunakan empty list
-            Console.WriteLine($"Warning: Error loading Scw4MTypes: {ex.Message}");
-            ViewBag.Scw4MTypes = new List<Scw4MType>();
-        }
         
         // Status untuk action buttons
         vm.HasActiveJob = activeJob != null;

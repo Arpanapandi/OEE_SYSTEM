@@ -3,226 +3,150 @@
     var isOeeDetailPage = ViewData["IsOeeDetailPage"] as bool? ?? false;
 }
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@title - OEE Monitoring</title>
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Custom Glassmorphism Core -->
+    <link rel="stylesheet" href="~/css/glassmorphism-core.css" />
+    
     <style>
+        /* Override specific Bootstrap styles for Glassmorphism compatibility */
         body {
-            background: #101317;
-            color: #e4e6eb;
+            background-color: transparent; /* Handled by glassmorphism-core.css */
         }
-
-        .navbar {
-            background: linear-gradient(90deg, #141823, #1f2933);
-            border-bottom: 1px solid #252b3b;
+        .modal-content {
+            background: var(--dark-bg-secondary);
+            border: 1px solid var(--glass-border);
+            color: var(--text-primary);
         }
-        
-        /* ✅ Style untuk navbar OEE Detail */
-        .navbar-oee-detail {
-            padding: 0.75rem 1rem;
+        .modal-header, .modal-footer {
+            border-color: var(--glass-border);
         }
-        
-        .navbar-oee-detail .machine-title {
-            font-size: 1.1rem;
-            line-height: 1.3;
-            margin-bottom: 0;
-            font-weight: 600;
-        }
-        
-        .navbar-oee-detail .machine-info {
-            font-size: 0.8rem;
-            line-height: 1.4;
-        }
-        
-        .navbar-oee-detail .machine-info-item {
-            display: inline-flex;
-            align-items: center;
-            margin-right: 1rem;
-        }
-        
-        .navbar-oee-detail .navbar-nav {
-            gap: 0.25rem;
-        }
-        
-        .navbar-oee-detail .navbar-nav .nav-link {
-            font-size: 0.875rem;
-            padding: 0.25rem 0.5rem;
-        }
-        
-        .navbar-oee-detail .navbar-nav .btn {
-            font-size: 0.75rem;
-            padding: 0.25rem 0.5rem;
-        }
-
-        .card {
-            background-color: #151924;
-            border: 1px solid #23293a;
-        }
-
-        .machine-card {
-            transition: transform .1s ease, box-shadow .1s ease;
-        }
-
-        .machine-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, .5);
-        }
-
-        .status-badge {
-            padding: .25rem .75rem;
-            border-radius: 999px;
-            font-size: .75rem;
-        }
-
-        .status-running {
-            background: rgba(34, 197, 94, .12);
-            color: #22c55e;
-        }
-
-        .status-down {
-            background: rgba(239, 68, 68, .12);
-            color: #ef4444;
-        }
-
-        .status-idle {
-            background: rgba(148, 163, 184, .12);
-            color: #9ca3af;
-        }
-
-        .kpi-card {
-            border-radius: .75rem;
-        }
-
-        .kpi-card.border-success {
-            border-color: #198754 !important;
-        }
-
-        .kpi-card.border-warning {
-            border-color: #ffc107 !important;
-        }
-
-        .kpi-card.border-info {
-            border-color: #0dcaf0 !important;
-        }
-
-        .kpi-card.border-primary {
-            border-color: #0d6efd !important;
-        }
-
-        .kpi-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-        }
-
-        .kpi-value.text-success {
-            color: #22c55e !important;
-        }
-
-        .kpi-value.text-warning {
-            color: #ffc107 !important;
-        }
-
-        .kpi-value.text-info {
-            color: #0dcaf0 !important;
-        }
-
-        .kpi-value.text-primary {
-            color: #0d6efd !important;
-        }
-
-        .card-body canvas {
-            max-height: 200px;
+        .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark mb-3 @(isOeeDetailPage ? "navbar-oee-detail" : "")">
-        <div class="container-fluid">
-            @if (isOeeDetailPage)
-            {
-                <!-- ✅ Layout khusus untuk OEE Detail: Machine info di kiri (2 baris) -->
-                <div class="d-flex flex-column flex-grow-1">
-                    <div class="d-flex align-items-center mb-1">
-                        <h2 class="machine-title mb-0 me-2">
-                            <i class="fa-solid fa-microchip me-1"></i>@(ViewData["MachineName"] ?? "Machine")
-                        </h2>
-                        @{
-                            var machineStatus = ViewData["MachineStatus"] as OeeSystem.Models.MachineStatus?;
-                            var statusClass = machineStatus switch
-                            {
-                                OeeSystem.Models.MachineStatus.Aktif => "status-running",
-                                OeeSystem.Models.MachineStatus.TidakAktif => "status-down",
-                                _ => "status-idle"
-                            };
-                            var statusText = machineStatus == OeeSystem.Models.MachineStatus.Aktif ? "Aktif" : "Tidak Aktif";
-                        }
-                        <span class="status-badge @statusClass" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;">@statusText</span>
-                    </div>
-                    <div class="machine-info text-secondary d-flex flex-wrap align-items-center">
-                        <span class="machine-info-item">
-                            <i class="fa-solid fa-layer-group me-1"></i>Line @(ViewData["LineId"] ?? "")
-                        </span>
-                        <span class="machine-info-item">
-                            <i class="fa-solid fa-calendar-day me-1"></i>@(ViewData["ShiftName"] ?? "") (@(ViewData["ShiftTime"] ?? ""))
-                        </span>
-                        <span class="machine-info-item">
-                            <i class="fa-solid fa-clock me-1"></i>Cycle Time: @(ViewData["StandarCycleTime"] ?? "0")s
-                        </span>
-                    </div>
+    <div class="app-wrapper" id="appWrapper">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="bi bi-cpu-fill sidebar-logo"></i>
+                <span class="sidebar-title">OEE SYSTEM</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a asp-controller="Home" asp-action="Index" class="nav-item @(ViewData["Title"]?.ToString().Contains("Dashboard") == true ? "active" : "")">
+                    <i class="bi bi-speedometer2"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a asp-controller="Admin" asp-action="Index" class="nav-item">
+                    <i class="bi bi-gear"></i>
+                    <span>Admin</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="bi bi-bar-chart-line"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="bi bi-clock-history"></i>
+                    <span>History</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <div class="status-dot active" style="background: #28a745; box-shadow: 0 0 10px #28a745;"></div>
+                    <span class="text-secondary ms-2">System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Top Navbar -->
+        <header class="top-navbar">
+            <div class="d-flex align-items-center">
+                <button class="sidebar-toggle me-3" id="sidebarToggle">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div class="d-flex flex-column">
+                    <span class="fw-bold" style="font-size: 1.1rem;">@title</span>
+                    <span class="small text-secondary">
+                        OEE Monitoring System
+                    </span>
+                </div>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <!-- Real-time Clock -->
+                <div class="glass-card py-1 px-3 mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-clock text-accent-blue"></i>
+                    <span id="realtimeClock" class="fw-bold font-monospace">Loading...</span>
                 </div>
                 
-                <!-- ✅ OEE Monitoring dan Back button di kanan (2 baris vertikal) -->
-                <div class="navbar-nav ms-auto d-flex flex-column align-items-end">
-                    <a class="nav-link fw-semibold px-2" asp-controller="Home" asp-action="Index">
-                        <i class="fa-solid fa-industry me-1"></i>OEE Monitoring
-                    </a>
-                    <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary btn-sm">
-                        <i class="fa-solid fa-arrow-left me-1"></i>Back to Dashboard
-                    </a>
+                <!-- SignalR Status -->
+                <div id="signalr-status-container" class="glass-card py-1 px-3 mb-0">
+                    <span id="signalr-status">
+                        <span class="badge bg-secondary">Connecting...</span>
+                    </span>
                 </div>
-            }
-            else
-            {
-                <!-- ✅ Layout normal untuk halaman lain -->
-                <a class="navbar-brand fw-semibold" asp-controller="Home" asp-action="Index">
-                    <i class="fa-solid fa-industry me-2"></i>OEE Monitoring
-                </a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav ms-auto">
-                        <li class="nav-item">
-                            <a class="nav-link active" asp-controller="Home" asp-action="Index">
-                                <i class="fa-solid fa-chart-line me-1 text-danger"></i>Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" asp-controller="Admin" asp-action="Index">
-                                <i class="fa-solid fa-gear me-1"></i>Admin
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            }
-        </div>
-    </nav>
+            </div>
+        </header>
 
-    <div class="container-fluid pb-4">
-        @RenderBody()
+        <!-- Main Content -->
+        <main class="main-content">
+            @RenderBody()
+        </main>
     </div>
+    
+    <!-- Design System Scripts -->
+    <script>
+        // Sidebar Toggle Logic
+        document.getElementById('sidebarToggle').addEventListener('click', () => {
+            const wrapper = document.getElementById('appWrapper');
+            if (window.innerWidth <= 767) {
+                wrapper.classList.toggle('mobile-nav-active');
+            } else {
+                wrapper.classList.toggle('collapsed');
+            }
+        });
 
+        // Real-time Clock for Navbar
+        function updateRealtimeClock() {
+            const clockEl = document.getElementById('realtimeClock');
+            if(clockEl) {
+                const now = new Date();
+                // Format: HH:mm:ss
+                const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                              now.getMinutes().toString().padStart(2, '0') + ':' + 
+                              now.getSeconds().toString().padStart(2, '0');
+                clockEl.textContent = timeStr;
+            }
+        }
+        setInterval(updateRealtimeClock, 1000);
+        updateRealtimeClock(); // Initial call
+
+        // Responsive adjustment
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 767) {
+                document.getElementById('appWrapper')?.classList.remove('mobile-nav-active');
+            }
+        });
+    </script>
+    
+    <!-- Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery-validation-unobtrusive@4.0.0/dist/jquery.validate.unobtrusive.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <!-- SignalR Client Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
     @RenderSection("Scripts", required: false)
 </body>
 </html>
-
-

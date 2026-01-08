@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Design System Showcase | Glassmorphism</title>
+    <link rel="stylesheet" href="css/glassmorphism-core.css">
+    <style>
+        /* Showcase Specific Styles */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .color-swatch {
+            height: 80px;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: flex-end;
+            padding: 0.5rem;
+            font-size: 0.8rem;
+            border: 1px solid var(--glass-border);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-wrapper" id="appWrapper">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="bi bi-cpu sidebar-logo"></i>
+                <span class="sidebar-title">ENTERPRISE OS</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">
+                    <i class="bi bi-speedometer2"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="bi bi-graph-up-arrow"></i>
+                    <span>Analytics</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="bi bi-layers"></i>
+                    <span>Projects</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <i class="bi bi-gear"></i>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <div class="status-dot active"></div>
+                    <span class="text-secondary">System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Top Navbar -->
+        <header class="top-navbar">
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="bi bi-list"></i>
+            </button>
+            <div class="d-flex align-items-center gap-3">
+                <span id="realtimeClock" class="text-secondary fw-bold">00:00:00</span>
+                <div class="glass-card py-1 px-3 mb-0 d-none d-md-block">
+                    <span class="small opacity-75">Welcome, Admin</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <h1 class="mb-4" style="background: linear-gradient(90deg, #fff, var(--accent-blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Design System Showcase</h1>
+            
+            <div class="row">
+                <!-- Color Palette Section -->
+                <div class="col-12 py-3">
+                    <div class="glass-card">
+                        <h3><i class="bi bi-palette me-2"></i>Color Palette</h3>
+                        <div class="color-grid">
+                            <div class="color-swatch" style="background: var(--primary-blue);">Primary</div>
+                            <div class="color-swatch" style="background: var(--accent-blue); color: black;">Accent</div>
+                            <div class="color-swatch" style="background: var(--dark-bg-secondary);">BG Secondary</div>
+                            <div class="color-swatch" style="background: var(--glass-bg); backdrop-filter: blur(10px);">Glass</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Components Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
+                    
+                    <!-- Form Component -->
+                    <div class="glass-card">
+                        <h3><i class="bi bi-input-cursor-text me-2"></i>Form Elements</h3>
+                        <div class="form-group">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" class="form-control-glass" placeholder="Enter your name">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">System Selection</label>
+                            <select class="form-control-glass">
+                                <option>Production Unit A</option>
+                                <option>Production Unit B</option>
+                                <option>Logistics Hub</option>
+                            </select>
+                        </div>
+                        <button class="btn-glass btn-primary-blue w-100">
+                            <i class="bi bi-check-circle"></i> Save Configuration
+                        </button>
+                    </div>
+
+                    <!-- Button Variants -->
+                    <div class="glass-card">
+                        <h3><i class="bi bi-mouse2 me-2"></i>Action Buttons</h3>
+                        <div style="display: flex; flex-direction: column; gap: 1rem;">
+                            <button class="btn-glass btn-primary-blue">
+                                <i class="bi bi-lightning-charge-fill"></i> Primary Glow
+                            </button>
+                            <button class="btn-glass btn-secondary-glass">
+                                <i class="bi bi-cloud-download"></i> Secondary Glass
+                            </button>
+                            <div style="display: flex; gap: 1rem;">
+                                <button class="btn-glass" style="background: #dc3545; border: none; color: white;">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                                <button class="btn-glass" style="background: #ffc107; border: none; color: black;">
+                                    <i class="bi bi-exclamation-triangle"></i> Warning
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table Showcase -->
+                    <div class="glass-card" style="grid-column: 1 / -1;">
+                        <h3><i class="bi bi-table me-2"></i>System Modules</h3>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+                                <thead style="background: rgba(13, 110, 253, 0.2);">
+                                    <tr>
+                                        <th style="padding: 1rem; text-align: left; border-bottom: 1px solid var(--glass-border);">Module Name</th>
+                                        <th style="padding: 1rem; text-align: left; border-bottom: 1px solid var(--glass-border);">Load</th>
+                                        <th style="padding: 1rem; text-align: left; border-bottom: 1px solid var(--glass-border);">Status</th>
+                                        <th style="padding: 1rem; text-align: right; border-bottom: 1px solid var(--glass-border);">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid var(--glass-border);">
+                                        <td style="padding: 1rem;">Core Engine v6</td>
+                                        <td style="padding: 1rem;">24%</td>
+                                        <td style="padding: 1rem;"><span style="color: #28a745;"><i class="bi bi-check-circle-fill me-1"></i>Healthy</span></td>
+                                        <td style="padding: 1rem; text-align: right;">
+                                            <button class="btn-glass py-1 px-3"><i class="bi bi-pencil-square"></i></button>
+                                        </td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid var(--glass-border);">
+                                        <td style="padding: 1rem;">Neural Processor</td>
+                                        <td style="padding: 1rem;">89%</td>
+                                        <td style="padding: 1rem;"><span style="color: #ffc107;"><i class="bi bi-hourglass-split me-1"></i>Busy</span></td>
+                                        <td style="padding: 1rem; text-align: right;">
+                                            <button class="btn-glass py-1 px-3"><i class="bi bi-pencil-square"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Sidebar Toggle Logic
+        document.getElementById('sidebarToggle').addEventListener('click', () => {
+            const wrapper = document.getElementById('appWrapper');
+            if (window.innerWidth <= 767) {
+                wrapper.classList.toggle('mobile-nav-active');
+            } else {
+                wrapper.classList.toggle('collapsed');
+            }
+        });
+
+        // Real-time Clock
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                          now.getMinutes().toString().padStart(2, '0') + ':' + 
+                          now.getSeconds().toString().padStart(2, '0');
+            document.getElementById('realtimeClock').innerText = timeStr;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Responsive adjustment for mobile resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 767) {
+                document.getElementById('appWrapper').classList.remove('mobile-nav-active');
+            }
+        });
+    </script>
+</body>
+</html>
