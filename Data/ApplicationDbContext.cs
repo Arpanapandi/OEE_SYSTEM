@@ -28,6 +28,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Scw4MType> Scw4MTypes => Set<Scw4MType>();
     public DbSet<ScwRemark> ScwRemarks => Set<ScwRemark>();
     public DbSet<ScwEvent> ScwEvents => Set<ScwEvent>();
+    public DbSet<Komponen> Komponens => Set<Komponen>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

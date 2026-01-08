@@ -495,6 +495,7 @@ public class OperatorController : Controller
         string? rejectReason,
         int? ngTypeId = null,
         string? injection = null,
+        int? manPowerId = null,
         string? returnUrl = null)
     {
         var now = DateTime.Now;
@@ -545,7 +546,8 @@ public class OperatorController : Controller
                 RejectCount = rejectQty,
                 RejectReason = string.IsNullOrWhiteSpace(rejectReason) ? null : rejectReason,
                 NgTypeId = ngTypeId,
-                InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToLower()
+                InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToLower(),
+                ManPowerId = manPowerId
             };
 
             _context.ProductionCounts.Add(count);
@@ -570,6 +572,90 @@ public class OperatorController : Controller
             return Redirect(returnUrl);
 
         // Fallback: kembali ke OEE Detail untuk mesin ini
+        return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SubmitProductionData(
+        string machineId,
+        string? lotNumber,
+        string? partNumber,
+        string? namaCompound,
+        double? beratAct,
+        string? penipisan,
+        string? keterangan,
+        int? manPowerId,
+        string? injection,
+        int? komponenId,
+        int? durationSeconds,
+        int qty = 1)
+    {
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+        var now = DateTime.Now;
+
+        try
+        {
+            // Validasi Job Aktif
+            var job = await _context.JobRuns
+                .Include(j => j.Machine)
+                .Include(j => j.WorkOrder)
+                    .ThenInclude(w => w.Product)
+                .Where(j => j.MachineId == machineId)
+                .OrderByDescending(j => j.StartTime)
+                .FirstOrDefaultAsync(j => j.EndTime == null);
+
+            if (job == null)
+            {
+                if (isAjax) return Json(new { success = false, message = "Tidak ada job run aktif untuk mesin ini" });
+                return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
+            }
+
+            // Create ProductionCount with details
+            var count = new ProductionCount
+            {
+                JobRunId = job.Id,
+                Timestamp = now,
+                GoodCount = qty, // Default 1 for item submission
+                RejectCount = 0,
+                LotNumber = lotNumber,
+                LotBo = partNumber,
+                CompoundName = namaCompound,
+                ActualWeight = beratAct,
+                Thinning = penipisan,
+                Remarks = keterangan,
+                ManPowerId = manPowerId,
+                InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToLower(),
+                ComponentId = komponenId,
+                DurationSeconds = durationSeconds
+            };
+
+            _context.ProductionCounts.Add(count);
+            await _context.SaveChangesAsync();
+
+            // Broadcast SignalR update
+            await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+            {
+                Type = "ProductionDataSubmitted",
+                MachineId = machineId,
+                MachineName = job.Machine?.Name,
+                ProductName = job.WorkOrder?.Product?.Name,
+                GoodCount = qty,
+                Message = $"Data Produksi tersimpan: {lotNumber} ({partNumber})",
+                Timestamp = now
+            });
+
+            if (isAjax)
+            {
+                return Json(new { success = true, message = "Data produksi berhasil disimpan" });
+            }
+        }
+        catch (Exception ex)
+        {
+             Console.WriteLine($"Error submitting production data: {ex.Message}");
+             if (isAjax) return Json(new { success = false, message = "Terjadi kesalahan saat menyimpan data: " + ex.Message });
+        }
+
         return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
     }
 

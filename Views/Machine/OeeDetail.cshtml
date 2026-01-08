@@ -585,11 +585,11 @@
             </div>
                     
                     <!-- Jenis Remark Dropdown (50%) -->
-                    <div class="col-md-6">
+                    <div class="col-md-6 mb-2">
                         <label class="form-label fw-bold mb-1">
-                            <i class="fa-solid fa-comment me-1"></i>Jenis Remark <span class="text-danger">*</span>
+                            <i class="fa-solid fa-comment-dots me-1"></i>Jenis Remark <span class="text-danger">*</span>
                         </label>
-                        <select class="form-select" id="scw-remark" name="scwRemarkId" required disabled>
+                        <select class="form-select" id="scw-remark" name="scwRemarkId" required>
                             <option value="">-- Pilih Jenis 4M terlebih dahulu --</option>
                         </select>
                     </div>
@@ -609,6 +609,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <!-- Scan Data Produksi Section -->
@@ -694,9 +695,10 @@
                                id="input-lot-number" 
                                placeholder="Scan Barcode/QR atau ketik manual"
                                style="padding-left: 0.5rem;"
-                               autocomplete="off"
-                               maxlength="12"
-                               required />
+                                autocomplete="off"
+                                maxlength="12"
+                                oninput="if(this.value.length>12) this.value=this.value.slice(0,12);"
+                                required />
                         <button type="button" 
                                 class="btn btn-outline-primary border-start-0" 
                                 id="btn-edit-lot-number"
@@ -709,7 +711,7 @@
                 <!-- Lot Bo Field (dipindahkan ke bawah, sebelumnya Part Number) -->
                 <div class="mb-3">
                     <label class="form-label fw-bold mb-2">
-                        Lot Bo <span class="text-danger">*</span>
+                        Lot BO <span class="text-danger">*</span>
                     </label>
                     <div class="input-group position-relative">
                         <button type="button" 
@@ -726,6 +728,7 @@
                                style="padding-left: 0.5rem;"
                                 autocomplete="off"
                                maxlength="12"
+                               oninput="if(this.value.length>12) this.value=this.value.slice(0,12);"
                                required />
                         <button type="button" 
                                 class="btn btn-outline-primary border-start-0" 
@@ -946,17 +949,7 @@
                         <!-- Left Section: Product Image/Name -->
                         <div class="col-5 d-flex flex-column">
                             <div class="mb-1">
-                                @if (!string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl))
-                                {
-                                    // ✅ PERBAIKAN: Gunakan API endpoint untuk machine image jika ImageUrl adalah path file
-                                    var imageUrl = Model.ActiveJob.ProductImageUrl;
-                                    // ✅ PERBAIKAN: Hanya gunakan API endpoint jika benar-benar path file, bukan URL lengkap
-                                    if (imageUrl.StartsWith("/images/machines/") && !imageUrl.StartsWith("http"))
-                                    {
-                                        // Jika path file, gunakan API endpoint
-                                        var machineIdFromUrl = Model.MachineId;
-                                        imageUrl = $"/api/machines/{machineIdFromUrl}/image";
-                                    }
+                                    @{ var imageUrl = Model.ActiveJob?.ProductImageUrl ?? ""; }
                                     
                                     <img src="@imageUrl" 
                                          alt="@(Model.ActiveJob?.ProductName ?? "Product")" 
@@ -1398,6 +1391,7 @@
                     <input type="hidden" name="machineId" value="@Model.MachineId" />
                     <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
                     <input type="hidden" name="injection" id="hidden-injection" required />
+                    <input type="hidden" name="manPowerId" id="hidden-qtymodal-manpower" />
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label">Good Qty</label>
@@ -3132,96 +3126,38 @@
                                         });
                                     }
                                     
-                                    // ✅ PERBAIKAN: Initialize html5-qrcode untuk QR code (jika Quagga2 tidak tersedia atau sebagai fallback)
-                                    // Catatan: html5-qrcode juga support barcode, jadi bisa digunakan sebagai alternatif
-                                    if (typeof Html5Qrcode !== 'undefined' && !quaggaInitialized) {
-                                        // Hanya initialize html5-qrcode jika Quagga2 tidak berhasil
-                                        try {
-                                            html5QrCode = new Html5Qrcode("scanner-reader");
-                                            
-                                            const cameraConfig = selectedCameraId 
-                                                ? { deviceId: { exact: selectedCameraId } }
-                                                : { facingMode: "environment" };
-                                            
-                                            html5QrCode.start(
-                                                cameraConfig,
-                                                {
-                                                    fps: 10,
-                                                    qrbox: { width: qrboxWidth, height: qrboxHeight },
-                                                    aspectRatio: 1.0,
-                                                    formatsToSupport: [
-                                                        Html5QrcodeSupportedFormats.QR_CODE,
-                                                        Html5QrcodeSupportedFormats.CODE_128,
-                                                        Html5QrcodeSupportedFormats.CODE_39
-                                                    ]
-                                                },
-                                                async (decodedText, decodedResult) => {
-                                                    if (scanCooldown) return; // Prevent duplicate scans
-                                                    
-                                                    console.log('✅ QR Code/Barcode detected (html5-qrcode):', decodedText);
-                                                    
-                                                    // Cooldown untuk mencegah scan duplikat
-                                                    scanCooldown = true;
-                                                    setTimeout(() => {
-                                                        scanCooldown = false;
-                                                    }, 2000);
-                                                    
-                                                    // ✅ DUMMY MODE: Bypass validasi untuk testing
-                                                    const USE_DUMMY_VALIDATION = true; // Set ke false untuk menggunakan API real
-                                                    
-                                                    // ✅ PERBAIKAN: Validasi Part Number ke database jika target adalah part-number
-                                                    if (currentScanTarget === 'part-number') {
-                                                        if (!USE_DUMMY_VALIDATION) {
-                                                            try {
-                                                                const validateResponse = await fetch(`/api/Scanner/komponen/validate/${encodeURIComponent(decodedText.trim())}`);
-                                                                const validateResult = await validateResponse.json();
-                                                                
-                                                                if (!validateResult.success) {
-                                                                    alert('Part Number tidak ditemukan di database: ' + decodedText);
-                                                                    return; // Jangan proses lebih lanjut jika tidak valid
-                                                                }
-                                                                
-                                                                console.log('✅ Part Number validated:', decodedText);
-                                                            } catch (err) {
-                                                                console.error('❌ Error validating Part Number:', err);
-                                                                alert('Error saat validasi Part Number. Silakan coba lagi.');
-                                                                return;
-                                                            }
-                                                        } else {
-                                                            console.log('✅ Part Number validated (DUMMY): "' + decodedText + '"');
-                                                        }
-                                                    }
-                                                    
-                                                    // Visual feedback - highlight QR box
-                                                    const qrShadedRegion = document.querySelector('#scanner-reader #qr-shaded-region');
-                                                    if (qrShadedRegion) {
-                                                        qrShadedRegion.style.borderColor = '#00ff00';
-                                                        qrShadedRegion.style.boxShadow = '0 0 0 6px rgba(0, 255, 0, 0.8), 0 0 40px rgba(0, 255, 0, 0.9)';
-                                                        
-                                                        setTimeout(() => {
-                                                            qrShadedRegion.style.borderColor = '#00ff00';
-                                                            qrShadedRegion.style.boxShadow = '0 0 0 4px rgba(0, 255, 0, 0.3), 0 0 20px rgba(0, 255, 0, 0.5), inset 0 0 20px rgba(0, 255, 0, 0.1)';
-                                                        }, 500);
-                                                    }
-                                                    
-                                                    // Process scanned code
-                                                    handleScanSuccess(decodedText);
-                                                },
-                                                (errorMessage) => {
-                                                    // Error callback - ignore for continuous scanning
-                                                }
-                                            ).then(() => {
-                                                console.log('✅ html5-qrcode started successfully');
-                                            }).catch(err => {
-                                                console.warn('⚠️ html5-qrcode start error:', err);
-                                            });
-                                        } catch (err) {
-                                            console.error('❌ Error starting html5-qrcode:', err);
+                                    // ✅ Fallback to html5-qrcode if Quagga2 fails or as an alternative
+                                    if (typeof Html5Qrcode !== 'undefined') {
+                                        if (!quaggaInitialized) {
+                                            try {
+                                                html5QrCode = new Html5Qrcode("scanner-reader");
+                                                const cameraConfig = selectedCameraId ? { deviceId: { exact: selectedCameraId } } : { facingMode: "environment" };
+                                                
+                                                html5QrCode.start(
+                                                    cameraConfig,
+                                                    {
+                                                        fps: 10,
+                                                        qrbox: { width: qrboxWidth, height: qrboxHeight },
+                                                        aspectRatio: 1.0,
+                                                        formatsToSupport: [
+                                                            Html5QrcodeSupportedFormats.QR_CODE,
+                                                            Html5QrcodeSupportedFormats.CODE_128,
+                                                            Html5QrcodeSupportedFormats.CODE_39
+                                                        ]
+                                                    },
+                                                    async (decodedText) => {
+                                                        if (scanCooldown) return;
+                                                        handleScanSuccess(decodedText);
+                                                    },
+                                                    (errorMessage) => { /* ignore */ }
+                                                ).catch(err => console.warn('⚠️ html5-qrcode start error:', err));
+                                            } catch (err) {
+                                                console.error('❌ Error starting html5-qrcode:', err);
+                                            }
+                                        } else {
+                                            console.log('ℹ️ Quagga2 is running, html5-qrcode available as backup');
                                         }
-                                    } else if (typeof Html5Qrcode !== 'undefined' && quaggaInitialized) {
-                                        // Jika Quagga2 sudah berjalan, html5-qrcode akan digunakan sebagai backup untuk QR code
-                                        console.log('ℹ️ Quagga2 is running, html5-qrcode will be used as QR code backup if needed');
-                        }
+                                    }
                                 });
                             } else if (typeof Html5Qrcode !== 'undefined') {
                                 // Fallback: hanya pakai html5-qrcode jika Quagga2 tidak tersedia
@@ -3999,7 +3935,6 @@
                         const komponenContainer = document.getElementById('komponen-container');
                         if (komponenContainer) komponenContainer.style.display = 'none';
                         return;
-                        }
                     }
                 } catch (err) {
                     console.error('❌ Error validating Part Number:', err);
@@ -4054,6 +3989,167 @@
                 if (komponenSuccess) komponenSuccess.style.display = 'none';
             }
         }
+
+        // Local Storage / Data Flow Functions
+        
+        // 1. Man Power & Group Data (Persistent)
+        function saveManPowerAndGroup() {
+            const manPower = document.getElementById('select-man-power')?.value;
+            const injection = document.querySelector('#injection-group input[name="injection"]:checked')?.value;
+            
+            if (manPower || injection) {
+                const data = {
+                    manPowerId: manPower,
+                    injection: injection
+                };
+                localStorage.setItem('manPowerData', JSON.stringify(data));
+                console.log('💾 Man Power & Injection Saved:', data);
+            }
+        }
+        
+        function loadManPowerAndGroup() {
+            try {
+                const dataJson = localStorage.getItem('manPowerData');
+                if (dataJson) {
+                    const data = JSON.parse(dataJson);
+                    
+                    if (data.manPowerId) {
+                        const selectManPower = document.getElementById('select-man-power');
+                        if (selectManPower) {
+                            selectManPower.value = data.manPowerId;
+                            selectManPower.dispatchEvent(new Event('change'));
+                        }
+                    }
+                    
+                    if (data.injection) {
+                        const radio = document.querySelector(`#injection-group input[name="injection"][value="${data.injection}"]`);
+                        if (radio) {
+                            radio.checked = true;
+                            radio.dispatchEvent(new Event('change'));
+                        }
+                    }
+                    console.log('📂 Man Power & Injection Loaded:', data);
+                }
+            } catch (e) {
+                console.error('Error loading Man Power data', e);
+            }
+        }
+        
+        // 2. Production Data History (Array)
+        function saveProductionData(data) {
+            try {
+                const historyJson = localStorage.getItem('productionDataHistory');
+                let history = historyJson ? JSON.parse(historyJson) : [];
+                
+                // Add metadata for new record
+                data.id = 'prod-' + Date.now();
+                data.timestamp = new Date().toISOString();
+                data.status = 'In Progress'; // Waiting for Qty
+                data.durationSeconds = 0;
+                
+                // Add to history
+                history.push(data);
+                
+                // Limit history size (optional, keep last 50)
+                if (history.length > 50) history.shift();
+                
+                localStorage.setItem('productionDataHistory', JSON.stringify(history));
+                console.log('💾 Production Data Saved (Start Item):', data);
+            } catch (e) {
+                console.error('Error saving production data', e);
+            }
+        }
+        
+        function updateProductionDataWithQty(goodQty, rejectQty, durationSeconds) {
+            try {
+                const historyJson = localStorage.getItem('productionDataHistory');
+                if (historyJson) {
+                    let history = JSON.parse(historyJson);
+                    if (history.length > 0) {
+                        // Find the last 'In Progress' item, or just the very last added item
+                        // We prefer finding the specific ID if we tracked it, but last item is safe for single flow
+                        const idx = history.length - 1;
+                        const lastEntry = history[idx];
+                       
+                        lastEntry.goodQty = goodQty;
+                        lastEntry.rejectQty = rejectQty;
+                        lastEntry.durationSeconds = durationSeconds;
+                        lastEntry.status = 'Completed';
+                        lastEntry.completionTime = new Date().toISOString();
+                        
+                        history[idx] = lastEntry;
+                        
+                        localStorage.setItem('productionDataHistory', JSON.stringify(history));
+                        console.log('💾 Production Data Updated (End Item):', lastEntry);
+                    }
+                }
+            } catch (e) {
+                console.error('Error updating production data', e);
+            }
+        }
+        
+        // 3. Form Reset
+        function resetProductionForm() {
+            // Reset inputs that should not persist (ManPower & Injection persist)
+            const inputsToReset = [
+                'input-part-number', 
+                'input-lot-number', 
+                'input-nama-compound',
+                'input-berat-act', 
+                'hidden-part-number',
+                'hidden-lot-number',
+                'hidden-nama-compound',
+                'hidden-berat-act',
+                'hidden-keterangan',
+                'hidden-penipisan',
+                'hidden-komponen-id'
+            ];
+            
+            inputsToReset.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            
+            // Reset Komponen Dropdown
+            const selectKomponen = document.getElementById('select-komponen');
+            if (selectKomponen) {
+                selectKomponen.innerHTML = '<option value="">-- Pilih Komponen --</option>';
+                const container = document.getElementById('komponen-container');
+                if (container) container.style.display = 'none';
+            }
+
+            // Reset Keterangan
+            const selectKeterangan = document.getElementById('select-keterangan');
+            if (selectKeterangan) selectKeterangan.value = '';
+
+            // Reset Penipisan radio (unchecked)
+            const penipisanRadios = document.querySelectorAll('#penipisan-group input[name="penipisan"]');
+            penipisanRadios.forEach(r => r.checked = false);
+
+            // Remove validation classes
+            const validatedInputs = document.querySelectorAll('.is-valid, .is-invalid');
+            validatedInputs.forEach(el => el.classList.remove('is-valid', 'is-invalid'));
+            
+            // Hide success/error messages
+            const msgs = ['komponen-error', 'komponen-success', 'berat-act-error', 'berat-act-success'];
+            msgs.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            
+            console.log('🧹 Form Reset (Partial)');
+        }
+
+        // Initialize Settings on Load
+        // This is crucial to restore Man Power & Group Injection
+        document.addEventListener('DOMContentLoaded', function() {
+            loadManPowerAndGroup();
+            
+            // Also attempt to load settings immediately if DOM is already ready
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                loadManPowerAndGroup();
+            }
+        });
 
         // Event listener untuk Part Number dan Nomor Lot Produksi
         document.addEventListener('DOMContentLoaded', function() {
@@ -4238,7 +4334,7 @@
                 const komponenId = selectedKomponenId;
                 
                 if (!lotNumber) errors.push('Nomor Lot harus diisi');
-                if (!partNumber) errors.push('Lot Bo harus diisi');
+                if (!partNumber) errors.push('Lot BO harus diisi');
                 if (!namaCompound) errors.push('Nama Compound harus diisi');
                 if (!beratAct) errors.push('Berat Act harus dipilih');
                 if (!penipisan) errors.push('Penipisan harus dipilih');
@@ -4415,8 +4511,124 @@
                         resetDurasiProduksi();
                     });
                 }
+
+                // Load preferences on page load
+                loadManPowerAndGroup();
+                loadProductionDataAndPopulateForm();
             });
             // ========== END DURASI PRODUKSI PER ITEM ==========
+
+            // Helper functions for LocalStorage management
+            function saveManPowerAndGroup() {
+                const manPower = document.getElementById('select-man-power')?.value;
+                const injection = document.querySelector('#injection-group input[name="injection"]:checked')?.value;
+                if (manPower) localStorage.setItem('lastManPower', manPower);
+                if (injection) localStorage.setItem('lastInjection', injection);
+            }
+
+            function loadManPowerAndGroup() {
+                const lastManPower = localStorage.getItem('lastManPower');
+                const lastInjection = localStorage.getItem('lastInjection');
+
+                if (lastManPower) {
+                    const selectManPower = document.getElementById('select-man-power');
+                    if (selectManPower) selectManPower.value = lastManPower;
+                }
+                if (lastInjection) {
+                    const radioInjection = document.querySelector(`#injection-group input[name="injection"][value="${lastInjection}"]`);
+                    if (radioInjection) radioInjection.checked = true;
+                }
+            }
+
+            function saveProductionData(data) {
+                localStorage.setItem('currentProductionData', JSON.stringify(data));
+            }
+
+            function loadProductionData() {
+                const data = localStorage.getItem('currentProductionData');
+                return data ? JSON.parse(data) : null;
+            }
+
+            function clearProductionData() {
+                localStorage.removeItem('currentProductionData');
+            }
+
+            function resetProductionForm() {
+                // Reset fields related to the current production item
+                document.getElementById('input-lot-number').value = '';
+                document.getElementById('input-part-number').value = '';
+                document.getElementById('input-nama-compound').value = '';
+                document.getElementById('input-berat-act').value = '';
+                document.getElementById('select-keterangan').value = '';
+                
+                // Uncheck penipisan radios
+                document.querySelectorAll('#penipisan-group input[name="penipisan"]').forEach(radio => radio.checked = false);
+
+                // Reset selectedKomponenId and select-komponen
+                selectedKomponenId = null;
+                const selectKomponen = document.getElementById('select-komponen');
+                if (selectKomponen) {
+                    selectKomponen.value = ''; // Or set to a default "Pilih Komponen" option
+                }
+
+                // Clear hidden fields
+                document.getElementById('hidden-part-number').value = '';
+                document.getElementById('hidden-lot-number').value = '';
+                document.getElementById('hidden-nama-compound').value = '';
+                document.getElementById('hidden-berat-act').value = '';
+                document.getElementById('hidden-penipisan').value = '';
+                document.getElementById('hidden-keterangan').value = '';
+                document.getElementById('hidden-komponen-id').value = '';
+
+                // Re-evaluate form completeness
+                checkAllInputsComplete();
+            }
+
+            async function loadProductionDataAndPopulateForm() {
+                const data = loadProductionData();
+                if (data) {
+                    document.getElementById('input-lot-number').value = data.lotNumber || '';
+                    document.getElementById('input-part-number').value = data.partNumber || '';
+                    document.getElementById('input-nama-compound').value = data.namaCompound || '';
+                    document.getElementById('input-berat-act').value = data.beratAct || '';
+                    document.getElementById('select-keterangan').value = data.keterangan || '';
+                    
+                    if (data.penipisan) {
+                        const radioPenipisan = document.querySelector(`#penipisan-group input[name="penipisan"][value="${data.penipisan}"]`);
+                        if (radioPenipisan) radioPenipisan.checked = true;
+                    }
+
+                    // ✅ Load Komponen Options if PartNumber exists
+                    if (data.partNumber) {
+                         try {
+                             await loadKomponenFromHoss(data.partNumber);
+                         } catch (e) {
+                             console.warn('Failed to load components for resumed data', e);
+                         }
+                    }
+
+                    if (data.komponenId) {
+                        selectedKomponenId = data.komponenId;
+                        const selectKomponen = document.getElementById('select-komponen');
+                        if (selectKomponen) {
+                            selectKomponen.value = data.komponenId;
+                            
+                            // Fallback if load failed or ID not found
+                            if (selectKomponen.value !== data.komponenId) {
+                                  const newOption = new Option(data.komponenText || data.komponenId, data.komponenId, true, true);
+                                  selectKomponen.add(newOption);
+                                  selectKomponen.value = data.komponenId;
+                            }
+                        }
+                    }
+                    // Start the timer if data is loaded and auto mode is on
+                    if (isDurasiAuto) {
+                        startDurasiProduksi();
+                    }
+                    showDurasiContainer(); // Ensure container is visible
+                    checkAllInputsComplete(); // Re-evaluate form completeness
+                }
+            }
 
             // Handle submit button click (bukan form submit)
             const btnSubmitProduksi = document.getElementById('btn-submit-produksi');
@@ -4424,8 +4636,8 @@
                 btnSubmitProduksi.addEventListener('click', async function(e) {
                     e.preventDefault();
 
-                    const partNumber = inputPartNumber?.value?.trim();
-                    const lotNumber = inputLotNumber?.value?.trim();
+                    const partNumber = document.getElementById('input-part-number')?.value?.trim();
+                    const lotNumber = document.getElementById('input-lot-number')?.value?.trim();
                     const namaCompound = document.getElementById('input-nama-compound')?.value?.trim();
                     const beratAct = document.getElementById('input-berat-act')?.value?.trim();
                     const penipisan = document.querySelector('#penipisan-group input[name="penipisan"]:checked')?.value;
@@ -4433,11 +4645,13 @@
                     const manPower = document.getElementById('select-man-power')?.value;
                     const injection = document.querySelector('#injection-group input[name="injection"]:checked')?.value;
                     const komponenId = selectedKomponenId;
+                    const komponenText = document.getElementById('select-komponen')?.options[document.getElementById('select-komponen').selectedIndex]?.text;
 
                     // ✅ Validasi workflow
                     const errors = validateWorkflow();
                     if (errors.length > 0) {
-                        alert('Harap lengkapi semua field:\n' + errors.join('\n'));
+                        console.warn('Validation errors:', errors);
+                        showToast('Harap lengkapi semua field required', 'error');
                         return;
                     }
 
@@ -4452,69 +4666,102 @@
                     document.getElementById('hidden-injection').value = injection || '';
                     document.getElementById('hidden-komponen-id').value = komponenId || '';
                     
-                    // ✅ Tampilkan durasi container jika belum muncul
-                    showDurasiContainer();
-                    
-                    // ✅ Ambil durasi yang sudah berjalan (jika ada) sebelum reset
-                    updateDurasiProduksiDisplay();
-                    const currentDurasiSeconds = durasiProduksiSeconds;
-                    document.getElementById('hidden-durasi-seconds').value = currentDurasiSeconds;
+                    // ✅ 1. Save Man Power & Group Injection Preferences (PERSISTENT)
+                    saveManPowerAndGroup();
 
+                    // ✅ 2. Save Production Data to LocalStorage (PER ITEM)
+                    const productionData = {
+                        partNumber,
+                        lotNumber,
+                        namaCompound,
+                        beratAct,
+                        penipisan,
+                        keterangan,
+                        manPowerId: manPower,
+                        injection,
+                        komponenId,
+                        komponenText
+                    };
+                    saveProductionData(productionData);
+
+                    // ✅ 3. UI Updates: Show Spinner
                     const originalText = btnSubmitProduksi.innerHTML;
                     btnSubmitProduksi.disabled = true;
                     btnSubmitProduksi.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Menyimpan...';
 
-                    try {
-                        const formData = new FormData(formScanProduksi);
-                        
-                        // ✅ TAMBAHKAN: Include durasiSeconds (nilai sebelum reset)
-                        formData.set('durasiSeconds', currentDurasiSeconds);
-                        
-                        // ✅ Pastikan semua field dikirim
-                        if (namaCompound) formData.set('namaCompound', namaCompound);
-                        if (beratAct) formData.set('beratAct', beratAct);
-                        if (injection) formData.set('injection', injection);
-                        if (manPower) formData.set('manPowerId', manPower);
+                    // ✅ 4. Start Timer AUTOMATICALLY
+                    // Note: Timer starts immediately for visual feedback
+                    showDurasiContainer();
+                    if (isDurasiAuto) {
+                        startDurasiProduksi(); 
+                    }
 
-                        const response = await fetch('/api/Scanner/scan-produksi/submit', {
+                    // ✅ 5. REAL SUBMIT TO SERVER
+                    try {
+                        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+                        const formData = new FormData();
+                        
+                        formData.append('machineId', '@Model.MachineId');
+                        formData.append('lotNumber', lotNumber);
+                        formData.append('partNumber', partNumber); // Maps to LotBo
+                        formData.append('namaCompound', namaCompound);
+                        formData.append('beratAct', beratAct);
+                        formData.append('penipisan', penipisan);
+                        formData.append('keterangan', keterangan);
+                        formData.append('manPowerId', manPower);
+                        formData.append('injection', injection);
+                        if (komponenId) formData.append('komponenId', komponenId);
+                        
+                        // Submit current duration if available
+                        const durationSec = document.getElementById('hidden-durasi-seconds')?.value || 0;
+                        formData.append('durationSeconds', durationSec);
+                        
+                        // Default qty = 1 for item tracking
+                        formData.append('qty', 1);
+
+                        if (token) {
+                            formData.append('__RequestVerificationToken', token);
+                        }
+
+                        const response = await fetch('/Operator/SubmitProductionData', {
                             method: 'POST',
-                            body: formData
+                            body: formData,
+                            headers: {
+                                'RequestVerificationToken': token || '',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
                         });
 
                         const result = await response.json();
 
                         if (result.success) {
-                            alert(
-                                '✅ Data scan produksi berhasil disimpan!\n\n' +
-                                `JobRun ID : ${result.jobRunId}\n` +
-                                `Part Number : ${result.partNumber}\n` +
-                                `Lot Number  : ${result.lotNumber}\n` +
-                                `Komponen    : ${result.komponen.partNumber} (Qty: ${result.komponen.jmlKomponen})\n` +
-                                `Durasi      : ${formatDurasiProduksi(currentDurasiSeconds)}`
-                            );
+                            console.log('✅ Data submitted to server successfully');
+                            showToast(result.message || 'Data produksi disimpan!', 'success');
                             
-                            // ✅ RESET dan START DURASI untuk produk berikutnya (jika toggle auto aktif)
+                            // ✅ 6. Start Timer AUTOMATICALLY (Reset for next item)
+                            showDurasiContainer();
                             if (isDurasiAuto) {
-                                resetDurasiProduksi();
-                                startDurasiProduksi(); // Start baru untuk produk berikutnya
-                                console.log('🔄 Durasi produksi reset dan started untuk produk baru');
+                                startDurasiProduksi(); 
                             }
+                            
+                            // ✅ 7. Reset Form (Partial Reset per requirements)
+                            resetProductionForm();
                         } else {
-                            alert('❌ ' + (result.message || 'Gagal menyimpan data scan produksi.'));
-                            // Stop durasi jika gagal
-                            stopDurasiProduksi();
+                            console.error('❌ Server returned error:', result.message);
+                            showToast('Gagal menyimpan data: ' + (result.message || 'Unknown error'), 'error');
                         }
                     } catch (error) {
-                        console.error('Error submitting scan produksi:', error);
-                        alert('❌ Terjadi error saat submit scan produksi. Silakan coba lagi.');
-                        // Stop durasi jika error
-                        stopDurasiProduksi();
+                        console.error('❌ Error submitting production data:', error);
+                        showToast('Error koneksi saat menyimpan data', 'error');
                     } finally {
+                        // Restore Button
                         btnSubmitProduksi.disabled = false;
                         btnSubmitProduksi.innerHTML = originalText;
                     }
                 });
             }
+
+
 
         });
         // ========== END KOMPONEN LOADING ==========
@@ -4842,7 +5089,7 @@
         let oeeConnection = null;
         // ✅ PERBAIKAN: machineId sudah dideklarasikan di atas (line 4063), gunakan yang sudah ada
         const machineIdInt = parseInt(machineId) || 0;
-        const currentMachineId = @Model.MachineId;
+        const currentMachineId = '@Model.MachineId';
         
         // ========== RUNNING TIMER FUNCTIONS ==========
         /**
@@ -5531,65 +5778,58 @@
             // Calculate current values dengan real-time increment
             // Operating Time bertambah jika ada active job DAN tidak ada active downtime (running) DAN bukan NoLoading
             let currentOperatingSeconds = baseOperating;
-            if (hasActiveJob && !hasActiveDowntime && !isNoLoading) {
-                // Operating time bertambah setiap detik jika running dan bukan NoLoading
-                // Gunakan timestamp untuk akurasi
-                if (runningStartTimeUtc) {
-                    const elapsed = Math.floor((now - runningStartTimeUtc) / 1000);
-                    currentOperatingSeconds = baseOperating + elapsed;
-                } else {
-                    currentOperatingSeconds = baseOperating + realTimeCounter;
+            if (hasActiveJob) {
+                if (!hasActiveDowntime) {
+                    if (!isNoLoading) {
+                        if (runningStartTimeUtc) {
+                            const elapsed = Math.floor((now - runningStartTimeUtc) / 1000);
+                            currentOperatingSeconds = baseOperating + elapsed;
+                        } else {
+                            currentOperatingSeconds = baseOperating + realTimeCounter;
+                        }
+                    }
                 }
             }
 
             // Downtime bertambah jika ada active downtime DAN bukan NoLoading
             let currentDowntimeSeconds = baseDowntime;
-            if (hasActiveDowntime && !isNoLoading) {
-                // Downtime bertambah setiap detik jika ada downtime aktif dan bukan NoLoading
-                // Gunakan timestamp untuk akurasi
-                currentDowntimeSeconds = baseDowntime + realTimeCounter;
+            if (hasActiveDowntime) {
+                if (!isNoLoading) {
+                    currentDowntimeSeconds = baseDowntime + realTimeCounter;
+                }
             }
 
             // Planned Production Time = Operating Time + Downtime
-            // Selalu hitung dari current values (sudah termasuk real-time increment jika ada aktivitas)
             let currentPlannedSeconds = currentOperatingSeconds + currentDowntimeSeconds;
             
-            // PASTIKAN: Jika tidak ada aktivitas, Planned Production Time tetap dihitung dari base values
-            // Ini memastikan waktu selalu ter-display, meskipun tidak bertambah
-            if (currentPlannedSeconds === 0 && baseOperating === 0 && baseDowntime === 0) {
-                // Jika belum ada data sama sekali, tetap tampilkan 00:00:00
-                currentPlannedSeconds = 0;
+            if (currentPlannedSeconds === 0) {
+                if (baseOperating === 0) {
+                    if (baseDowntime === 0) {
+                        currentPlannedSeconds = 0;
+                    }
+                }
             }
 
-            // Update Planned Production Time
             const plannedEl = document.getElementById('planned-production-time');
-            if (plannedEl) {
-                plannedEl.textContent = formatTime(currentPlannedSeconds);
-            }
+            if (plannedEl) plannedEl.textContent = formatTime(currentPlannedSeconds);
 
-            // Update Operating Time
             const operatingEl = document.getElementById('operating-time');
-            if (operatingEl) {
-                operatingEl.textContent = formatTime(currentOperatingSeconds);
-            }
+            if (operatingEl) operatingEl.textContent = formatTime(currentOperatingSeconds);
 
-            // Update Downtime
             const downtimeEl = document.getElementById('downtime-total');
-            if (downtimeEl) {
-                downtimeEl.textContent = formatTime(currentDowntimeSeconds);
-            }
+            if (downtimeEl) downtimeEl.textContent = formatTime(currentDowntimeSeconds);
 
             // ✅ PERBAIKAN: Calculate Rest Break Time
             let currentRestBreakSeconds = baseRestBreakSeconds;
-            if (hasActiveRestBreak && !isNoLoading) {
-                // Rest Break time bertambah setiap detik jika ada rest break aktif dan bukan NoLoading
-                currentRestBreakSeconds = baseRestBreakSeconds + realTimeCounter;
+            if (hasActiveRestBreak) {
+                if (!isNoLoading) {
+                    currentRestBreakSeconds = baseRestBreakSeconds + realTimeCounter;
+                }
             }
 
             // ✅ PERBAIKAN: Calculate No Loading Time
             let currentNoLoadingSeconds = baseNoLoadingSeconds;
             if (isNoLoading) {
-                // No Loading time bertambah setiap detik jika status NoLoading aktif
                 currentNoLoadingSeconds = baseNoLoadingSeconds + realTimeCounter;
             }
 
@@ -5882,9 +6122,11 @@
         });
 
         // ========== ACTION BUTTONS & TIMER SYNCHRONIZATION ==========
-        let hasActiveJobOee = @(Model.HasActiveJob.ToString().ToLower());
-        let hasActiveDowntimeOee = @(Model.HasActiveDowntime.ToString().ToLower());
-        let machineStatusOee = '@Model.MachineStatus.ToString()';
+        // ========== ACTION BUTTONS & TIMER SYNCHRONIZATION ==========
+        // FIX: Use string comparison to avoid syntax errors from raw Razor output
+        let hasActiveJobOee = '@Model.HasActiveJob'.toLowerCase() === 'true';
+        let hasActiveDowntimeOee = '@Model.HasActiveDowntime'.toLowerCase() === 'true';
+        let machineStatusOee = '@Model.MachineStatus';
 
         // Update action buttons state
         // FRONTEND: semua tombol selalu bisa diklik.
@@ -6536,14 +6778,96 @@
                 });
             }
             
-            // ✅ TAMBAHKAN: Event listener untuk form Add Quantity (backup, jika onsubmit tidak berfungsi)
+            // ✅ TAMBAHKAN: Event listener untuk form Add Quantity (Intercept & Stop Timer)
             const addQtyForm = document.getElementById('add-qty-form');
             if (addQtyForm) {
-                addQtyForm.addEventListener('submit', function(e) {
+                addQtyForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
                     if (!validateGroupInjection()) {
-                        e.preventDefault();
-                        e.stopPropagation();
                         return false;
+                    }
+
+                    // ✅ 1. STOP Timer & Get Duration
+                    stopDurasiProduksi();
+                    const finalDuration = durasiProduksiSeconds;
+                    console.log('⏱️ Timer stopped on Qty Submit. Duration:', finalDuration);
+
+                    // ✅ 2. Populate ManPower & Injection Hidden Fields
+                    const manPowerVal = document.getElementById('select-man-power')?.value;
+                    const injectionVal = document.querySelector('input[name="injection-group"]:checked')?.value;
+
+                    // Ensure hidden fields are set in form (for FormData extraction)
+                    if(document.getElementById('hidden-qtymodal-manpower')) {
+                         document.getElementById('hidden-qtymodal-manpower').value = manPowerVal || '';
+                    }
+                    if(document.getElementById('hidden-injection')) {
+                         document.getElementById('hidden-injection').value = injectionVal || '';
+                    }
+
+                    // ✅ 3. Get Data
+                    const formData = new FormData(addQtyForm);
+                    const goodQty = formData.get('goodQty');
+                    const rejectQty = formData.get('rejectQty');
+                    
+                    // ✅ 4. Update Local Storage with Qty & Duration (PER ITEM)
+                    updateProductionDataWithQty(goodQty, rejectQty, finalDuration);
+
+                    // ✅ 5. Submit to Server (REAL Backend)
+                    const submitBtn = addQtyForm.querySelector('button[type="submit"]');
+                    const originalText = submitBtn ? submitBtn.innerHTML : 'Simpan';
+                    if(submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Saving...';
+                    }
+
+                    try {
+                        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+                        if(token) {
+                            formData.set('__RequestVerificationToken', token);
+                        }
+
+                        // Explicitly add manPowerId if not picked up (redundant safety)
+                        if(manPowerVal && !formData.has('manPowerId')) {
+                            formData.append('manPowerId', manPowerVal);
+                        }
+
+                        const response = await fetch('/Operator/AddQuantity', {
+                            method: 'POST',
+                            body: formData,
+                            headers: {
+                                'RequestVerificationToken': token || '',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success || response.ok) { // Check both for robustness
+                             console.log('✅ Quantity submitted successfully');
+                             
+                             // Close modal
+                             const modalEl = document.getElementById('addQtyModal');
+                             const modal = bootstrap.Modal.getInstance(modalEl);
+                             if(modal) modal.hide();
+
+                             // Reset form
+                             addQtyForm.reset();
+                             
+                             showToast('Quantity saved! Item completed.', 'success');
+                        } else {
+                             console.error('❌ Server Error:', result.message);
+                             showToast('Gagal menyimpan Qty: ' + (result.message || 'Unknown Error'), 'error');
+                        }
+                    } catch (error) {
+                        console.error('❌ Network Error:', error);
+                        showToast('Error koneksi saat menyimpan Qty', 'error');
+                    } finally {
+                        if(submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.innerHTML = originalText;
+                        }
                     }
                 });
             }
@@ -6833,250 +7157,162 @@
         })();
         // ========== END INPUT WAKTU KERJA OPERATOR ==========
 
-        // ========== SCW (Stop Call Waiting) HANDLER ==========
-        document.addEventListener('DOMContentLoaded', function() {
-            let scw4MTypeSelect = document.getElementById('scw-4m-type');
-            let scwRemarkSelect = document.getElementById('scw-remark');
-            const btnScwSubmit = document.getElementById('btn-scw-submit');
-            const scwAdditionalNotes = document.getElementById('scw-additional-notes');
-            
-            if (!scw4MTypeSelect || !scwRemarkSelect || !btnScwSubmit) {
-                console.warn('SCW elements not found');
-                return;
-            }
-            
-            // Event listener untuk perubahan Jenis 4M
-            scw4MTypeSelect.addEventListener('change', async function() {
-                const selected4MTypeId = this.value;
+        // ========== ULTIMATE SCW (Stop Call Waiting) HANDLER ==========
+        
+        // ========== SCW HANDLER (FINAL ROBUST VERSION) ==========
+        
+        (function() {
+            // Define data inside IIFE to avoid global scope pollution/collisions
+            const RAW_DATA = {
+                Material: [{id:1, text:"Rejection"}, {id:2, text:"Material Shortage"}],
+                Method: [{id:3, text:"SOP Tak Sesuai Standar"}],
+                Machine: [{id:4, text:"Problem Mesin"}],
+                Man: [{id:5, text:"Sakit"}, {id:6, text:"Izin"}, {id:7, text:"Alpha"}, {id:8, text:"Cuti"}],
+                NoProblem: [{id:9, text:"No Problem"}]
+            };
+
+            // Expose Mapping Global for Debugging if needed, but safe to reassignment
+            window.SCW_MAPPING_DATA = {
+                // ID Keys (1-5)
+                "1": RAW_DATA.Material,
+                "2": RAW_DATA.Method,
+                "3": RAW_DATA.Machine,
+                "4": RAW_DATA.Man,
+                "5": RAW_DATA.NoProblem,
                 
-                // Reset remark dropdown
-                scwRemarkSelect.innerHTML = '<option value="">-- Memuat remark... --</option>';
-                scwRemarkSelect.disabled = true;
-                // Button tetap bisa diklik, validasi akan dilakukan saat click
+                // Text Keys (Exact)
+                "Material": RAW_DATA.Material,
+                "Method": RAW_DATA.Method,
+                "Methode": RAW_DATA.Method,
+                "Machine": RAW_DATA.Machine,
+                "Mesin": RAW_DATA.Machine,
+                "Man": RAW_DATA.Man,
+                "Manpower": RAW_DATA.Man,
+                "No Problem": RAW_DATA.NoProblem,
+                "NoProblem": RAW_DATA.NoProblem
+            };
+
+            // Main Handler
+            window.handleScw4MChange = async function(argValue) {
+                const $scw4m = $('#scw-4m-type');
+                const $remark = $('#scw-remark');
                 
-                if (!selected4MTypeId) {
-                    const currentRemarkSelect = document.getElementById('scw-remark');
-                    if (currentRemarkSelect) {
-                        currentRemarkSelect.innerHTML = '<option value="">-- Pilih Jenis 4M terlebih dahulu --</option>';
-                        currentRemarkSelect.disabled = true;
-                    }
+                // Getter
+                let typeId = argValue !== undefined ? argValue : $scw4m.val();
+                const typeText = $scw4m.find('option:selected').text().trim();
+                
+                console.log(`🎯 SCW Trigger | ID: "${typeId}" | Text: "${typeText}"`);
+
+                // Reset
+                $remark.empty();
+                $remark.append('<option value="">-- Pilih Jenis Remark --</option>');
+
+                // Validate
+                if ((!typeId || typeId == "") && (typeText == "" || typeText.includes("--"))) {
+                    $remark.append('<option value="">-- Pilih Jenis 4M terlebih dahulu --</option>');
+                    $remark.prop('disabled', true);
                     return;
                 }
+
+                // Enable
+                $remark.prop('disabled', false).removeAttr('disabled');
                 
-                // Fetch remarks berdasarkan 4M Type yang dipilih
-                try {
-                    console.log('🔍 Fetching remarks for 4M Type ID:', selected4MTypeId);
-                    const response = await fetch(`/api/Operator/GetScwRemarks?scw4MTypeId=${selected4MTypeId}`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const result = await response.json();
-                    console.log('📦 Remarks response:', result);
-                    
-                    if (result.success && result.remarks && result.remarks.length > 0) {
-                        // Langsung update dropdown yang ada (tidak recreate)
-                        scwRemarkSelect.innerHTML = '<option value="">-- Pilih Jenis Remark --</option>';
-                        result.remarks.forEach(remark => {
-                            const option = document.createElement('option');
-                            option.value = remark.id;
-                            option.textContent = remark.description;
-                            scwRemarkSelect.appendChild(option);
-                        });
-                        
-                        // PASTIKAN dropdown benar-benar aktif dan bisa diklik
-                        // Step 1: Enable dropdown - lakukan beberapa kali untuk memastikan
-                        scwRemarkSelect.disabled = false;
-                        scwRemarkSelect.removeAttribute('disabled');
-                        scwRemarkSelect.removeAttribute('readonly');
-                        scwRemarkSelect.removeAttribute('aria-disabled');
-                        
-                        // Step 2: Hapus SEMUA inline styles
-                        scwRemarkSelect.removeAttribute('style');
-                        scwRemarkSelect.style.cssText = '';
-                        
-                        // Step 3: Pastikan class form-select ada (sama seperti Jenis 4M)
-                        if (!scwRemarkSelect.classList.contains('form-select')) {
-                            scwRemarkSelect.classList.add('form-select');
-                        }
-                        
-                        // Step 4: Force enable dengan cara yang lebih agresif
-                        scwRemarkSelect.setAttribute('tabindex', '0');
-                        
-                        // Step 5: Pastikan tidak ada CSS yang menghalangi - force set style
-                        scwRemarkSelect.style.pointerEvents = 'auto';
-                        scwRemarkSelect.style.opacity = '1';
-                        scwRemarkSelect.style.cursor = 'pointer';
-                        scwRemarkSelect.style.backgroundColor = '';
-                        scwRemarkSelect.style.color = '';
-                        
-                        // Force reflow untuk memastikan perubahan diterapkan
-                        void scwRemarkSelect.offsetHeight;
-                        
-                        // Double-check dengan setTimeout untuk memastikan dropdown benar-benar aktif
-                        setTimeout(() => {
-                            const remarkSelect = document.getElementById('scw-remark');
-                            if (remarkSelect) {
-                                // Pastikan disabled = false
-                                remarkSelect.disabled = false;
-                                remarkSelect.removeAttribute('disabled');
-                                remarkSelect.removeAttribute('readonly');
-                                remarkSelect.removeAttribute('aria-disabled');
-                                
-                                // Pastikan class form-select ada
-                                remarkSelect.className = 'form-select';
-                                
-                                // Force enable pointer events dan opacity
-                                remarkSelect.style.pointerEvents = 'auto';
-                                remarkSelect.style.opacity = '1';
-                                remarkSelect.style.cursor = 'pointer';
-                                
-                                // Hapus background color jika ada
-                                remarkSelect.style.backgroundColor = '';
-                                remarkSelect.style.color = '';
-                                
-                                console.log('✅ Dropdown re-enabled after timeout');
-                                console.log('✅ Dropdown disabled:', remarkSelect.disabled);
-                                console.log('✅ Dropdown className:', remarkSelect.className);
-                                console.log('✅ Dropdown options count:', remarkSelect.options.length);
-                                console.log('✅ Dropdown computed pointer-events:', window.getComputedStyle(remarkSelect).pointerEvents);
-                                console.log('✅ Dropdown computed opacity:', window.getComputedStyle(remarkSelect).opacity);
-                                console.log('✅ Dropdown computed background-color:', window.getComputedStyle(remarkSelect).backgroundColor);
-                                
-                                // Test: coba buka dropdown programmatically
-                                try {
-                                    remarkSelect.focus();
-                                    console.log('✅ Dropdown focused successfully');
-                                } catch (e) {
-                                    console.warn('⚠️ Cannot focus dropdown:', e);
-                                }
-                            }
-                        }, 100);
-                        
-                        console.log('✅ Remarks loaded successfully:', result.remarks.length, 'items');
-                        console.log('✅ Dropdown updated and enabled');
-                        console.log('✅ Dropdown disabled state:', scwRemarkSelect.disabled);
-                        console.log('✅ Dropdown has', scwRemarkSelect.options.length, 'options');
-                        console.log('✅ Dropdown className:', scwRemarkSelect.className);
-                        console.log('✅ Dropdown can be clicked:', !scwRemarkSelect.disabled);
-                    } else {
-                        const currentRemarkSelect = document.getElementById('scw-remark');
-                        if (currentRemarkSelect) {
-                            currentRemarkSelect.innerHTML = '<option value="">-- Tidak ada remark untuk kategori ini --</option>';
-                            currentRemarkSelect.disabled = true;
-                        }
-                        console.warn('⚠️ No remarks found for 4M Type ID:', selected4MTypeId);
-                    }
-                } catch (error) {
-                    console.error('❌ Error fetching remarks:', error);
-                    const currentRemarkSelect = document.getElementById('scw-remark');
-                    if (currentRemarkSelect) {
-                        currentRemarkSelect.innerHTML = '<option value="">-- Error memuat remark --</option>';
-                        currentRemarkSelect.disabled = true;
-                    }
-                }
-            });
-            
-            // Event listener untuk memastikan dropdown bisa dibuka
-            scwRemarkSelect.addEventListener('click', function() {
-                if (!this.disabled) {
-                    console.log('✅ Dropdown clicked, options count:', this.options.length);
-                } else {
-                    console.warn('⚠️ Dropdown clicked but still disabled');
-                }
-            });
-            
-            // Event listener untuk mousedown untuk memastikan dropdown bisa dibuka
-            scwRemarkSelect.addEventListener('mousedown', function(e) {
-                if (!this.disabled) {
-                    console.log('✅ Dropdown mousedown, will open');
-                } else {
-                    console.warn('⚠️ Dropdown mousedown but still disabled');
-                    e.preventDefault();
-                }
-            });
-            
-            // Event listener untuk perubahan Remark (button tetap bisa diklik, validasi di click handler)
-            // Tidak perlu disable button, validasi akan dilakukan saat click seperti Submit Data Produksi
-            
-            // Event listener untuk Simpan SCW button (sama seperti Submit Data Produksi)
-            btnScwSubmit.addEventListener('click', async function() {
-                // Validasi seperti Submit Data Produksi
-                const scw4MTypeId = scw4MTypeSelect.value;
-                const scwRemarkId = document.getElementById('scw-remark')?.value;
-                
-                if (!scw4MTypeId || !scwRemarkId) {
-                    alert('Harap lengkapi semua field:\n- Jenis 4M\n- Jenis Remark');
-                    return;
-                }
-                
-                // Disable button
-                btnScwSubmit.disabled = true;
-                const originalText = btnScwSubmit.innerHTML;
-                btnScwSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
-                
-                try {
-                    // Get anti-forgery token
-                    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-                    
-                    const formData = new FormData();
-                    formData.append('machineId', '@Model.MachineId');
-                    formData.append('scw4MTypeId', scw4MTypeId);
-                    formData.append('scwRemarkId', scwRemarkId);
-                    formData.append('additionalNotes', '');
-                    formData.append('returnUrl', window.location.pathname);
-                    formData.append('__RequestVerificationToken', token);
-                    
-                    const response = await fetch('/Operator/Scw', {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
+                // Lookup
+                let items = window.SCW_MAPPING_DATA[typeId] 
+                        || window.SCW_MAPPING_DATA[typeText]
+                        || window.SCW_MAPPING_DATA[typeText.split(' ')[0]]
+                        || [];
+
+                // Populate
+                if (items.length > 0) {
+                    items.forEach(function(item) {
+                         $remark.append($('<option>', { 
+                             value: item.id,
+                             text : item.text 
+                         }));
                     });
-                    
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        // Reset form
-                        scw4MTypeSelect.value = '';
-                        const currentScwRemarkSelect = document.getElementById('scw-remark');
-                        if (currentScwRemarkSelect) {
-                            // Recreate dropdown untuk reset ke state awal
-                            const parent = currentScwRemarkSelect.parentNode;
-                            const newSelect = document.createElement('select');
-                            newSelect.className = 'form-select';
-                            newSelect.id = 'scw-remark';
-                            newSelect.name = 'scwRemarkId';
-                            newSelect.required = true;
-                            newSelect.disabled = true;
-                            newSelect.innerHTML = '<option value="">-- Pilih Jenis 4M terlebih dahulu --</option>';
-                            parent.replaceChild(newSelect, currentScwRemarkSelect);
-                        }
-                        // Button tetap bisa diklik seperti Submit Data Produksi
-                        
-                        // Refresh time metrics
-                        setTimeout(() => {
-                            if (typeof fetchTimeMetrics === 'function') {
-                                fetchTimeMetrics();
-                            }
-                        }, 500);
-                        
-                        alert('✅ SCW berhasil disimpan');
-                    } else {
-                        alert('❌ Error: ' + (result.message || 'Gagal simpan SCW'));
-                        btnScwSubmit.disabled = false;
-                        btnScwSubmit.innerHTML = originalText;
-                    }
-                } catch (error) {
-                    console.error('Error starting SCW:', error);
-                    alert('❌ Terjadi error saat simpan SCW');
-                    btnScwSubmit.disabled = false;
-                    btnScwSubmit.innerHTML = originalText;
+                    console.log(`⚡ Populated ${items.length} items.`);
+                } else {
+                    $remark.append('<option value="" disabled>-- Memuat data... --</option>');
                 }
+
+                // Server Sync (Background)
+                if (typeId && /^\d+$/.test(typeId)) {
+                    try {
+                        const res = await fetch(`/api/Operator/GetScwRemarks?scw4MTypeId=${typeId}`);
+                        if (res.ok) {
+                            const json = await res.json();
+                            if (json.success && json.remarks && json.remarks.length > 0) {
+                                const curVal = $remark.val();
+                                $remark.empty().append('<option value="">-- Pilih Jenis Remark --</option>');
+                                json.remarks.forEach(r => {
+                                    $remark.append($('<option>', { value: r.id, text: r.description }));
+                                });
+                                if (curVal) $remark.val(curVal);
+                            }
+                        }
+                    } catch (e) {
+                         console.warn("API Sync error", e);
+                    }
+                }
+            };
+
+            // Initialize on jQuery Ready
+            $(function() {
+                const $scw4m = $('#scw-4m-type');
+                
+                // Bind Change
+                $scw4m.off('change.scw').on('change.scw', function() {
+                    window.handleScw4MChange($(this).val());
+                });
+
+                // Init Check
+                if ($scw4m.val()) {
+                    window.handleScw4MChange($scw4m.val());
+                }
+
+                // Submit Handler
+                $('#btn-scw-submit').off('click').on('click', async function() {
+                    const typeId = $('#scw-4m-type').val();
+                    const remarkId = $('#scw-remark').val();
+
+                    if (!typeId || !remarkId) {
+                        alert('Harap lengkapi semua field!');
+                        return;
+                    }
+
+                    const $btn = $(this);
+                    const oldText = $btn.html();
+                    $btn.prop('disabled', true).html('Menyimpan...');
+
+                    try {
+                        const fd = new FormData();
+                        fd.append('machineId', '@Model.MachineId');
+                        fd.append('scw4MTypeId', typeId);
+                        fd.append('scwRemarkId', remarkId);
+                        const token = $('input[name="__RequestVerificationToken"]').val();
+                        if(token) fd.append('__RequestVerificationToken', token);
+
+                        const res = await fetch('/Operator/Scw', {
+                            method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}
+                        });
+                        const json = await res.json();
+                        
+                        if(json.success) {
+                            alert('✅ Sukses!');
+                            $('#scw-4m-type').val('').trigger('change');
+                        } else {
+                            throw new Error(json.message);
+                        }
+                    } catch(e) {
+                        alert('❌ Error: ' + e.message);
+                    } finally {
+                        $btn.prop('disabled', false).html(oldText);
+                    }
+                });
             });
-        });
+
+        })();
         // ========== END SCW HANDLER ==========
     </script>
     
@@ -7170,27 +7406,26 @@
         /* JENIS 4M: Tidak ada styling khusus, gunakan default Bootstrap */
         
         /* JENIS REMARK: Hanya styling untuk disabled state */
-        #scw-remark:disabled {
-            background-color: #e9ecef;
-            cursor: not-allowed;
-            opacity: 0.6;
-            pointer-events: none;
+        /* SCW CARD: Robust State Styles */
+        #scw-4m-type,
+        #scw-remark {
+            transition: all 0.2s ease;
         }
-        
-        /* JENIS REMARK: Pastikan dropdown aktif tidak berwarna dan bisa diklik */
-        #scw-remark:not(:disabled) {
-            pointer-events: auto !important;
-            cursor: pointer !important;
-            opacity: 1 !important;
-            background-color: transparent !important;
+
+        /* Ensure dropdown items are readable in custom themes */
+        #scw-remark option {
+            background-color: #2b2d31;
+            color: #ffffff;
         }
-        
-        /* Override semua styling untuk memastikan dropdown aktif */
-        select#scw-remark.form-select:not(:disabled) {
-            pointer-events: auto !important;
-            cursor: pointer !important;
-            opacity: 1 !important;
-            background-color: transparent !important;
+
+        #btn-scw-submit {
+            font-weight: 500;
+            border-radius: 8px;
+            transition: transform 0.2s ease;
+        }
+
+        #btn-scw-submit:hover:not(:disabled) {
+            transform: translateY(-1px);
         }
         
         
@@ -7211,6 +7446,542 @@
             }
         }
     </style>
+
+    <!-- Scanner Modal & Logic -->
+    <style>
+        /* Scanner Modal Styling */
+        .scanner-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 10000;
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        
+        .scanner-modal.active {
+            display: flex;
+        }
+
+        .scanner-container {
+            background: #1e1e1e;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            margin: 1rem;
+            position: relative;
+            border: 1px solid #333;
+        }
+
+        .scanner-header {
+            padding: 1rem 1.5rem;
+            background: #000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+
+        .scanner-header h3 {
+            color: #fff;
+            font-size: 1.25rem;
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-close-scanner {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #fff;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-close-scanner:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: rotate(90deg);
+        }
+
+        .scanner-viewport {
+            position: relative;
+            width: 100%;
+            height: 50vh; 
+            min-height: 300px;
+            background: #000;
+            overflow: hidden;
+        }
+
+        /* 
+         * IMPORTANT: Generic selector for ANY video inside viewport 
+         * Quagga might create its own or use ours.
+         */
+        .scanner-viewport video, #scanner-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        /* Quagga Canvas - Overlay for Bounding Box */
+        .drawingBuffer, canvas.drawingBuffer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5; /* Above video(1), below overlay(10) */
+            pointer-events: none;
+        }
+        
+        /* Overlay area - Topmost */
+        .scanner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        /* Guide Box */
+        .scanner-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 40%;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 12px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Active Laser */
+        .scanner-laser {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: #ff3b3b;
+            box-shadow: 0 0 10px #ff3b3b, 0 0 5px #ff3b3b;
+            animation: scan-vertical 2s infinite linear;
+            z-index: 5;
+        }
+        
+        @@keyframes scan-vertical {
+            0% { top: 10%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 90%; opacity: 0; }
+        }
+        
+        .scanner-controls {
+            padding: 1.5rem;
+            background: #1e1e1e;
+            border-top: 1px solid #333;
+        }
+    </style>
+
+    <!-- Load Quagga2 from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+
+    <!-- Modal Elements -->
+    <div id="scanner-modal-container">
+        <div id="scanner-modal" class="scanner-modal">
+            <div class="scanner-container">
+                <div class="scanner-header">
+                    <h3><i class="fa-solid fa-qrcode"></i> Scan Barcode</h3>
+                    <button type="button" class="btn-close-scanner" id="btn-close-scanner" aria-label="Close">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+                <div class="scanner-body">
+                    <div id="scanner-viewport" class="scanner-viewport">
+                        <!-- Video Element -->
+                        <video id="scanner-video" autoplay playsinline muted></video>
+                        <!-- Canvas will be appended here by Quagga -->
+                        
+                        <div class="scanner-overlay">
+                            <div class="scanner-guide"></div>
+                            <div class="scanner-laser"></div>
+                        </div>
+                        <div id="scanner-feedback" class="position-absolute top-50 start-50 translate-middle bg-success text-white px-3 py-2 rounded shadow" style="display: none; z-index: 20;">
+                            <i class="fa-solid fa-check-circle me-2"></i>Scanned!
+                        </div>
+                    </div>
+                    <div class="scanner-controls">
+                        <div class="mb-3">
+                            <label class="form-label text-light small mb-1">Pilih Kamera:</label>
+                            <select id="camera-select" class="form-select text-light border-secondary" style="background-color: #2b2b2b;">
+                                <option value="">Mencari kamera...</option>
+                            </select>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-muted small mb-0">Arahkan kamera ke Code 128 / QR Code</p>
+                            <span id="scanner-engine-status" class="badge bg-secondary mt-1">Ready</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Universal Scanner v6.0 (Visual Feedback & State Fix)
+         * - Adds Green Bounding Box on detected barcodes
+         * - Fixes Button UI state (no active/focus lock)
+         * - Maintains robust video cleanup
+         */
+        class BarcodeScannerService {
+            constructor() {
+                this.modal = document.getElementById('scanner-modal');
+                this.viewport = document.getElementById('scanner-viewport');
+                this.cameraSelect = document.getElementById('camera-select');
+                this.closeBtn = document.getElementById('btn-close-scanner');
+                this.feedback = document.getElementById('scanner-feedback');
+                this.statusBadge = document.getElementById('scanner-engine-status');
+                
+                this.isScanning = false;
+                this.activeTargetId = null;
+                this._ctx = null; // Canvas Context for drawing
+                
+                this.initListeners();
+            }
+
+            initListeners() {
+                if(this.closeBtn) this.closeBtn.onclick = () => this.stop();
+                if(this.modal) this.modal.onclick = (e) => { if(e.target === this.modal) this.stop(); };
+                
+                if(this.cameraSelect) {
+                    this.cameraSelect.onchange = () => {
+                        if(this.isScanning) {
+                            setTimeout(() => this.startScanner(this.cameraSelect.value), 200);
+                        }
+                    };
+                }
+                
+                document.body.addEventListener('click', (e) => {
+                    const btn = e.target.closest('button[id^="btn-scan-"]');
+                    if (btn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Blur button immediately to prevent active state stuck
+                        btn.blur();
+                        
+                        let targetId = '';
+                        if (btn.id === 'btn-scan-lot-number') targetId = 'input-lot-number';
+                        else if (btn.id === 'btn-scan-part-number') targetId = 'input-part-number';
+                        else if (btn.id === 'btn-scan-nama-compound') targetId = 'input-nama-compound';
+                        
+                        if (targetId) this.open(targetId);
+                    }
+                });
+            }
+
+            async open(targetId) {
+                this.activeTargetId = targetId;
+                if(this.modal) this.modal.classList.add('active');
+                
+                this.updateStatus('Initializing...');
+                this.isScanning = true;
+                
+                // Wait for modal transition
+                await new Promise(r => setTimeout(r, 400));
+                
+                await this.populateCameras();
+                await this.startScanner();
+            }
+
+            stop() {
+                this.isScanning = false;
+                if(this.modal) this.modal.classList.remove('active');
+                
+                if (typeof Quagga !== 'undefined') {
+                    try { Quagga.stop(); } catch(e) {}
+                }
+                
+                // Robust Stream Cleanup
+                document.querySelectorAll('video').forEach(vid => {
+                    if (vid.srcObject) {
+                        try {
+                            const tracks = vid.srcObject.getTracks();
+                            tracks.forEach(t => t.stop());
+                        } catch(e) {}
+                        vid.srcObject = null;
+                    }
+                });
+                
+                this.activeTargetId = null;
+                this.updateStatus('Stopped');
+            }
+
+            async populateCameras() {
+                try {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+                    
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const cameras = devices.filter(d => d.kind === 'videoinput');
+                    
+                    this.cameraSelect.innerHTML = '';
+                    let backCam = null;
+                    
+                    if (cameras.length === 0) {
+                         this.cameraSelect.innerHTML = '<option value="">No Camera</option>';
+                         return;
+                    }
+                    
+                    cameras.forEach(cam => {
+                        const opt = document.createElement('option');
+                        opt.value = cam.deviceId;
+                        opt.text = cam.label || 'Camera ' + (this.cameraSelect.length + 1);
+                        if ((cam.label||'').toLowerCase().match(/back|environment|belakang/)) {
+                            backCam = cam.deviceId;
+                            opt.text += ' (Back)';
+                        }
+                        this.cameraSelect.add(opt);
+                    });
+                    
+                    if (backCam) this.cameraSelect.value = backCam;
+                    else if (cameras.length) this.cameraSelect.selectedIndex = cameras.length - 1;
+                    
+                } catch(e) {
+                    console.warn(e);
+                }
+            }
+
+            async startScanner(deviceId = null) {
+                if (!this.isScanning) return;
+                this.updateStatus('Starting Camera...');
+                
+                if (typeof Quagga !== 'undefined') try{ Quagga.stop(); } catch(e){}
+                
+                // Cleanup viewport videos
+                if(this.viewport) {
+                    const existingVids = this.viewport.querySelectorAll('video');
+                     existingVids.forEach(v => {
+                        if(v.srcObject) {
+                             try { v.srcObject.getTracks().forEach(t=>t.stop()); } catch(e){}
+                             v.srcObject = null;
+                        }
+                    });
+                }
+
+                const constraints = {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                };
+                
+                const selId = deviceId || this.cameraSelect.value;
+                if (selId) constraints.deviceId = { exact: selId };
+                else constraints.facingMode = "environment";
+                
+                Quagga.init({
+                    inputStream: {
+                        name: "Live",
+                        type: "LiveStream",
+                        target: this.viewport,
+                        constraints: constraints,
+                        area: { top: "10%", right: "10%", left: "10%", bottom: "10%" }
+                    },
+                    decoder: {
+                        readers: ["code_128_reader", "ean_reader", "code_39_reader"],
+                        multiple: false
+                    },
+                    locate: true, // Enable location for bounding box
+                    frequency: 10
+                }, (err) => {
+                    if (err) {
+                        console.error('Quagga Init Error:', err);
+                        this.updateStatus('Error: ' + err.message);
+                        return;
+                    }
+                    console.log("Quagga Ready");
+                    Quagga.start();
+                    this.updateStatus('Scanning...');
+                    
+                    this.startNativeQR();
+                });
+                
+                // Visual Feedback: Bounding Box
+                Quagga.onProcessed((result) => {
+                    if (!result) return;
+                    
+                    const drawingCtx = Quagga.canvas.ctx.overlay;
+                    const drawingCanvas = Quagga.canvas.dom.overlay;
+            
+                    if (result.boxes) {
+                        drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
+                        result.boxes.filter((box) => box !== result.box).forEach((box) => {
+                            Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: "green", lineWidth: 2 });
+                        });
+                    }
+            
+                    if (result.box) {
+                        Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: "#00F", lineWidth: 2 });
+                    }
+            
+                    if (result.codeResult && result.codeResult.code) {
+                        Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
+                    }
+                });
+                
+                Quagga.offDetected();
+                Quagga.onDetected(res => {
+                    if (res?.codeResult?.code) this.handleScan(res.codeResult.code, 'Quagga');
+                });
+            }
+            
+            startNativeQR() {
+                if (!('BarcodeDetector' in window)) return;
+                
+                setTimeout(() => {
+                    const videoEl = this.viewport.querySelector('video');
+                    if(!videoEl) return;
+                    
+                    const qr = new BarcodeDetector({formats:['qr_code']});
+                    const loop = async () => {
+                        if(!this.isScanning) return;
+                        try {
+                            if(videoEl.readyState >= 2) {
+                                 const res = await qr.detect(videoEl);
+                                 if(res.length) this.handleScan(res[0].rawValue, 'QR');
+                            }
+                        } catch(e){}
+                        requestAnimationFrame(loop);
+                    };
+                    loop();
+                }, 1000);
+            }
+
+            updateStatus(msg) {
+                if(this.statusBadge) this.statusBadge.textContent = msg;
+            }
+
+            handleScan(code, src) {
+                if(!code || code.length < 2) return;
+                
+                if(this._last === code && Date.now() - this._tm < 2000) return;
+                this._last = code; this._tm = Date.now();
+                
+                console.log('Scan:', code, src);
+
+                // ✅ VALIDATION for Length > 12 (Specific for Lot & Part Number)
+                if (this.activeTargetId === 'input-lot-number' || this.activeTargetId === 'input-part-number') {
+                    if (code.length > 12) {
+                        console.warn('Scanned code too long:', code);
+                        if (typeof showToast === 'function') {
+                            showToast(`Code tidak sesuai! Maksimal 12 karakter.`, 'error');
+                        } else {
+                            alert(`Code tidak sesuai! Maksimal 12 karakter.`);
+                        }
+                        
+                        // Close scanner but DO NOT fill input
+                        setTimeout(() => {
+                            this.stop();
+                        }, 500);
+                        return;
+                    }
+                }
+
+                if(this.feedback) {
+                    this.feedback.textContent = code;
+                    this.feedback.style.display = 'block';
+                }
+                
+                if (navigator.vibrate) navigator.vibrate([200]);
+                
+                // Inject Value without altering button state
+                if (this.activeTargetId) {
+                    const inp = document.getElementById(this.activeTargetId);
+                    if(inp) {
+                        inp.value = code;
+                        // Trigger standard events for compatibility (React/Vue/etc if used in future)
+                        inp.dispatchEvent(new Event('input', {bubbles:true}));
+                        inp.dispatchEvent(new Event('change', {bubbles:true}));
+                        
+                        // Optional: Slight flash on INPUT field only, NOT button
+                        const originalBg = inp.style.backgroundColor;
+                        inp.style.backgroundColor = '#d1e7dd';
+                        setTimeout(() => { inp.style.backgroundColor = originalBg; }, 300);
+                    }
+                }
+                
+                setTimeout(() => {
+                    this.stop();
+                    if(this.feedback) this.feedback.style.display = 'none';
+                }, 800);
+            }
+        }
+
+        window.addEventListener('load', () => {
+             window.scannerService = new BarcodeScannerService();
+             console.log('Scanner v6.0 Ready');
+        });
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                document.body.appendChild(container);
+            }
+
+            // Always enforce Top-Center position
+            container.className = 'toast-container position-fixed top-0 start-50 translate-middle-x p-3';
+            container.style.zIndex = '11000';
+            container.style.marginTop = '20px';
+
+            const id = 'toast-' + Date.now();
+            const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-primary';
+            const icon = type === 'success' ? 'fa-check' : type === 'error' ? 'fa-circle-exclamation' : 'fa-info-circle';
+            
+            const html = `
+                <div id="${id}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="fa-solid ${icon} me-2"></i>${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            container.insertAdjacentHTML('beforeend', html);
+            
+            const toastEl = document.getElementById(id);
+            const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+            toast.show();
+            
+            toastEl.addEventListener('hidden.bs.toast', () => {
+                toastEl.remove();
+            });
+        }
+    </script>
 }
 
 

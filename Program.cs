@@ -606,6 +606,84 @@ using (var scope = app.Services.CreateScope())
                 // Jangan stop aplikasi, biarkan tetap berjalan
             }
 
+            // ✅ PERBAIKAN: Tambahkan kolom-kolom baru ke tabel ProductionCounts untuk support Production Data yang lebih detail
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'LotNumber')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD LotNumber NVARCHAR(100) NULL;
+                    END
+                    
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'LotBo')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD LotBo NVARCHAR(100) NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'CompoundName')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD CompoundName NVARCHAR(200) NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'ActualWeight')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD ActualWeight FLOAT NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'Thinning')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD Thinning NVARCHAR(50) NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'Remarks')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD Remarks NVARCHAR(MAX) NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'ManPowerId')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD ManPowerId INT NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'ComponentId')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD ComponentId INT NULL;
+                    END
+
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'DurationSeconds')
+                    BEGIN
+                        ALTER TABLE ProductionCounts ADD DurationSeconds INT NULL;
+                    END
+
+                    PRINT 'Kolom-kolom baru berhasil ditambahkan ke tabel ProductionCounts';
+                ");
+                Console.WriteLine("INFO: Kolom-kolom baru sudah tersedia di tabel ProductionCounts");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat menambahkan kolom baru ke ProductionCounts: {ex.Message}");
+            }
+
+            // ✅ Create Komponen table if not exists
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Komponens]') AND type in (N'U'))
+                    BEGIN
+                        CREATE TABLE [dbo].[Komponens] (
+                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                            [PartNumber] NVARCHAR(100) NOT NULL,
+                            [JmlKomponen] INT NULL
+                        )
+                    END
+                ");
+                Console.WriteLine("INFO: Tabel Komponens sudah dibuat atau sudah ada");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"WARNING: Error saat membuat tabel Komponens: {ex.Message}");
+            }
+
 
             // Rename kolom IdealCycleTimeSeconds menjadi StandarCycleTime jika masih ada
             try
@@ -893,7 +971,7 @@ using (var scope = app.Services.CreateScope())
             db.SaveChanges();
         }
         
-        // Tambahkan data baru
+        // Tambahkan data baru sesuai permintaan user
         db.ScwRemarks.AddRange(
             // 1. Material (Id = 1)
             new OeeSystem.Models.ScwRemark { Scw4MTypeId = 1, Description = "Rejection", DisplayOrder = 1 },
