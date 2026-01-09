@@ -34,6 +34,19 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        // Set default schema
+        modelBuilder.HasDefaultSchema("produksi");
+
+        // Set table prefix tb_lwpmixing_ for all tables
+        foreach (var entity in modelBuilder.Model.GetEntityTypes())
+        {
+            var currentTableName = entity.GetTableName();
+            if (currentTableName != null)
+            {
+                entity.SetTableName("tb_lwpmixing_" + currentTableName);
+            }
+        }
+
         // Configure Machine.Id as varchar(4)
         modelBuilder.Entity<Machine>()
             .Property(m => m.Id)

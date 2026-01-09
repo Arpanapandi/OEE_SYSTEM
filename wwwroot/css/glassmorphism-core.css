@@ -1,0 +1,509 @@
+/* 
+ * GLASSMORPHISM CORE DESIGN SYSTEM v1.0
+ * Characteristics: Dark Theme, Blue Accents, Glassmorphism, Responsive Sidebar
+ */
+
+@import url('https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css');
+
+:root {
+    /* Color Palette */
+    --primary-blue: #0d6efd;
+    --primary-blue-dark: #0a58ca;
+    --primary-blue-light: #3d8bfd;
+    --accent-blue: #0dcaf0;
+
+    /* Backgrounds */
+    --dark-bg: #0a0e27;
+    --dark-bg-secondary: #141b2d;
+    --dark-bg-tertiary: #1a2332;
+    --card-bg: #2d3748;
+    --bg-gradient: linear-gradient(135deg, #0a0e27 0%, #1a2332 50%, #0f1419 100%);
+
+    /* Text Colors */
+    --text-primary: #ffffff;
+    --text-secondary: #b8c5d1;
+    --text-muted: #6c757d;
+
+    /* Glassmorphism */
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-blur: blur(20px);
+
+    /* Effects */
+    --shadow-glow: 0 0 20px rgba(13, 110, 253, 0.3);
+    --shadow-glow-strong: 0 0 30px rgba(13, 110, 253, 0.5);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Spacing */
+    --sidebar-width: 260px;
+    --sidebar-collapsed-width: 70px;
+    --top-navbar-height: 70px;
+}
+
+/* 1. Global Reset & Base */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    background: var(--bg-gradient);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--dark-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--primary-blue-dark);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-blue);
+    box-shadow: 0 0 10px var(--primary-blue);
+}
+
+/* 2. Layout Structure */
+.app-wrapper {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+}
+
+.main-content {
+    flex: 1;
+    margin-left: var(--sidebar-width);
+    transition: var(--transition-smooth);
+    padding: 2rem;
+    padding-top: calc(var(--top-navbar-height) + 2rem);
+    width: calc(100% - var(--sidebar-width));
+}
+
+.app-wrapper.collapsed .main-content {
+    margin-left: var(--sidebar-collapsed-width);
+    width: calc(100% - var(--sidebar-collapsed-width));
+}
+
+/* 3. Sidebar */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    width: var(--sidebar-width);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-right: 1px solid var(--glass-border);
+    transition: var(--transition-smooth);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-wrapper.collapsed .sidebar {
+    width: var(--sidebar-collapsed-width);
+}
+
+.sidebar-header {
+    padding: 1.5rem;
+    height: var(--top-navbar-height);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.sidebar-logo {
+    font-size: 1.75rem;
+    color: var(--accent-blue);
+    filter: drop-shadow(0 0 10px rgba(13, 202, 240, 0.5));
+    animation: pulse-glow 2s infinite alternate;
+}
+
+.sidebar-title {
+    font-weight: 700;
+    font-size: 1.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    background: linear-gradient(90deg, #fff, var(--accent-blue));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 1rem 0;
+    overflow-y: auto;
+}
+
+.nav-item {
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: var(--transition-smooth);
+    border-left: 3px solid transparent;
+}
+
+.nav-item i {
+    font-size: 1.25rem;
+    width: 24px;
+    text-align: center;
+}
+
+.nav-item span {
+    white-space: nowrap;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--primary-blue-light);
+    transform: translateX(5px);
+}
+
+.nav-item.active {
+    background: rgba(13, 110, 253, 0.1);
+    color: var(--text-primary);
+    border-left-color: var(--primary-blue);
+    box-shadow: inset 10px 0 20px -10px rgba(13, 110, 253, 0.3);
+}
+
+.sidebar-footer {
+    padding: 1.5rem;
+    border-top: 1px solid var(--glass-border);
+}
+
+/* 4. Top Navbar */
+.top-navbar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: var(--sidebar-width);
+    height: var(--top-navbar-height);
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-bottom: 1px solid var(--glass-border);
+    transition: var(--transition-smooth);
+    z-index: 999;
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.app-wrapper.collapsed .top-navbar {
+    left: var(--sidebar-collapsed-width);
+}
+
+.sidebar-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.sidebar-toggle:hover {
+    color: var(--accent-blue);
+    transform: scale(1.1);
+}
+
+/* 5. Glass Cards */
+.glass-card {
+    background: var(--card-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    animation: fade-in-up 0.5s ease-out;
+    transition: var(--transition-smooth);
+}
+
+.glass-card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 32px 0 rgba(13, 110, 253, 0.15);
+}
+
+/* Ensure all card variants use the same background */
+.card,
+.machine-card,
+.kpi-card {
+    background: var(--card-bg) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+}
+
+.glass-card-body {
+    padding: 0;
+}
+
+.card-header {
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card-body {
+    background: transparent;
+}
+
+/* 6. Buttons */
+.btn-glass {
+    padding: 0.6rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--glass-border);
+    min-height: 44px;
+}
+
+.btn-primary-blue {
+    background: var(--primary-blue);
+    border: none;
+    color: white;
+    box-shadow: var(--shadow-glow);
+}
+
+.btn-primary-blue:hover {
+    background: var(--primary-blue-light);
+    box-shadow: var(--shadow-glow-strong);
+    transform: translateY(-2px);
+}
+
+.btn-secondary-glass {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+    backdrop-filter: var(--glass-blur);
+}
+
+.btn-secondary-glass:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* 7. Forms */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.form-control-glass {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 0.5rem;
+    color: var(--text-primary);
+    transition: var(--transition-smooth);
+}
+
+.form-control-glass:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--primary-blue);
+    box-shadow: var(--shadow-glow);
+}
+
+/* 8. Status Indicators */
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #28a745;
+    box-shadow: 0 0 10px #28a745;
+}
+
+.status-dot.active {
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Animations */
+@keyframes pulse-glow {
+    from {
+        filter: drop-shadow(0 0 5px rgba(13, 202, 240, 0.3));
+    }
+
+    to {
+        filter: drop-shadow(0 0 15px rgba(13, 202, 240, 0.8));
+    }
+}
+
+@keyframes pulse-dot {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+    }
+
+    70% {
+        transform: scale(1.1);
+        opacity: 0.8;
+        box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+    }
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 9. Responsive */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    .main-content {
+        margin-left: var(--sidebar-collapsed-width);
+        width: calc(100% - var(--sidebar-collapsed-width));
+    }
+
+    .top-navbar {
+        left: var(--sidebar-collapsed-width);
+    }
+
+    .sidebar-title,
+    .nav-item span {
+        display: none;
+    }
+}
+
+@media (max-width: 767px) {
+    .sidebar {
+        transform: translateX(-100%);
+        width: var(--sidebar-width) !important;
+    }
+
+    .app-wrapper.mobile-nav-active .sidebar {
+        transform: translateX(0);
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding: 1rem;
+        padding-top: calc(var(--top-navbar-height) + 1rem);
+    }
+
+    .top-navbar {
+        left: 0 !important;
+        padding: 0 1rem;
+    }
+
+    .sidebar-title,
+    .nav-item span {
+        display: block;
+    }
+}
+
+/* No Sidebar Layout (e.g. OEE Detail) */
+.app-wrapper.no-sidebar .sidebar {
+    display: none !important;
+}
+
+.app-wrapper.no-sidebar .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+}
+
+.app-wrapper.no-sidebar .top-navbar {
+    left: 0 !important;
+}
+
+/* KPI Cards Integration */
+.kpi-card {
+    border-width: 1px;
+    transition: transform 0.2s;
+}
+
+.kpi-card:hover {
+    transform: translateY(-5px);
+}
+
+.kpi-card.border-primary {
+    border-color: var(--primary-blue) !important;
+    box-shadow: 0 0 15px rgba(13, 110, 253, 0.1);
+}
+
+.kpi-card.border-success {
+    border-color: #28a745 !important;
+    box-shadow: 0 0 15px rgba(40, 167, 69, 0.1);
+}
+
+.kpi-card.border-warning {
+    border-color: #ffc107 !important;
+    box-shadow: 0 0 15px rgba(255, 193, 7, 0.1);
+}
+
+.kpi-card.border-info {
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 15px rgba(13, 202, 240, 0.1);
+}
+
+.kpi-value {
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: -1px;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}

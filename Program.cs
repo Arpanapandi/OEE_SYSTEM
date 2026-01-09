@@ -16,7 +16,7 @@ builder.Services.AddSignalR();
 // DbContext
 // Ganti nama database untuk menghindari konflik schema lama di LocalDB
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                     ?? "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDbV2;Trusted_Connection=True;MultipleActiveResultSets=true";
+                     ?? "Server=(localdb)\\MSSQLLocalDB;Database=Velasto;Trusted_Connection=True;MultipleActiveResultSets=true";
 
 // Log connection string untuk debugging (tidak log password jika ada)
 var env = builder.Environment.EnvironmentName;
@@ -34,7 +34,7 @@ if (env == "Development" || !connectionString.Contains("Server=", StringComparis
     if (!connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
     {
     Console.WriteLine("🔄 Overriding connection string to use LocalDB for development...");
-    connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb;Trusted_Connection=True;MultipleActiveResultSets=true";
+    connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=Velasto;Trusted_Connection=True;MultipleActiveResultSets=true";
     connectionStringForLog = connectionString;
     Console.WriteLine($"🔧 Updated DefaultConnection: {connectionStringForLog}");
     }

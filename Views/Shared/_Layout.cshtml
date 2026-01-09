@@ -36,45 +36,51 @@
     </style>
 </head>
 <body>
-    <div class="app-wrapper" id="appWrapper">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <i class="bi bi-cpu-fill sidebar-logo"></i>
-                <span class="sidebar-title">OEE SYSTEM</span>
-            </div>
-            <nav class="sidebar-nav">
-                <a asp-controller="Home" asp-action="Index" class="nav-item @(ViewData["Title"]?.ToString().Contains("Dashboard") == true ? "active" : "")">
-                    <i class="bi bi-speedometer2"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a asp-controller="Admin" asp-action="Index" class="nav-item">
-                    <i class="bi bi-gear"></i>
-                    <span>Admin</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="bi bi-bar-chart-line"></i>
-                    <span>Analytics</span>
-                </a>
-                <a href="#" class="nav-item">
-                    <i class="bi bi-clock-history"></i>
-                    <span>History</span>
-                </a>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="status-indicator">
-                    <div class="status-dot active" style="background: #28a745; box-shadow: 0 0 10px #28a745;"></div>
-                    <span class="text-secondary ms-2">System Online</span>
+    <div class="app-wrapper @(isOeeDetailPage ? "no-sidebar" : "")" id="appWrapper">
+        @if (!isOeeDetailPage)
+        {
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <i class="bi bi-cpu-fill sidebar-logo"></i>
+                    <span class="sidebar-title">OEE SYSTEM</span>
                 </div>
-            </div>
-        </aside>
+                <nav class="sidebar-nav">
+                    <a asp-controller="Home" asp-action="Index" class="nav-item @(ViewData["Title"]?.ToString().Contains("Dashboard") == true ? "active" : "")">
+                        <i class="bi bi-speedometer2"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a asp-controller="Admin" asp-action="Index" class="nav-item">
+                        <i class="bi bi-gear"></i>
+                        <span>Admin</span>
+                    </a>
+                    <a href="#" class="nav-item">
+                        <i class="bi bi-bar-chart-line"></i>
+                        <span>Analytics</span>
+                    </a>
+                    <a href="#" class="nav-item">
+                        <i class="bi bi-clock-history"></i>
+                        <span>History</span>
+                    </a>
+                </nav>
+                <div class="sidebar-footer">
+                    <div class="status-indicator">
+                        <div class="status-dot active" style="background: #28a745; box-shadow: 0 0 10px #28a745;"></div>
+                        <span class="text-secondary ms-2">System Online</span>
+                    </div>
+                </div>
+            </aside>
+        }
 
         <!-- Top Navbar -->
         <header class="top-navbar">
             <div class="d-flex align-items-center">
-                <button class="sidebar-toggle me-3" id="sidebarToggle">
-                    <i class="bi bi-list"></i>
-                </button>
+                @if (!isOeeDetailPage)
+                {
+                    <button class="sidebar-toggle me-3" id="sidebarToggle">
+                        <i class="bi bi-list"></i>
+                    </button>
+                }
                 <div class="d-flex flex-column">
                     <span class="fw-bold" style="font-size: 1.1rem;">@title</span>
                     <span class="small text-secondary">
