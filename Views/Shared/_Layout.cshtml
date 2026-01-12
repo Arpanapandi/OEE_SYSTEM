@@ -75,7 +75,13 @@
         <!-- Top Navbar -->
         <header class="top-navbar">
             <div class="d-flex align-items-center">
-                @if (!isOeeDetailPage)
+                @if (isOeeDetailPage)
+                {
+                    <a asp-controller="Home" asp-action="Index" class="btn btn-sm btn-outline-secondary me-3 border-0" title="Back to Dashboard">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                }
+                else
                 {
                     <button class="sidebar-toggle me-3" id="sidebarToggle">
                         <i class="bi bi-list"></i>
@@ -84,24 +90,47 @@
                 <div class="d-flex flex-column">
                     <span class="fw-bold" style="font-size: 1.1rem;">@title</span>
                     <span class="small text-secondary">
-                        OEE Monitoring System
+                        @if (isOeeDetailPage)
+                        {
+                            <span class="me-2"><i class="bi bi-layers-half me-1"></i>@ViewData["LineId"]</span>
+                            <span><i class="bi bi-calendar3 me-1"></i>@ViewData["ShiftName"] (@ViewData["ShiftTime"])</span>
+                        }
+                        else
+                        {
+                            @:OEE Monitoring System
+                        }
                     </span>
                 </div>
             </div>
             
-            <div class="d-flex align-items-center gap-3">
-                <!-- Real-time Clock -->
-                <div class="glass-card py-1 px-3 mb-0 d-flex align-items-center gap-2">
-                    <i class="bi bi-clock text-accent-blue"></i>
-                    <span id="realtimeClock" class="fw-bold font-monospace">Loading...</span>
-                </div>
+            <div class="d-flex align-items-center gap-2 gap-md-3">
+                @if (isOeeDetailPage)
+                {
+                    <!-- Machine Status in Navbar -->
+                    <div class="glass-card py-1 px-3 mb-0 d-none d-md-flex align-items-center gap-2" style="background: rgba(255,255,255,0.03);">
+                        <div class="status-dot active" id="navbar-status-dot" style="background: var(--accent-blue); box-shadow: 0 0 10px var(--accent-blue);"></div>
+                        <span id="navbar-status-text" class="fw-bold small text-uppercase" style="letter-spacing: 1px;">@(ViewData["MachineStatus"]?.ToString() ?? "OFFLINE")</span>
+                    </div>
+                }
+
+                @if (!isOeeDetailPage)
+                {
+                    <!-- Real-time Clock (Jam Aktual) -->
+                    <div class="glass-card py-1 px-3 mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-clock text-accent-blue"></i>
+                        <span id="realtimeClock" class="fw-bold font-monospace">Loading...</span>
+                    </div>
+                }
                 
-                <!-- SignalR Status -->
-                <div id="signalr-status-container" class="glass-card py-1 px-3 mb-0">
-                    <span id="signalr-status">
-                        <span class="badge bg-secondary">Connecting...</span>
-                    </span>
-                </div>
+                @if (!isOeeDetailPage)
+                {
+                    <!-- SignalR Status - Only on Dashboard for now to keep Detail clean -->
+                    <div id="signalr-status-container" class="glass-card py-1 px-3 mb-0">
+                        <span id="signalr-status">
+                            <span class="badge bg-secondary">Connecting...</span>
+                        </span>
+                    </div>
+                }
             </div>
         </header>
 
@@ -113,30 +142,70 @@
     
     <!-- Design System Scripts -->
     <script>
-        // Sidebar Toggle Logic
-        document.getElementById('sidebarToggle').addEventListener('click', () => {
-            const wrapper = document.getElementById('appWrapper');
-            if (window.innerWidth <= 767) {
-                wrapper.classList.toggle('mobile-nav-active');
-            } else {
-                wrapper.classList.toggle('collapsed');
-            }
-        });
+        // Global variables for time synchronization
+        window.serverTimeOffset = 0;
+        
+        // Function to get accurate time (server adjusted)
+        window.getAdjustedServerTime = function() {
+            return new Date(new Date().getTime() + window.serverTimeOffset);
+        };
 
-        // Real-time Clock for Navbar
-        function updateRealtimeClock() {
+        // Helper to get raw offset
+        window.getServerTimeOffset = function() {
+            return window.serverTimeOffset;
+        };
+
+        // Sync server time offset once at start
+        (function() {
+            const serverTimeStr = '@Html.Raw(DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"))';
+            const serverTime = new Date(serverTimeStr);
+            if (!isNaN(serverTime.getTime())) {
+                window.serverTimeOffset = serverTime.getTime() - new Date().getTime();
+                console.log('🕒 Server time offset synced:', window.serverTimeOffset, 'ms');
+            }
+        })();
+
+        // Sidebar Toggle Logic
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                const wrapper = document.getElementById('appWrapper');
+                if (window.innerWidth <= 767) {
+                    wrapper.classList.toggle('mobile-nav-active');
+                } else {
+                    wrapper.classList.toggle('collapsed');
+                }
+            });
+        }
+
+        // Centralized Clock Sync Logic
+        function updateAllClocks() {
+            const now = window.getAdjustedServerTime();
+            
+            // Format time string
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
+                          now.getMinutes().toString().padStart(2, '0') + ':' + 
+                          now.getSeconds().toString().padStart(2, '0');
+            
+            // 1. Update Navbar Clock
             const clockEl = document.getElementById('realtimeClock');
             if(clockEl) {
-                const now = new Date();
-                // Format: HH:mm:ss
-                const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
-                              now.getMinutes().toString().padStart(2, '0') + ':' + 
-                              now.getSeconds().toString().padStart(2, '0');
                 clockEl.textContent = timeStr;
             }
+
+            // 2. Synchronize date if it changes (e.g. at midnight)
+            const detailDateEl = document.getElementById('filter-date');
+            if(detailDateEl) {
+                const dateStr = now.getFullYear() + '-' + 
+                              (now.getMonth() + 1).toString().padStart(2, '0') + '-' + 
+                              now.getDate().toString().padStart(2, '0');
+                if (detailDateEl.value !== dateStr) {
+                    detailDateEl.value = dateStr;
+                }
+            }
         }
-        setInterval(updateRealtimeClock, 1000);
-        updateRealtimeClock(); // Initial call
+        setInterval(updateAllClocks, 1000);
+        updateAllClocks();
 
         // Responsive adjustment
         window.addEventListener('resize', () => {

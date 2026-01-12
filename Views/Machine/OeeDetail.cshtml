@@ -29,40 +29,41 @@
     <div class="col-12">
         <div class="glass-card" id="filter-card">
             <div class="glass-card-header" style="padding: 0.75rem 1rem;">
-                <i class="fa-solid fa-clock me-2"></i>Input Waktu Kerja Operator
+                <i class="fa-solid fa-clock me-2"></i>Waktu Kerja Operator
             </div>
             <div class="glass-card-body" style="padding: 0.75rem 1rem;">
-                <div class="row g-3 align-items-end">
-                    <!-- Time Input (Kiri) - 50%: Live timer dengan detik, styling sama dengan tanggal -->
-                    <div class="col-6 col-sm-6 col-md-6 col-lg-6 col-xl-6">
-                        <label class="form-label fw-bold mb-1">
-                            <i class="fa-solid fa-clock me-1"></i>Jam Proses
-                        </label>
-                        <input type="text" 
-                               class="form-control-glass" 
-                               id="filter-time-display"
-                               readonly
-                               value="@DateTime.Now.ToString("HH:mm:ss")" />
-                        <!-- Hidden fields untuk menyimpan nilai waktu aktual -->
-                        <input type="hidden"
-                               id="filter-time"
-                               name="filterTime" />
-                        <input type="hidden"
-                               id="filter-time-timestamp"
-                               name="operatorWorkTimestamp"
-                               value="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss")" />
+                <div class="row g-3 align-items-center">
+                    <!-- Jam Proses (Left) -->
+                    <div class="col-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-glass text-secondary">
+                                <i class="bi bi-clock text-accent-blue"></i>
+                            </span>
+                            <div class="form-control-glass d-flex align-items-center justify-content-center fw-bold font-monospace" style="letter-spacing: 1px; min-height: 38px;">
+                                <span id="realtimeClock">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="text-center mt-1">
+                            <small class="text-secondary"><i class="fa-solid fa-hourglass-half me-1"></i>Jam Proses</small>
+                        </div>
                     </div>
                     
-                    <!-- Date Input (Kanan) - 50% -->
-                    <div class="col-6 col-sm-6 col-md-6 col-lg-6 col-xl-6">
-                        <label class="form-label fw-bold mb-1">
-                            <i class="fa-solid fa-calendar me-1"></i>Tanggal
-                        </label>
-                        <input type="date" 
-                               class="form-control-glass" 
-                               id="filter-date" 
-                               name="filterDate"
-                               value="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                    <!-- Date Input (Right) -->
+                    <div class="col-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-glass text-secondary">
+                                <i class="fa-solid fa-calendar-day"></i>
+                            </span>
+                            <input type="date" 
+                                   class="form-control-glass text-center fw-bold" 
+                                   id="filter-date" 
+                                   name="filterDate"
+                                   style="letter-spacing: 1px;"
+                                   value="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                        </div>
+                        <div class="text-center mt-1">
+                            <small class="text-secondary"><i class="fa-solid fa-calendar-check me-1"></i>Tanggal</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -108,40 +109,32 @@
                             const downtimeDescEl = document.getElementById('downtime-description');
                             const machineStatusInfoEl = document.getElementById('machine-status-info');
                             
-                            // ✅ PERBAIKAN: Update status badge di Machine Actions card
+                            // 1. Update status badge in Machine Actions card
+                            const isAktif = status === 'Aktif';
                             if (statusBadgeEl) {
-                                const isAktif = status === 'Aktif';
                                 statusBadgeEl.textContent = isAktif ? 'AKTIF' : 'TIDAK AKTIF';
                                 statusBadgeEl.className = `badge ${isAktif ? 'bg-success' : 'bg-warning'}`;
-                                console.log('✅ Status badge updated to:', statusBadgeEl.textContent, 'Class:', statusBadgeEl.className);
-                            } else {
-                                console.warn('⚠️ machine-status-badge element not found');
                             }
                             
-                            // ✅ PERBAIKAN: Update status badge di navbar juga jika ada
-                            const navbarStatusBadges = document.querySelectorAll('.navbar-oee-detail .status-badge, .navbar .status-badge, .status-badge');
-                            navbarStatusBadges.forEach(badge => {
-                                const isAktif = status === 'Aktif';
-                                badge.textContent = isAktif ? 'AKTIF' : 'TIDAK AKTIF';
-                                badge.className = `status-badge ${isAktif ? 'status-up' : 'status-down'}`;
-                                console.log('✅ Navbar status badge updated:', badge.textContent);
-                            });
+                            // 2. Update status indicator in NAVBAR (Targeting Layout elements)
+                            const navbarStatusDot = document.getElementById('navbar-status-dot');
+                            const navbarStatusText = document.getElementById('navbar-status-text');
+                            if (navbarStatusDot && navbarStatusText) {
+                                navbarStatusText.textContent = isAktif ? 'AKTIF' : (status === 'Downtime' ? 'DOWNTIME' : 'IDLE');
+                                navbarStatusDot.style.background = isAktif ? '#28a745' : (status === 'Downtime' ? '#dc3545' : '#ffc107');
+                                navbarStatusDot.style.boxShadow = `0 0 10px ${navbarStatusDot.style.background}`;
+                            }
                             
-                            // Update downtime description
+                            // 3. Update downtime description
                             if (downtimeDescEl) {
                                 if (downtimeDescription && downtimeDescription.trim() !== '') {
                                     downtimeDescEl.textContent = downtimeDescription;
                                     downtimeDescEl.style.display = 'inline';
-                                    console.log('✅ Downtime description updated to:', downtimeDescription);
                                 } else {
                                     downtimeDescEl.style.display = 'none';
-                                    console.log('✅ Downtime description hidden');
                                 }
-                            } else {
-                                console.warn('⚠️ downtime-description element not found');
                             }
                             
-                            // Hide machine status info jika Aktif
                             if (machineStatusInfoEl && status === 'Aktif') {
                                 machineStatusInfoEl.style.display = 'none';
                             }
@@ -955,8 +948,9 @@
                         <!-- Left Section: Product Image/Name -->
                         <div class="col-5 d-flex flex-column">
                             <div class="mb-1">
-                                    @{ var imageUrl = Model.ActiveJob?.ProductImageUrl ?? ""; }
-                                    
+                                @{ var imageUrl = Model.ActiveJob?.ProductImageUrl ?? ""; }
+                                @if (!string.IsNullOrEmpty(imageUrl))
+                                {
                                     <img src="@imageUrl" 
                                          alt="@(Model.ActiveJob?.ProductName ?? "Product")" 
                                          class="img-fluid rounded mb-2" 
@@ -1081,7 +1075,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">OEE</div>
-                        <div class="kpi-value text-primary">@Model.Oee.ToString("F0")%</div>
+                        <div class="kpi-value text-primary" id="oee-value">@Model.Oee.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-chart-line fa-2x text-primary opacity-50"></i>
                 </div>
@@ -1094,7 +1088,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Availability</div>
-                        <div class="kpi-value text-success">@Model.Availability.ToString("F0")%</div>
+                        <div class="kpi-value text-success" id="availability-value">@Model.Availability.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-clock fa-2x text-success opacity-50"></i>
                 </div>
@@ -1107,7 +1101,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Performance</div>
-                        <div class="kpi-value text-warning">@Model.Performance.ToString("F0")%</div>
+                        <div class="kpi-value text-warning" id="performance-value">@Model.Performance.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-gauge-high fa-2x text-warning opacity-50"></i>
                 </div>
@@ -1120,7 +1114,7 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-secondary small mb-1">Quality</div>
-                        <div class="kpi-value text-info">@Model.Quality.ToString("F0")%</div>
+                        <div class="kpi-value text-info" id="quality-value">@Model.Quality.ToString("F0")%</div>
                     </div>
                     <i class="fa-solid fa-check-circle fa-2x text-info opacity-50"></i>
                 </div>
@@ -4099,8 +4093,15 @@
                 // Stop timer lama jika ada
                 stopDurasiProduksi();
                 
-                // ✅ PERBAIKAN: Gunakan waktu server yang disesuaikan untuk start time
-                durasiProduksiStartTime = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
+                // ✅ PERSISTENCE: Cek di localStorage dulu
+                const savedStart = localStorage.getItem('durasiProduksiStartTime');
+                if (savedStart) {
+                    durasiProduksiStartTime = new Date(savedStart);
+                } else {
+                    durasiProduksiStartTime = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
+                    localStorage.setItem('durasiProduksiStartTime', durasiProduksiStartTime.toISOString());
+                }
+                
                 durasiProduksiSeconds = 0;
                 
                 // Show durasi container (selalu tampilkan saat start)
@@ -4114,25 +4115,19 @@
                 
                 // Start interval jika auto mode aktif
                 if (isDurasiAuto) {
-                    // Clear existing interval jika ada
                     if (durasiProduksiInterval) {
                         clearTimeout(durasiProduksiInterval);
                     }
                     
-                    // ✅ PERBAIKAN: Update setiap detik dengan presisi tinggi (sinkron dengan jam proses)
                     function scheduleNextDurasiUpdate() {
                         durasiProduksiInterval = setTimeout(function() {
                             updateDurasiProduksiDisplay();
                             if (isDurasiAuto && durasiProduksiStartTime) {
                                 scheduleNextDurasiUpdate();
                             }
-                        }, 1000 - (Date.now() % 1000)); // Sync dengan detik penuh
+                        }, 1000 - (Date.now() % 1000));
                     }
                     scheduleNextDurasiUpdate();
-                    
-                    console.log('✅ Durasi produksi started (auto mode, server-time-synced) - akan update setiap detik');
-                } else {
-                    console.log('✅ Durasi produksi ready (manual mode)');
                 }
             }
             
@@ -4157,6 +4152,7 @@
                 stopDurasiProduksi();
                 durasiProduksiSeconds = 0;
                 durasiProduksiStartTime = null;
+                localStorage.removeItem('durasiProduksiStartTime'); // ✅ PERSISTENCE: Clear from localStorage
                 updateDurasiProduksiDisplay();
                 console.log('🔄 Durasi produksi reset');
             }
@@ -4415,7 +4411,7 @@
                         const formData = new FormData();
                         
                         formData.append('machineId', '@Html.Raw(Model.MachineId)');
-                        formData.append('lotNumber', lotNumber);
+                        formData.append('nomorLot', lotNumber);
                         formData.append('partNumber', partNumber); // Maps to LotBo
                         formData.append('namaCompound', namaCompound);
                         formData.append('beratAct', beratAct);
@@ -4427,7 +4423,7 @@
                         
                         // Submit current duration if available
                         const durationSec = document.getElementById('hidden-durasi-seconds')?.value || 0;
-                        formData.append('durationSeconds', durationSec);
+                        formData.append('durasiProduksiSeconds', durationSec);
                         
                         // Default qty = 1 for item tracking
                         formData.append('qty', 1);
@@ -5084,139 +5080,171 @@
         
         // Dandori feature removed
 
+        // Apply time metrics data to UI (can be from fetch or SignalR)
+        function applyTimeMetrics(data) {
+            if (!data) return;
+            
+            const newShiftKey = data.ShiftKey || '';
+            // Store active job/downtime info
+            const newHasActiveJob = data.HasActiveJob || false;
+            const newHasActiveDowntime = data.HasActiveDowntime || false;
+
+            // Update base values dengan nilai baru dari server (sudah termasuk waktu saat fetch)
+            basePlannedSeconds = Number(data.PlannedProductionTimeSeconds) || 0;
+            baseOperatingSeconds = Number(data.OperatingTimeSeconds) || 0;
+            baseDowntimeSeconds = Number(data.DowntimeTotalSeconds) || 0;
+            // ✅ PERBAIKAN: Update Rest Break dan No Loading dari backend jika ada
+            baseRestBreakSeconds = Number(data.RestBreakTimeSeconds) || 0;
+            baseNoLoadingSeconds = Number(data.NoLoadingTimeSeconds) || 0;
+
+            // Jika shift berubah, reset counter dan simpan shiftKey baru
+            const shiftChanged = newShiftKey && newShiftKey !== lastShiftKey;
+            if (shiftChanged) {
+                lastShiftKey = newShiftKey;
+            }
+
+            // Reset counter karena base sudah mengandung waktu terkini
+            realTimeCounter = 0;
+
+            // Update status
+            hasActiveJob = newHasActiveJob;
+            hasActiveDowntime = newHasActiveDowntime;
+            previousHasActiveJob = hasActiveJob;
+            previousHasActiveDowntime = hasActiveDowntime;
+            
+            // Update NoLoading status dari data jika ada
+            if (data.IsNoLoading !== undefined) {
+                isNoLoading = data.IsNoLoading;
+            }
+            
+            // ✅ PERBAIKAN: Update Rest Break status dari data jika ada
+            if (data.HasActiveRestBreak !== undefined) {
+                hasActiveRestBreak = data.HasActiveRestBreak;
+            }
+
+            // Update OEE KPI Cards
+            if (data.Oee !== undefined) {
+                const oeeEl = document.getElementById('oee-value');
+                if (oeeEl) oeeEl.textContent = Math.round(data.Oee) + '%';
+                
+                const availEl = document.getElementById('availability-value');
+                if (availEl) availEl.textContent = Math.round(data.Availability) + '%';
+                
+                const perfEl = document.getElementById('performance-value');
+                if (perfEl) perfEl.textContent = Math.round(data.Performance) + '%';
+                
+                const qualEl = document.getElementById('quality-value');
+                if (qualEl) qualEl.textContent = Math.round(data.Quality) + '%';
+            }
+
+            // Update Production Counts
+            if (data.TotalCount !== undefined) {
+                const totalGoodEl = document.getElementById('total-good');
+                if (totalGoodEl) totalGoodEl.textContent = data.GoodCount;
+                
+                const totalRejectEl = document.getElementById('total-reject');
+                if (totalRejectEl) totalRejectEl.textContent = data.RejectCount;
+                
+                const progressTextEl = document.getElementById('progress-text');
+                if (progressTextEl) {
+                    // Ambil target qty dari text sebelumnya (format: "Good / Target")
+                    const parts = progressTextEl.textContent.split('/');
+                    const target = parts.length > 1 ? parts[1].trim() : '0';
+                    progressTextEl.textContent = `${data.GoodCount} / ${target}`;
+                    
+                    // Update progress bar
+                    const targetInt = parseInt(target);
+                    if (targetInt > 0) {
+                        const percent = Math.min(100, (data.GoodCount / targetInt * 100));
+                        const progressBar = document.getElementById('progress-bar');
+                        if (progressBar) {
+                            progressBar.style.width = percent + '%';
+                            progressBar.setAttribute('aria-valuenow', percent);
+                            
+                            const progressPercentEl = document.getElementById('progress-percent');
+                            if (progressPercentEl) progressPercentEl.textContent = percent.toFixed(1) + '%';
+                        }
+                    }
+                }
+            }
+
+            // Update display immediately
+            updateTimeDisplay();
+            
+            // ✅ Update durasi sejak status terakhir dari backend
+            if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
+                // ✅ CRITICAL: Deteksi apakah mesin sedang Running
+                const isRunning = (data?.MachineStatus === 'Running' || data?.MachineStatus === 'Aktif') && 
+                                  !(data?.HasActiveDowntime || data?.HasActiveRestBreak);
+                
+                // ✅ CRITICAL: Jika Running dan ada LastStatusChangeTime, SELALU gunakan itu untuk set runningStartTimeUtc
+                if (isRunning && data?.LastStatusChangeTime) {
+                    try {
+                        const lastChangeTime = new Date(data.LastStatusChangeTime);
+                        if (!isNaN(lastChangeTime.getTime())) {
+                            runningStartTimeUtc = lastChangeTime;
+                            if (typeof window.runningStartTimeUtc !== 'undefined') {
+                                window.runningStartTimeUtc = lastChangeTime;
+                            }
+                        }
+                    } catch (dateError) {
+                        console.warn('Error parsing LastStatusChangeTime:', dateError);
+                    }
+                } else if (isRunning) {
+                    runningStartTimeUtc = null;
+                    if (typeof window.runningStartTimeUtc !== 'undefined') {
+                        window.runningStartTimeUtc = null;
+                    }
+                }
+                
+                // ✅ CRITICAL: Panggil updateSinceLastChange() SETELAH runningStartTimeUtc di-set
+                updateSinceLastChange(data.SinceLastChangeSeconds, isRunning);
+            } else if (data?.LastStatusChangeTime) {
+                // Fallback: calculate dari LastStatusChangeTime
+                try {
+                    const lastChangeTime = new Date(data.LastStatusChangeTime);
+                    if (!isNaN(lastChangeTime.getTime())) {
+                        const now = typeof window.getAdjustedServerTime === 'function' 
+                            ? window.getAdjustedServerTime() 
+                            : new Date();
+                        const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
+                        const isRunning = (data?.MachineStatus === 'Running' || data?.MachineStatus === 'Aktif') && 
+                                          !(data?.HasActiveDowntime || data?.HasActiveRestBreak);
+                        
+                        if (isRunning) {
+                            runningStartTimeUtc = lastChangeTime;
+                            if (typeof window.runningStartTimeUtc !== 'undefined') {
+                                window.runningStartTimeUtc = lastChangeTime;
+                            }
+                        }
+                        
+                        updateSinceLastChange(Math.max(0, diffSeconds), isRunning);
+                    }
+                } catch (dateError) {
+                    console.warn('Error parsing LastStatusChangeTime:', dateError);
+                }
+            }
+        }
+
         // Fetch time metrics from server
         function fetchTimeMetrics() {
             const params = new URLSearchParams({
                 id: machineId
             });
-            if (shiftId) {
-                params.append('shiftId', shiftId);
-            }
-            if (shiftDate) {
-                params.append('shiftDate', shiftDate);
-            }
-            if (shiftCode) {
-                params.append('shiftCode', shiftCode);
-            }
+            if (shiftId) params.append('shiftId', shiftId);
+            if (shiftDate) params.append('shiftDate', shiftDate);
+            if (shiftCode) params.append('shiftCode', shiftCode);
 
             return fetch(`/Machine/GetTimeMetrics?${params.toString()}`)
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.json();
                 })
                 .then(data => {
-                    const newShiftKey = data.ShiftKey || '';
-                    // Store active job/downtime info
-                    const newHasActiveJob = data.HasActiveJob || false;
-                    const newHasActiveDowntime = data.HasActiveDowntime || false;
-
-                    // Update base values dengan nilai baru dari server (sudah termasuk waktu saat fetch)
-                    basePlannedSeconds = Number(data.PlannedProductionTimeSeconds) || 0;
-                    baseOperatingSeconds = Number(data.OperatingTimeSeconds) || 0;
-                    baseDowntimeSeconds = Number(data.DowntimeTotalSeconds) || 0;
-                    // ✅ PERBAIKAN: Update Rest Break dan No Loading dari backend jika ada
-                    baseRestBreakSeconds = Number(data.RestBreakTimeSeconds) || 0;
-                    baseNoLoadingSeconds = Number(data.NoLoadingTimeSeconds) || 0;
-
-                    // Jika shift berubah, reset counter dan simpan shiftKey baru
-                    const shiftChanged = newShiftKey && newShiftKey !== lastShiftKey;
-                    if (shiftChanged) {
-                        lastShiftKey = newShiftKey;
-                    }
-
-                    // Reset counter karena base sudah mengandung waktu terkini
-                    realTimeCounter = 0;
-
-                    // Update status
-                    hasActiveJob = newHasActiveJob;
-                    hasActiveDowntime = newHasActiveDowntime;
-                    previousHasActiveJob = hasActiveJob;
-                    previousHasActiveDowntime = hasActiveDowntime;
-                    
-                    // Update NoLoading status dari data jika ada
-                    if (data.IsNoLoading !== undefined) {
-                        isNoLoading = data.IsNoLoading;
-                    }
-                    
-                    // ✅ PERBAIKAN: Update Rest Break status dari data jika ada
-                    if (data.HasActiveRestBreak !== undefined) {
-                        hasActiveRestBreak = data.HasActiveRestBreak;
-                    }
-
-                    // Update display immediately
-                    updateTimeDisplay();
-                    
-                    // ✅ Update durasi sejak status terakhir dari backend
-                    if (data?.SinceLastChangeSeconds !== undefined && data.SinceLastChangeSeconds !== null) {
-                        // ✅ CRITICAL: Deteksi apakah mesin sedang Running
-                        const isRunning = (data?.MachineStatus === 'Running' || data?.MachineStatus === 'Aktif') && 
-                                          !(data?.HasActiveDowntime || data?.HasActiveRestBreak);
-                        
-                        // ✅ CRITICAL: Jika Running dan ada LastStatusChangeTime, SELALU gunakan itu untuk set runningStartTimeUtc
-                        // Ini memastikan durasi sinkron dengan backend, bukan dihitung dari initialTimeSeconds
-                        // ✅ CRITICAL: Set runningStartTimeUtc SEBELUM memanggil updateSinceLastChange() agar digunakan dengan benar
-                        if (isRunning && data?.LastStatusChangeTime) {
-                            try {
-                                const lastChangeTime = new Date(data.LastStatusChangeTime);
-                                if (!isNaN(lastChangeTime.getTime())) {
-                                    // ✅ CRITICAL: Set runningStartTimeUtc langsung dari LastStatusChangeTime (sumber kebenaran dari backend)
-                                    // Ini memastikan durasi selalu sinkron dengan waktu saat Running diklik di backend
-                                    runningStartTimeUtc = lastChangeTime;
-                                    if (typeof window.runningStartTimeUtc !== 'undefined') {
-                                        window.runningStartTimeUtc = lastChangeTime;
-                                    }
-                                    console.log('✅ Set runningStartTimeUtc from LastStatusChangeTime (backend source):', lastChangeTime.toISOString(), 'SinceLastChangeSeconds:', data.SinceLastChangeSeconds);
-                                }
-                            } catch (dateError) {
-                                console.warn('Error parsing LastStatusChangeTime:', dateError);
-                            }
-                        } else if (isRunning) {
-                            // Jika Running tapi tidak ada LastStatusChangeTime, clear runningStartTimeUtc
-                            runningStartTimeUtc = null;
-                            if (typeof window.runningStartTimeUtc !== 'undefined') {
-                                window.runningStartTimeUtc = null;
-                            }
-                            console.warn('⚠️ Running but no LastStatusChangeTime, cleared runningStartTimeUtc');
-                        }
-                        
-                        // ✅ CRITICAL: Panggil updateSinceLastChange() SETELAH runningStartTimeUtc di-set dari LastStatusChangeTime
-                        updateSinceLastChange(data.SinceLastChangeSeconds, isRunning);
-                        console.log('🔄 Updated "since-last-status" timer from backend:', data.SinceLastChangeSeconds, 'isRunning:', isRunning, 'LastStatusChangeTime:', data?.LastStatusChangeTime, 'runningStartTimeUtc:', runningStartTimeUtc?.toISOString());
-                    } else if (data?.LastStatusChangeTime) {
-                        // Fallback: calculate dari LastStatusChangeTime
-                        try {
-                            const lastChangeTime = new Date(data.LastStatusChangeTime);
-                            if (!isNaN(lastChangeTime.getTime())) {
-                                const now = typeof window.getAdjustedServerTime === 'function' 
-                                    ? window.getAdjustedServerTime() 
-                                    : new Date();
-                                const diffSeconds = Math.floor((now.getTime() - lastChangeTime.getTime()) / 1000);
-                                const isRunning = (data?.MachineStatus === 'Running' || data?.MachineStatus === 'Aktif') && 
-                                                  !(data?.HasActiveDowntime || data?.HasActiveRestBreak);
-                                
-                                // ✅ PERBAIKAN: Jika Running, set runningStartTimeUtc dari LastStatusChangeTime
-                                if (isRunning) {
-                                    runningStartTimeUtc = lastChangeTime;
-                                    if (typeof window.runningStartTimeUtc !== 'undefined') {
-                                        window.runningStartTimeUtc = lastChangeTime;
-                                    }
-                                    console.log('✅ Set runningStartTimeUtc from LastStatusChangeTime (fallback):', lastChangeTime.toISOString());
-                                }
-                                
-                                updateSinceLastChange(Math.max(0, diffSeconds), isRunning);
-                                console.log('🔄 Updated "since-last-status" timer from LastStatusChangeTime:', diffSeconds, 'isRunning:', isRunning);
-                            }
-                        } catch (dateError) {
-                            console.warn('Error parsing LastStatusChangeTime:', dateError);
-                        }
-                    }
-                    
+                    applyTimeMetrics(data);
                 })
                 .catch(error => {
                     console.error('Error fetching time metrics:', error);
-                    // Use current values if fetch fails
                     updateTimeDisplay();
                 });
         }
@@ -5729,30 +5757,14 @@
             console.log('🔧 Timer Status:', {
             });
 
-            // Fetch initial data to get active job/downtime status
-            // Setelah fetch, counter akan di-reset dan mulai dari 0
-            // Tapi real-time counter tetap berjalan, jadi waktu tetap update setiap detik
+            // Refresh data initial to get active job/downtime status
             fetchTimeMetrics().then(() => {
                 // Setelah fetch pertama selesai, pastikan display ter-update
                 updateTimeDisplay();
                 console.log('✅ Initial fetch completed, display updated');
-                console.log('📊 Updated state:', {
-                    hasActiveJob: hasActiveJob,
-                    hasActiveDowntime: hasActiveDowntime,
-                    baseOperating: baseOperatingSeconds,
-                    baseDowntime: baseDowntimeSeconds,
-                    basePlanned: basePlannedSeconds
-                });
             }).catch(error => {
                 console.error('❌ Error in initial fetch:', error);
             });
-
-            // Refresh data every 10 seconds to get updated base values and status
-            // Setiap fetch, counter akan di-reset karena base values sudah update
-            // Tapi real-time counter tetap berjalan, jadi waktu tetap update setiap detik
-            setInterval(() => {
-                fetchTimeMetrics();
-            }, 10000);
         }
 
         // Initialize on page load - dengan fallback jika DOM sudah ready
@@ -5803,6 +5815,15 @@
                             fetchOperatorDataForOee();
                         }, 2000);
                     }
+                });
+
+                // Receive real-time sync from BackgroundService every 10 seconds
+                oeeConnection.on("ReceiveRealTimeSync", function (data) {
+                    if (!data) return;
+                    console.log('📡 ReceiveRealTimeSync received:', data.ShiftKey);
+                    
+                    // Apply the metrics received from server
+                    applyTimeMetrics(data);
                 });
 
                 oeeConnection.start()
@@ -6748,126 +6769,6 @@
         // Initial fetch
         fetchOperatorDataForOee();
         
-        // ========== INPUT WAKTU KERJA OPERATOR - LIVE TIMER ==========
-        (function () {
-            'use strict';
-
-            let timerInterval = null;
-            let serverTimeOffset = 0; // selisih waktu server dan client (ms)
-            
-            // ✅ PERBAIKAN: Export serverTimeOffset ke global scope agar bisa digunakan oleh durasi
-            window.getServerTimeOffset = function() {
-                return serverTimeOffset;
-            };
-            
-            // ✅ PERBAIKAN: Export fungsi untuk mendapatkan waktu server yang disesuaikan
-            window.getAdjustedServerTime = function() {
-                const nowClient = new Date();
-                return new Date(nowClient.getTime() + serverTimeOffset);
-            };
-            
-            // ✅ PERBAIKAN: Fungsi untuk sync ulang serverTimeOffset secara berkala
-            function syncServerTimeOffset() {
-                // Ambil waktu server dari Razor (fallback ke waktu client jika null)
-                const serverTimeStr = '@Html.Raw(DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"))';
-                const serverTime = new Date(serverTimeStr);
-                const clientTime = new Date();
-
-                if (!isNaN(serverTime.getTime())) {
-                    serverTimeOffset = serverTime.getTime() - clientTime.getTime();
-                } else {
-                    serverTimeOffset = 0;
-                }
-            }
-
-            function initializeLiveTimer() {
-                const timeDisplay = document.getElementById('filter-time-display');
-                const filterTimeHidden = document.getElementById('filter-time');
-                const filterTimeTimestamp = document.getElementById('filter-time-timestamp');
-                const filterDate = document.getElementById('filter-date');
-
-                if (!timeDisplay || !filterTimeHidden || !filterTimeTimestamp || !filterDate) {
-                    console.warn('Input Waktu Kerja Operator elements not found', {
-                        timeDisplay: !!timeDisplay,
-                        filterTimeHidden: !!filterTimeHidden,
-                        filterTimeTimestamp: !!filterTimeTimestamp,
-                        filterDate: !!filterDate
-                    });
-                    return;
-                }
-
-                // ✅ PERBAIKAN: Sync serverTimeOffset pertama kali
-                syncServerTimeOffset();
-                console.log('✅ Server time offset initialized:', serverTimeOffset, 'ms');
-
-                function updateTimer() {
-                    try {
-                        // ✅ PERBAIKAN: Gunakan getAdjustedServerTime untuk konsistensi
-                        const nowAdjusted = window.getAdjustedServerTime();
-
-                        const hours = String(nowAdjusted.getHours()).padStart(2, '0');
-                        const minutes = String(nowAdjusted.getMinutes()).padStart(2, '0');
-                        const seconds = String(nowAdjusted.getSeconds()).padStart(2, '0');
-
-                        const timeString = `${hours}:${minutes}:${seconds}`;
-                        const isoString = nowAdjusted.toISOString().slice(0, 19);
-                        const dateString = nowAdjusted.toISOString().split('T')[0];
-
-                        // Tampilkan di UI (input field) - pastikan update terjadi
-                        if (timeDisplay) {
-                            timeDisplay.value = timeString;
-                            // Force update untuk memastikan perubahan terlihat
-                            timeDisplay.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-
-                        // Simpan ke hidden fields untuk backend
-                        if (filterTimeHidden) {
-                            filterTimeHidden.value = timeString;
-                        }
-                        if (filterTimeTimestamp) {
-                            filterTimeTimestamp.value = isoString;
-                        }
-
-                        // Sinkronkan tanggal jika berubah
-                        if (filterDate && (!filterDate.value || filterDate.value !== dateString)) {
-                            filterDate.value = dateString;
-                        }
-                    } catch (error) {
-                        console.error('Error updating timer:', error);
-                    }
-
-                }
-
-                // Jalankan pertama kali
-                updateTimer();
-
-                // ✅ PERBAIKAN: Update setiap detik dengan setInterval yang reliable
-                // Gunakan setInterval langsung dengan 1000ms untuk update setiap detik
-                timerInterval = window.setInterval(function() {
-                    updateTimer();
-                }, 1000);
-                
-                console.log('✅ Jam proses timer started - akan update setiap detik');
-                
-                // Cleanup saat halaman ditutup
-                window.addEventListener('beforeunload', function () {
-                    if (timerInterval) {
-                        window.clearInterval(timerInterval);
-                    }
-                });
-                
-                // ✅ PERBAIKAN: Sync ulang serverTimeOffset setiap 30 detik untuk menghindari drift
-                setInterval(function() {
-                    syncServerTimeOffset();
-                }, 30000);
-            }
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initializeLiveTimer);
-            } else {
-                initializeLiveTimer();
-            }
-        })();
         // ========== END INPUT WAKTU KERJA OPERATOR ==========
 
         // ========== ULTIMATE SCW (Stop Call Waiting) HANDLER ==========
@@ -6967,8 +6868,8 @@
                 try {
                     const fd = new FormData();
                     fd.append('machineId', '@Html.Raw(Model.MachineId)');
-                    fd.append('scw4MTypeId', typeId);
-                    fd.append('scwRemarkId', remarkId);
+                    fd.append('jenis4MId', typeId);
+                    fd.append('jenisRemarkId', remarkId);
                     
                     const token = $('input[name="__RequestVerificationToken"]').val();
                     if (token) fd.append('__RequestVerificationToken', token);
@@ -6998,21 +6899,13 @@
     
     <style>
         /* Filter Card Styling */
-        #filter-time-display,
         #filter-date {
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         
-        #filter-time-display:focus,
         #filter-date:focus {
             border-color: #0d6efd;
             box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-        }
-        
-        /* Live timer styling */
-        #filter-time-display {
-            user-select: none;
-            cursor: default;
         }
 
         /* Pulse animation untuk indikator real-time */
@@ -7662,17 +7555,23 @@
             });
         }
     </script>
-    </script>
     
     <!-- Design System Scripts -->
     <script>
         // Sidebar Toggle Logic
-        document.getElementById('sidebarToggle').addEventListener('click', () => {
-            const wrapper = document.getElementById('appWrapper');
-            if (window.innerWidth <= 767) {
-                wrapper.classList.toggle('mobile-nav-active');
-            } else {
-                wrapper.classList.toggle('collapsed');
+        document.addEventListener('DOMContentLoaded', () => {
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', () => {
+                    const wrapper = document.getElementById('appWrapper');
+                    if (wrapper) {
+                        if (window.innerWidth <= 767) {
+                            wrapper.classList.toggle('mobile-nav-active');
+                        } else {
+                            wrapper.classList.toggle('collapsed');
+                        }
+                    }
+                });
             }
         });
 
@@ -7681,7 +7580,6 @@
             const clockEl = document.getElementById('realtimeClock');
             if(clockEl) {
                 const now = new Date();
-                // Format: HH:mm:ss
                 const timeStr = now.getHours().toString().padStart(2, '0') + ':' + 
                               now.getMinutes().toString().padStart(2, '0') + ':' + 
                               now.getSeconds().toString().padStart(2, '0');
@@ -7689,16 +7587,11 @@
             }
         }
         setInterval(updateRealtimeClock, 1000);
-        updateRealtimeClock(); // Initial call
+        updateRealtimeClock();
 
-        // Responsive adjustment
         window.addEventListener('resize', () => {
             if (window.innerWidth > 767) {
                 document.getElementById('appWrapper')?.classList.remove('mobile-nav-active');
             }
         });
     </script>
-
-
-
-

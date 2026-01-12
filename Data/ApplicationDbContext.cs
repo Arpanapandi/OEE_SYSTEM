@@ -1,3 +1,4 @@
+
 using Microsoft.EntityFrameworkCore;
 using OeeSystem.Models;
 
@@ -147,6 +148,11 @@ public class ApplicationDbContext : DbContext
             .IsRequired(false)
             .HasColumnType("int");
 
+        // ✅ TAMBAHKAN: Configure IsPlanned for DowntimeReason
+        modelBuilder.Entity<DowntimeReason>()
+            .Property(d => d.IsPlanned)
+            .HasDefaultValue(false);
+
         // ✅ Kolom hasil scan produksi (opsional)
         modelBuilder.Entity<JobRun>()
             .Property(j => j.ScannedPartNumber)
@@ -230,7 +236,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<ScwRemark>()
             .HasMany(r => r.ScwEvents)
             .WithOne(e => e.ScwRemark)
-            .HasForeignKey(e => e.ScwRemarkId)
+            .HasForeignKey(e => e.JenisRemarkId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // SCW Event configuration
@@ -243,7 +249,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<ScwEvent>()
             .HasOne(e => e.Scw4MType)
             .WithMany()
-            .HasForeignKey(e => e.Scw4MTypeId)
+            .HasForeignKey(e => e.Jenis4MId)
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ScwEvent>()

@@ -51,28 +51,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
             errorNumbersToAdd: null);
     }));
 
-// DbContext untuk db_HOSS - dengan fallback ke LocalDB untuk development
-var hossConnectionString = builder.Configuration.GetConnectionString("HossConnection")
-    ?? "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb_Hoss;Trusted_Connection=True;MultipleActiveResultSets=true";
-
-var hossConnectionStringForLog = hossConnectionString.Contains("Password=") 
-    ? hossConnectionString.Substring(0, hossConnectionString.IndexOf("Password=")) + "Password=***" 
-    : hossConnectionString;
-Console.WriteLine($"🔧 HossConnection: {hossConnectionStringForLog}");
-
-// ✅ PERBAIKAN: Force LocalDB untuk HossConnection jika environment adalah Development
-// Atau jika connection string tidak mengandung server name yang valid
-if (env == "Development" || !hossConnectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) || hossConnectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-{
-    // Pastikan selalu gunakan LocalDB untuk development
-    if (!hossConnectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-    {
-    Console.WriteLine("🔄 Overriding HossConnection to use LocalDB for development...");
-    hossConnectionString = "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb_Hoss;Trusted_Connection=True;MultipleActiveResultSets=true";
-    hossConnectionStringForLog = hossConnectionString;
-    Console.WriteLine($"🔧 Updated HossConnection: {hossConnectionStringForLog}");
-    }
-}
+// OEE service
+builder.Services.AddScoped<IOeeService, OeeService>();
 
 // ✅ PERBAIKAN: Pastikan LocalDB instance running untuk Development
 if (env == "Development" || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
@@ -155,22 +135,11 @@ if (env == "Development" || connectionString.Contains("(localdb)", StringCompari
     }
 }
 
-// ✅ Aktifkan retry policy untuk koneksi ke DB_HOSS (mengatasi transient failure)
-builder.Services.AddDbContext<HossDbContext>(options =>
-    options.UseSqlServer(hossConnectionString, sqlOptions =>
-    {
-        sqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3, // Kurangi retry count untuk connection errors
-            maxRetryDelay: TimeSpan.FromSeconds(10), // Kurangi delay
-            errorNumbersToAdd: null);
-    }));
-
-// OEE service
+// OEE Logic Services
 builder.Services.AddScoped<IOeeService, OeeService>();
 
-// ❌ REMOVED: Background service untuk Dandori timer
-// Timer sekarang dihitung di client-side, bukan server-side (Event-Driven Architecture)
-// builder.Services.AddHostedService<DandoriTimerService>();
+// Real-Time Background Service
+builder.Services.AddHostedService<OeeRealTimeService>();
 
 var app = builder.Build();
 
@@ -196,10 +165,10 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        // Hapus dan buat ulang database untuk memastikan schema selalu up-to-date
-        // PERHATIAN: Ini akan menghapus semua data yang ada!
-        //db.Database.EnsureDeleted();
-        //db.Database.EnsureCreated();
+        // ✅ PERBAIKAN: Aktifkan Hapus dan Buat Ulang sekali saja untuk migrasi schema ke 'produksi'
+        // ✅ FIXED: Nonaktifkan auto-delete agar data ManPower dll TIDAK HILANG saat restart
+        // db.Database.EnsureDeleted();
+        db.Database.EnsureCreated();
         
         // ✅ PERBAIKAN: Test database connection with timeout dan auto-start LocalDB
         bool canConnect = false;
@@ -424,312 +393,32 @@ using (var scope = app.Services.CreateScope())
         
         if (canConnect)
         {
+            /* ❌ REMOVED LEGACY RAW SQL MIGRATIONS: 
+               Semua tabel dan kolom sekarang sudah di-handle otomatis oleh ApplicationDbContext + EnsureCreated()
+               di atas (Line 173-174). Raw SQL di bawah ini menggunakan nama tabel/schema lama yang tidak lagi aktif.
+
             // ✅ TAMBAHKAN: Tambahkan kolom Dandori ke tabel JobRuns TERLEBIH DAHULU (sebelum query apapun)
-            // Ini penting untuk menghindari error "Token 2000000 is not valid" saat EF Core mencoba memetakan property Dandori
             try
             {
-                Console.WriteLine("INFO: Memeriksa dan menambahkan kolom Dandori ke tabel JobRuns...");
-                
-                // Tambahkan kolom Dandori + kolom hasil scan jika belum ada (dalam satu batch untuk efisiensi)
-                var result = await db.Database.ExecuteSqlRawAsync(@"
-                    IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[JobRuns]') AND type in (N'U'))
-                    BEGIN
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'DandoriStartTime')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD DandoriStartTime DATETIME2 NULL;
-                        END
-                        
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'DandoriEndTime')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD DandoriEndTime DATETIME2 NULL;
-                        END
-                        
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'DandoriDurationSeconds')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD DandoriDurationSeconds INT NULL;
-                        END
-
-                        -- Kolom hasil scan produksi dari DB_HOSS
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedPartNumber')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD ScannedPartNumber NVARCHAR(100) NULL;
-                        END
-
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedLotNumber')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD ScannedLotNumber NVARCHAR(100) NULL;
-                        END
-
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedKomponenId')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD ScannedKomponenId INT NULL;
-                        END
-
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'ScannedJmlKomponen')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD ScannedJmlKomponen INT NULL;
-                        END
-
-                        -- ✅ PERBAIKAN: Kolom LastStatusChangeTime untuk kalkulasi OEE duration
-                        IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('JobRuns') AND name = 'LastStatusChangeTime')
-                        BEGIN
-                            ALTER TABLE JobRuns ADD LastStatusChangeTime DATETIME2 NULL;
-                        END
-                    END");
-                
-                Console.WriteLine($"INFO: Kolom Dandori sudah tersedia di tabel JobRuns (result: {result})");
+                // ... (Dandori mixin removed)
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: Error saat menambahkan kolom Dandori: {ex.Message}");
-                Console.WriteLine($"ERROR: Stack trace: {ex.StackTrace}");
-                // Jangan stop aplikasi, biarkan tetap berjalan
-                // Tapi log error dengan jelas untuk debugging
+                // ...
             }
 
             // Create ProductNgTypes table if not exists
             try
             {
-                // Create table
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ProductNgTypes]') AND type in (N'U'))
-                    BEGIN
-                        CREATE TABLE [dbo].[ProductNgTypes] (
-                            [ProductId] INT NOT NULL,
-                            [NgTypeId] INT NOT NULL,
-                            CONSTRAINT [PK_ProductNgTypes] PRIMARY KEY CLUSTERED ([ProductId] ASC, [NgTypeId] ASC),
-                            CONSTRAINT [FK_ProductNgTypes_Products] FOREIGN KEY ([ProductId]) 
-                                REFERENCES [dbo].[Products] ([Id]) ON DELETE NO ACTION,
-                            CONSTRAINT [FK_ProductNgTypes_NgTypes] FOREIGN KEY ([NgTypeId]) 
-                                REFERENCES [dbo].[NgTypes] ([Id]) ON DELETE NO ACTION
-                        )
-                    END");
-
-                // Create indexes if not exists
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ProductNgTypes_ProductId' AND object_id = OBJECT_ID('ProductNgTypes'))
-                    BEGIN
-                        CREATE NONCLUSTERED INDEX [IX_ProductNgTypes_ProductId] 
-                            ON [dbo].[ProductNgTypes] ([ProductId] ASC)
-                    END");
-
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_ProductNgTypes_NgTypeId' AND object_id = OBJECT_ID('ProductNgTypes'))
-                    BEGIN
-                        CREATE NONCLUSTERED INDEX [IX_ProductNgTypes_NgTypeId] 
-                            ON [dbo].[ProductNgTypes] ([NgTypeId] ASC)
-                    END");
-
-                Console.WriteLine("INFO: Tabel ProductNgTypes sudah dibuat atau sudah ada");
+                // ... (ProductNgTypes removed)
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"WARNING: Error saat membuat tabel ProductNgTypes: {ex.Message}");
-                // Jangan stop aplikasi, biarkan tetap berjalan
+                // ...
             }
 
-            // Create SCW tables if not exists
-            try
-            {
-                // Create Scw4MTypes table
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Scw4MTypes]') AND type in (N'U'))
-                    BEGIN
-                        CREATE TABLE [dbo].[Scw4MTypes] (
-                            [Id] INT NOT NULL PRIMARY KEY,
-                            [Name] NVARCHAR(100) NOT NULL,
-                            [Code] NVARCHAR(50) NOT NULL,
-                            [DisplayOrder] INT NOT NULL DEFAULT 0
-                        )
-                    END");
-
-                // Create ScwRemarks table
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ScwRemarks]') AND type in (N'U'))
-                    BEGIN
-                        CREATE TABLE [dbo].[ScwRemarks] (
-                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-                            [Scw4MTypeId] INT NOT NULL,
-                            [Description] NVARCHAR(200) NOT NULL,
-                            [DisplayOrder] INT NOT NULL DEFAULT 0,
-                            CONSTRAINT [FK_ScwRemarks_Scw4MTypes] FOREIGN KEY ([Scw4MTypeId]) 
-                                REFERENCES [dbo].[Scw4MTypes] ([Id]) ON DELETE NO ACTION
-                        )
-                    END");
-
-                // Create ScwEvents table
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ScwEvents]') AND type in (N'U'))
-                    BEGIN
-                        CREATE TABLE [dbo].[ScwEvents] (
-                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-                            [JobRunId] INT NOT NULL,
-                            [Scw4MTypeId] INT NOT NULL,
-                            [ScwRemarkId] INT NOT NULL,
-                            [MachineId] NVARCHAR(4) NOT NULL,
-                            [StartTime] DATETIME2 NOT NULL,
-                            [EndTime] DATETIME2 NULL,
-                            [DurationSeconds] FLOAT NOT NULL DEFAULT 0,
-                            [AdditionalNotes] NVARCHAR(MAX) NULL,
-                            CONSTRAINT [FK_ScwEvents_JobRuns] FOREIGN KEY ([JobRunId]) 
-                                REFERENCES [dbo].[JobRuns] ([Id]) ON DELETE NO ACTION,
-                            CONSTRAINT [FK_ScwEvents_Scw4MTypes] FOREIGN KEY ([Scw4MTypeId]) 
-                                REFERENCES [dbo].[Scw4MTypes] ([Id]) ON DELETE NO ACTION,
-                            CONSTRAINT [FK_ScwEvents_ScwRemarks] FOREIGN KEY ([ScwRemarkId]) 
-                                REFERENCES [dbo].[ScwRemarks] ([Id]) ON DELETE NO ACTION
-                        )
-                    END");
-
-                Console.WriteLine("INFO: Tabel SCW (Scw4MTypes, ScwRemarks, ScwEvents) sudah dibuat atau sudah ada");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WARNING: Error saat membuat tabel SCW: {ex.Message}");
-                // Jangan stop aplikasi, biarkan tetap berjalan
-            }
-
-            // ✅ PERBAIKAN: Tambahkan kolom InjectionGroup ke tabel ProductionCounts jika belum ada
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'InjectionGroup')
-                    BEGIN
-                        ALTER TABLE ProductionCounts
-                        ADD InjectionGroup NVARCHAR(50) NULL;
-                        PRINT 'Kolom InjectionGroup berhasil ditambahkan ke tabel ProductionCounts';
-                    END");
-                Console.WriteLine("INFO: Kolom InjectionGroup sudah tersedia di tabel ProductionCounts");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WARNING: Error saat menambahkan kolom InjectionGroup: {ex.Message}");
-                // Jangan stop aplikasi, biarkan tetap berjalan
-            }
-
-            // ✅ PERBAIKAN: Tambahkan kolom-kolom baru ke tabel ProductionCounts untuk support Production Data yang lebih detail
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'LotNumber')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD LotNumber NVARCHAR(100) NULL;
-                    END
-                    
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'LotBo')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD LotBo NVARCHAR(100) NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'CompoundName')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD CompoundName NVARCHAR(200) NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'ActualWeight')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD ActualWeight FLOAT NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'Thinning')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD Thinning NVARCHAR(50) NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'Remarks')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD Remarks NVARCHAR(MAX) NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'ManPowerId')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD ManPowerId INT NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'ComponentId')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD ComponentId INT NULL;
-                    END
-
-                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ProductionCounts') AND name = 'DurationSeconds')
-                    BEGIN
-                        ALTER TABLE ProductionCounts ADD DurationSeconds INT NULL;
-                    END
-
-                    PRINT 'Kolom-kolom baru berhasil ditambahkan ke tabel ProductionCounts';
-                ");
-                Console.WriteLine("INFO: Kolom-kolom baru sudah tersedia di tabel ProductionCounts");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WARNING: Error saat menambahkan kolom baru ke ProductionCounts: {ex.Message}");
-            }
-
-            // ✅ Create Komponen table if not exists
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Komponens]') AND type in (N'U'))
-                    BEGIN
-                        CREATE TABLE [dbo].[Komponens] (
-                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-                            [PartNumber] NVARCHAR(100) NOT NULL,
-                            [JmlKomponen] INT NULL
-                        )
-                    END
-                ");
-                Console.WriteLine("INFO: Tabel Komponens sudah dibuat atau sudah ada");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WARNING: Error saat membuat tabel Komponens: {ex.Message}");
-            }
-
-
-            // Rename kolom IdealCycleTimeSeconds menjadi StandarCycleTime jika masih ada
-            try
-            {
-                // Cek apakah kolom IdealCycleTimeSeconds masih ada dan StandarCycleTime belum ada
-                var checkOldColumn = await db.Database.ExecuteSqlRawAsync(@"
-                    IF EXISTS (
-                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-                        WHERE TABLE_NAME = 'Products' AND COLUMN_NAME = 'IdealCycleTimeSeconds'
-                    ) AND NOT EXISTS (
-                        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-                        WHERE TABLE_NAME = 'Products' AND COLUMN_NAME = 'StandarCycleTime'
-                    )
-                    BEGIN
-                        EXEC sp_rename 'Products.IdealCycleTimeSeconds', 'StandarCycleTime', 'COLUMN'
-                    END");
-                Console.WriteLine("INFO: Kolom IdealCycleTimeSeconds sudah diubah menjadi StandarCycleTime (jika diperlukan)");
-            }
-            catch (Exception ex)
-            {
-                // Jika kolom sudah di-rename atau tidak ada, abaikan error
-                Console.WriteLine($"INFO: Kolom sudah menggunakan nama StandarCycleTime atau tidak perlu diubah: {ex.Message}");
-            }
-
-            // Auto-update status lama ke status baru di database menggunakan raw SQL
-            try
-            {
-                // Update status menggunakan raw SQL untuk menghindari conversion issues
-                var updateCount1 = await db.Database.ExecuteSqlRawAsync(
-                    "UPDATE Machines SET Status = N'Aktif' WHERE Status IN (N'Running', N'Idle', N'NoLoading')");
-                
-                var updateCount2 = await db.Database.ExecuteSqlRawAsync(
-                    "UPDATE Machines SET Status = N'TidakAktif' WHERE Status = N'Down'");
-                
-                if (updateCount1 > 0 || updateCount2 > 0)
-                {
-                    Console.WriteLine($"INFO: Berhasil mengupdate {updateCount1 + updateCount2} machine dari status lama ke status baru.");
-                    Console.WriteLine($"      - Running/Idle/NoLoading -> Aktif: {updateCount1} records");
-                    Console.WriteLine($"      - Down -> Tidak Aktif: {updateCount2} records");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WARNING: Error saat update status machine: {ex.Message}");
-                // Jangan stop aplikasi, biarkan tetap berjalan
-            }
+            // ... (SCW tables, InjectionGroup, ProductionCounts, Komponens, Rename logic, Status update)
+            */
 
             // Seed default shifts jika belum ada
     if (!db.Shifts.Any())
@@ -812,11 +501,11 @@ using (var scope = app.Services.CreateScope())
     if (!db.DowntimeReasons.Any())
     {
         db.DowntimeReasons.AddRange(
-            new OeeSystem.Models.DowntimeReason { Category = "Planned", Description = "Setup / Changeover" },
-            new OeeSystem.Models.DowntimeReason { Category = "Planned", Description = "Rest Break" },
-            new OeeSystem.Models.DowntimeReason { Category = "Unplanned", Description = "Machine Failure" },
-            new OeeSystem.Models.DowntimeReason { Category = "Unplanned", Description = "Material Shortage" },
-            new OeeSystem.Models.DowntimeReason { Category = "Unplanned", Description = "Tooling Broken" }
+            new OeeSystem.Models.DowntimeReason { Category = "Planned", Description = "Setup / Changeover", IsPlanned = true },
+            new OeeSystem.Models.DowntimeReason { Category = "Planned", Description = "Rest Break", IsPlanned = true },
+            new OeeSystem.Models.DowntimeReason { Category = "Unplanned", Description = "Machine Failure", IsPlanned = false },
+            new OeeSystem.Models.DowntimeReason { Category = "Unplanned", Description = "Material Shortage", IsPlanned = false },
+            new OeeSystem.Models.DowntimeReason { Category = "Unplanned", Description = "Tooling Broken", IsPlanned = false }
         );
         db.SaveChanges();
     }
@@ -948,17 +637,61 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 
-    // Seed SCW 4M Types jika belum ada
-    if (!db.Scw4MTypes.Any())
+    // Seed SCW 4M Types sesuai spesifikasi - Pastikan data selalu ada dan fresh
+    try
     {
-        db.Scw4MTypes.AddRange(
+        // Gunakan list data yang diinginkan
+        var scwTypes = new List<OeeSystem.Models.Scw4MType>
+        {
             new OeeSystem.Models.Scw4MType { Id = 1, Name = "Material", Code = "MATERIAL", DisplayOrder = 1 },
-            new OeeSystem.Models.Scw4MType { Id = 2, Name = "Method", Code = "METHOD", DisplayOrder = 2 },
+            new OeeSystem.Models.Scw4MType { Id = 2, Name = "Methode", Code = "METHOD", DisplayOrder = 2 },
             new OeeSystem.Models.Scw4MType { Id = 3, Name = "Machine", Code = "MACHINE", DisplayOrder = 3 },
             new OeeSystem.Models.Scw4MType { Id = 4, Name = "Man", Code = "MAN", DisplayOrder = 4 },
             new OeeSystem.Models.Scw4MType { Id = 5, Name = "No Problem", Code = "NO_PROBLEM", DisplayOrder = 5 }
-        );
-        db.SaveChanges();
+        };
+
+        // Jika data belum ada, tambahkan semua
+        if (!db.Scw4MTypes.Any())
+        {
+            db.Scw4MTypes.AddRange(scwTypes);
+            db.SaveChanges();
+            Console.WriteLine("INFO: SCW 4M Types seeded for the first time");
+        }
+        else
+        {
+            // Jika sudah ada, update yang perlu diupdate (terutama untuk rename Method -> Methode)
+            bool hasChanges = false;
+            foreach (var type in scwTypes)
+            {
+                var existing = db.Scw4MTypes.FirstOrDefault(t => t.Id == type.Id);
+                if (existing != null)
+                {
+                    if (existing.Name != type.Name || existing.Code != type.Code || existing.DisplayOrder != type.DisplayOrder)
+                    {
+                        existing.Name = type.Name;
+                        existing.Code = type.Code;
+                        existing.DisplayOrder = type.DisplayOrder;
+                        hasChanges = true;
+                    }
+                }
+                else
+                {
+                    // Case ID tidak sinkron (jarang terjadi di seed), kita tambahkan
+                    db.Scw4MTypes.Add(type);
+                    hasChanges = true;
+                }
+            }
+
+            if (hasChanges)
+            {
+                db.SaveChanges();
+                Console.WriteLine("INFO: SCW 4M Types updated successfully");
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"WARNING: Error saat seeding SCW 4M Types: {ex.Message}");
     }
 
     // Seed SCW Remarks sesuai spesifikasi - Pastikan data selalu ada
@@ -1159,98 +892,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// Auto-create HossDbContext database schema (untuk LocalDB development)
-using (var scope = app.Services.CreateScope())
-{
-    try
-    {
-        var hossDb = scope.ServiceProvider.GetRequiredService<HossDbContext>();
-        
-        // Test database connection with timeout
-        bool canConnectHoss = false;
-        try
-        {
-            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
-            {
-                canConnectHoss = await hossDb.Database.CanConnectAsync(cts.Token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Console.WriteLine("WARNING: HossDbContext connection timeout. Melanjutkan tanpa database...");
-            canConnectHoss = false;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"WARNING: Tidak dapat terhubung ke HossDbContext: {ex.Message}");
-            canConnectHoss = false;
-        }
-        
-        if (!canConnectHoss)
-        {
-            Console.WriteLine("WARNING: Tidak dapat terhubung ke HossDbContext. Pastikan SQL Server berjalan dan connection string benar.");
-            Console.WriteLine("INFO: Aplikasi akan berjalan tanpa HossDbContext. Fitur yang memerlukan HossDbContext mungkin tidak berfungsi.");
-        }
-        else
-        {
-            // Auto-create database jika belum ada (untuk LocalDB)
-            try
-            {
-                // Cek apakah database menggunakan LocalDB (untuk development)
-                var currentHossConnectionString = builder.Configuration.GetConnectionString("HossConnection")
-                    ?? "Server=(localdb)\\MSSQLLocalDB;Database=OeeSystemDb_Hoss;Trusted_Connection=True;MultipleActiveResultSets=true";
-                
-                if (currentHossConnectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Untuk LocalDB, buat tabel komponen jika belum ada
-                    await hossDb.Database.ExecuteSqlRawAsync(@"
-                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[komponen]') AND type in (N'U'))
-                        BEGIN
-                            CREATE TABLE [dbo].[komponen] (
-                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-                                [Part_Number] NVARCHAR(100) NULL,
-                                [jml_komponen] INT NULL
-                            )
-                        END");
-                    
-                    // Seed dummy data untuk komponen jika belum ada (hanya untuk LocalDB)
-                    var komponenCount = await hossDb.Komponen.CountAsync();
-                    if (komponenCount == 0)
-                    {
-                        // Insert dummy data untuk testing
-                        await hossDb.Database.ExecuteSqlRawAsync(@"
-                            INSERT INTO [dbo].[komponen] ([Part_Number], [jml_komponen]) VALUES
-                            ('BRG-R12', 5),
-                            ('VLV-V55', 3),
-                            ('GRS-X100', 2),
-                            ('RUBBER-001', 4),
-                            ('PLASTIC-002', 6),
-                            ('METAL-003', 1)
-                        ");
-                        Console.WriteLine("INFO: Dummy data komponen berhasil ditambahkan ke HossDbContext (LocalDB)");
-                    }
-                    
-                    Console.WriteLine("INFO: HossDbContext database (LocalDB) sudah siap dengan tabel komponen");
-                }
-                else
-                {
-                    Console.WriteLine("INFO: HossDbContext menggunakan SQL Server production. Tabel akan menggunakan struktur dari database server.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"WARNING: Error saat setup HossDbContext: {ex.Message}");
-                // Jangan stop aplikasi, biarkan tetap berjalan
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"ERROR saat setup HossDbContext: {ex.Message}");
-        Console.WriteLine($"StackTrace: {ex.StackTrace}");
-        // Jangan stop aplikasi, biarkan tetap berjalan
-    }
-}
+// Configure the HTTP request pipeline.
 
 // Configure the HTTP request pipeline.
 // Enable detailed error pages in development untuk melihat error detail

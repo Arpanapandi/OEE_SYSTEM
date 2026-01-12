@@ -6,9 +6,9 @@ public class ScwEvent
     public int JobRunId { get; set; }
     public JobRun? JobRun { get; set; }
     
-    public int Scw4MTypeId { get; set; }
+    public int Jenis4MId { get; set; }
     public Scw4MType? Scw4MType { get; set; }
-    public int ScwRemarkId { get; set; }
+    public int JenisRemarkId { get; set; }
     public ScwRemark? ScwRemark { get; set; }
     
     public string MachineId { get; set; } = string.Empty;

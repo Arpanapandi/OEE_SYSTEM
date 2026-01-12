@@ -22,7 +22,7 @@
 
             <div class="mb-3">
                 <label asp-for="Value" class="form-label">Value <span class="text-danger">*</span></label>
-                <input asp-for="Value" class="form-control" type="number" min="1" max="10" />
+                <input asp-for="Value" class="form-control" type="text" data-val="false" placeholder="Masukkan angka (contoh: 11)" />
                 <span asp-validation-for="Value" class="text-danger"></span>
                 <div class="form-text">Nilai numerik untuk sorting (1, 2, 3, dst)</div>
             </div>

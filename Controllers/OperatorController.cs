@@ -579,7 +579,7 @@ public class OperatorController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SubmitProductionData(
         string machineId,
-        string? lotNumber,
+        string? nomorLot,
         string? partNumber,
         string? namaCompound,
         double? beratAct,
@@ -588,7 +588,7 @@ public class OperatorController : Controller
         int? manPowerId,
         string? injection,
         int? komponenId,
-        int? durationSeconds,
+        int? durasiProduksiSeconds,
         int qty = 1)
     {
         bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
@@ -618,16 +618,16 @@ public class OperatorController : Controller
                 Timestamp = now,
                 GoodCount = qty, // Default 1 for item submission
                 RejectCount = 0,
-                LotNumber = lotNumber,
+                NomorLot = nomorLot,
                 LotBo = partNumber,
-                CompoundName = namaCompound,
-                ActualWeight = beratAct,
-                Thinning = penipisan,
-                Remarks = keterangan,
+                NamaCompound = namaCompound,
+                BeratAct = beratAct,
+                Penipisan = penipisan,
+                Keterangan = keterangan,
                 ManPowerId = manPowerId,
                 InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToLower(),
                 ComponentId = komponenId,
-                DurationSeconds = durationSeconds
+                DurasiProduksiSeconds = durasiProduksiSeconds
             };
 
             _context.ProductionCounts.Add(count);
@@ -641,7 +641,7 @@ public class OperatorController : Controller
                 MachineName = job.Machine?.Name,
                 ProductName = job.WorkOrder?.Product?.Name,
                 GoodCount = qty,
-                Message = $"Data Produksi tersimpan: {lotNumber} ({partNumber})",
+                Message = $"Data Produksi tersimpan: {nomorLot} ({partNumber})",
                 Timestamp = now
             });
 
@@ -1245,7 +1245,7 @@ public class OperatorController : Controller
     // POST: Start SCW
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Scw(string machineId, int scw4MTypeId, int scwRemarkId, string? additionalNotes = null, string? returnUrl = null)
+    public async Task<IActionResult> Scw(string machineId, int jenis4MId, int jenisRemarkId, string? additionalNotes = null, string? returnUrl = null)
     {
         bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
         var now = DateTime.Now;
@@ -1253,8 +1253,8 @@ public class OperatorController : Controller
         try
         {
             // Validasi
-            var scw4MType = await _context.Scw4MTypes.FindAsync(scw4MTypeId);
-            var scwRemark = await _context.ScwRemarks.FindAsync(scwRemarkId);
+            var scw4MType = await _context.Scw4MTypes.FindAsync(jenis4MId);
+            var scwRemark = await _context.ScwRemarks.FindAsync(jenisRemarkId);
             
             if (scw4MType == null || scwRemark == null)
             {
@@ -1265,7 +1265,7 @@ public class OperatorController : Controller
             }
             
             // Validasi: Remark harus sesuai dengan 4M Type
-            if (scwRemark.Scw4MTypeId != scw4MTypeId)
+            if (scwRemark.Scw4MTypeId != jenis4MId)
             {
                 if (isAjax)
                     return Json(new { success = false, message = "Remark tidak sesuai dengan kategori 4M yang dipilih" });
@@ -1291,8 +1291,8 @@ public class OperatorController : Controller
             var scwEvent = new ScwEvent
             {
                 JobRunId = activeJob.Id,
-                Scw4MTypeId = scw4MTypeId,
-                ScwRemarkId = scwRemarkId,
+                Jenis4MId = jenis4MId,
+                JenisRemarkId = jenisRemarkId,
                 MachineId = machineId,
                 StartTime = now,
                 EndTime = null,

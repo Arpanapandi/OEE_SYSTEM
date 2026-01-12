@@ -6,6 +6,8 @@ public class DowntimeReason
     public string Category { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
 
+    public bool IsPlanned { get; set; }
+
     public ICollection<DowntimeEvent> DowntimeEvents { get; set; } = new List<DowntimeEvent>();
 
     // Mapping downtime reason ke mesin yang diizinkan

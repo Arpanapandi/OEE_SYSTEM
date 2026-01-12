@@ -89,5 +89,15 @@ public class OeeHub : Hub
         await Clients.Group($"machine_{machineId}").SendAsync("RunningStopped", machineId, endTimeUtc, totalSeconds);
         Console.WriteLine($"📡 Broadcasted RunningStopped: machine_{machineId}, endTimeUtc: {endTimeUtc:O}, totalSeconds: {totalSeconds}");
     }
+
+    /// <summary>
+    /// Broadcast real-time duration updates every 10 seconds.
+    /// This ensures all clients are synchronized with the server's time calculation.
+    /// </summary>
+    public async Task BroadcastRealTimeSync(string machineId, object syncData)
+    {
+        await Clients.Group($"machine_{machineId}").SendAsync("ReceiveRealTimeSync", syncData);
+        // Console.WriteLine($"📡 Broadcasted ReceiveRealTimeSync: machine_{machineId}");
+    }
 }
 

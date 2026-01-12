@@ -19,12 +19,12 @@ public class ProductionCount
     public string? InjectionGroup { get; set; }
 
     // ✅ Traceability Fields
-    public string? LotNumber { get; set; }
+    public string? NomorLot { get; set; }
     public string? LotBo { get; set; }
-    public string? CompoundName { get; set; }
-    public double? ActualWeight { get; set; }
-    public string? Thinning { get; set; }
-    public string? Remarks { get; set; }
+    public string? NamaCompound { get; set; }
+    public double? BeratAct { get; set; }
+    public string? Penipisan { get; set; }
+    public string? Keterangan { get; set; }
     
     // ✅ Man Power & Components
     public int? ManPowerId { get; set; }
@@ -34,7 +34,7 @@ public class ProductionCount
     public Komponen? Component { get; set; }
 
     // ✅ Duration per item (seconds)
-    public int? DurationSeconds { get; set; }
+    public int? DurasiProduksiSeconds { get; set; }
 }
 
 

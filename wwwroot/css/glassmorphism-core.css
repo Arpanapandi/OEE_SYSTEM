@@ -345,6 +345,22 @@ body {
     box-shadow: var(--shadow-glow);
 }
 
+/* Fix Dropdown Spacing & Scrolling */
+select.form-control-glass,
+select.form-select,
+select.form-control {
+    /* Mencegah dropdown terlalu lebar/panjang di beberapa browser */
+    max-height: 250px;
+}
+
+/* Memastikan option memiliki padding yang wajar supaya tidak terlalu renggang */
+select option {
+    padding: 4px 10px;
+    background-color: var(--card-bg);
+    /* Konsisten dengan dark mode */
+    color: var(--text-primary);
+}
+
 /* 8. Status Indicators */
 .status-indicator {
     display: flex;
