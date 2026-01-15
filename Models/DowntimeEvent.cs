@@ -15,6 +15,13 @@ public class DowntimeEvent
 
     // Calculated, but stored for reporting convenience
     public double DurationSeconds { get; set; }
+    
+    // ✅ CUSTOM OEE: Flags untuk kategorisasi downtime
+    // Rest Break dan No Loading TIDAK masuk Downtime Total
+    // HANYA Line Stop yang masuk Downtime Total
+    public bool IsRestBreak { get; set; }
+    public bool IsNoLoading { get; set; }
+    public bool IsLineStop { get; set; }
 }
 
 

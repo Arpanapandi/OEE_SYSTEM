@@ -139,7 +139,8 @@ if (env == "Development" || connectionString.Contains("(localdb)", StringCompari
 builder.Services.AddScoped<IOeeService, OeeService>();
 
 // Real-Time Background Service
-builder.Services.AddHostedService<OeeRealTimeService>();
+// builder.Services.AddHostedService<OeeRealTimeService>(); // Disabled temporary due to EventLog permission issue
+
 
 var app = builder.Build();
 

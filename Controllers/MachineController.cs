@@ -663,6 +663,19 @@ public class MachineController : Controller
             ViewBag.ManPowers = new List<ManPower>();
         }
         
+        // ✅ TAMBAHKAN: DowntimeReasons untuk modal Line Stop
+        try
+        {
+            ViewBag.DowntimeReasons = await _context.DowntimeReasons
+                .OrderBy(r => r.Category)
+                .ThenBy(r => r.Description)
+                .ToListAsync();
+        }
+        catch
+        {
+            ViewBag.DowntimeReasons = new List<DowntimeReason>();
+        }
+        
         // ✅ TAMBAHKAN: Kirim shifts untuk filter dropdown
         ViewBag.Shifts = await _context.Shifts
             .OrderBy(s => s.Name)

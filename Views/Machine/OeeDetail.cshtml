@@ -488,8 +488,9 @@
                         <button type="button" 
                                 id="btn-running" 
                                 class="btn w-100 btn-outline-success machine-action-btn"
+                                data-machine-id="@Model.MachineId"
                                 style="pointer-events: auto !important; cursor: pointer !important;"
-                                onclick="console.log('🖱️ onclick triggered'); if(typeof handleRunningClickDirect === 'function') { handleRunningClickDirect(this); } else { console.error('❌ handleRunningClickDirect not found'); alert('Error: Fungsi tidak ditemukan. Refresh halaman.'); } return false;">
+                                onclick="if(typeof handleRunningClick === 'function') { handleRunningClick(this); } else { console.error('❌ handleRunningClick not found'); } return false;">
                             <i class="fa-solid fa-play-circle me-1"></i>
                             Running
                         </button>
@@ -508,7 +509,7 @@
                                         id="btn-rest" 
                                         class="btn w-100 btn-outline-warning machine-action-btn"
                                         style="pointer-events: auto !important; cursor: pointer !important;"
-                                        onclick="if(typeof handleRestClickFinal === 'function') { handleRestClickFinal(this); } else { console.error('handleRestClickFinal not found'); }">
+                                        onclick="if(typeof handleRestClick === 'function') { handleRestClick(this); } else { console.error('handleRestClick not found'); } return false;">
                                     <i class="fa-solid fa-pause-circle me-1"></i>
                                     <span class="btn-text">Rest Break</span>
                                 </button>
@@ -612,6 +613,80 @@
                             <i class="fa-solid fa-save me-1"></i>Simpan SCW
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ========== MODALS ========== -->
+
+<!-- Line Stop Modal -->
+<div class="modal fade" id="lineStopModal" tabindex="-1" aria-labelledby="lineStopModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: #1e1e1e; border: 1px solid #333;">
+            <div class="modal-header" style="border-bottom: 1px solid #333;">
+                <h5 class="modal-title" id="lineStopModalLabel">
+                    <i class="fa-solid fa-stop-circle me-2 text-danger"></i>Line Stop
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="line-stop-form" onsubmit="return false;">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            Alasan Line Stop <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-control-glass" name="reasonId" required>
+                            <option value="">-- Pilih Alasan --</option>
+                            @if (ViewBag.DowntimeReasons != null)
+                            {
+                                @foreach (var reason in ((List<OeeSystem.Models.DowntimeReason>)ViewBag.DowntimeReasons).Where(r => r.Category == "Unplanned"))
+                                {
+                                    <option value="@reason.Id">@reason.Description</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="button" class="btn btn-danger" onclick="handleLineStopClick(this)">
+                            <i class="fa-solid fa-save me-1"></i>Submit Line Stop
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- No Loading Modal -->
+<div class="modal fade" id="noLoadingModal" tabindex="-1" aria-labelledby="noLoadingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: #1e1e1e; border: 1px solid #333;">
+            <div class="modal-header" style="border-bottom: 1px solid #333;">
+                <h5 class="modal-title" id="noLoadingModalLabel">
+                    <i class="fa-regular fa-hourglass-half me-2 text-info"></i>No Loading
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary mb-3">
+                    <i class="fa-solid fa-info-circle me-1"></i>
+                    Konfirmasi untuk set status mesin menjadi No Loading
+                </p>
+                
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-info" onclick="handleNoLoadingClick(this)">
+                        <i class="fa-solid fa-check me-1"></i>Ya, Set No Loading
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="fa-solid fa-times me-1"></i>Batal
+                    </button>
                 </div>
             </div>
         </div>
@@ -7929,21 +8004,79 @@
         };
 
         // Hook SignalR OeeUpdated to refreshAllData
-        if(!window.signalRHookSet) {
-            window.signalRHookSet = true;
-            const checkSignalR = setInterval(() => {
-                if(window.oeeConnection) {
-                    window.oeeConnection.on("OeeUpdated", (data) => {
-                        console.log('📡 OeeUpdated SignalR Hook:', data);
-                        window.refreshAllData();
-                    });
-                    clearInterval(checkSignalR);
-                }
-            }, 1000);
-        }
+        // (Replaced by window.setupSignalR logic below)
+
 
         // Initial Refresh on load
         window.refreshAllData();
         
+        // ✅ SIGNALR SETUP FINAL
+        window.setupSignalR = async function() {
+            if (window.oeeHubConnection) return; // Prevent duplicate
+            
+            console.log("📡 Initializing SignalRConnection...");
+            
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl("/oeeHub")
+                .withAutomaticReconnect()
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+                
+            window.oeeHubConnection = connection;
+            
+            connection.on("OeeUpdated", function (data) {
+                console.log("📡 [SignalR] OeeUpdated received:", data);
+                
+                // 1. Refresh Data
+                if (typeof window.refreshAllData === 'function') {
+                    window.refreshAllData();
+                }
+                
+                // 2. Direct Timer & Status Update (Faster)
+                if (data.lastStatusChangeTime && window.MachineTimer) {
+                    window.MachineTimer.start(data.lastStatusChangeTime);
+                }
+                
+                // 3. Update Navbar & Machine Status
+                if (typeof window.updateMachineStatusUI === 'function') {
+                    // Kita panggil dengan data parsial atau biarkan refreshAllData handle via API
+                    // Disini kita update visual status navbar langsung
+                    const isAktif = !data.hasActiveDowntime; // Simplifikasi
+                    const navbarStatusDot = document.getElementById('navbar-status-dot');
+                    const navbarStatusText = document.getElementById('navbar-status-text');
+                    
+                    if (navbarStatusDot && navbarStatusText) {
+                        if (isAktif) {
+                            navbarStatusText.textContent = 'AKTIF';
+                            navbarStatusDot.style.background = '#28a745'; // Green
+                            navbarStatusDot.className = 'status-dot active';
+                        } else {
+                            navbarStatusText.textContent = 'DOWNTIME'; 
+                            navbarStatusDot.style.background = '#dc3545'; // Red
+                            navbarStatusDot.className = 'status-dot active';
+                        }
+                        navbarStatusDot.style.boxShadow = `0 0 10px ${navbarStatusDot.style.background}`;
+                    }
+                }
+            });
+            
+            try {
+                await connection.start();
+                console.log("✅ [SignalR] Connected!");
+            } catch (err) {
+                console.error("❌ [SignalR] Connection failed: ", err);
+                setTimeout(window.setupSignalR, 5000); // Retry
+            }
+        };
+        
+        // Start SignalR
+        document.addEventListener('DOMContentLoaded', window.setupSignalR);
+        if (document.readyState === 'dovetail' || document.readyState === 'complete') {
+             window.setupSignalR();
+        }
+        
         console.log('✅ FINAL SCRIPT LOADED. Functions ready.');
     </script>
+    
+    <!-- ========== MACHINE ACTIONS CONSOLIDATED SCRIPT ========== -->
+    <script src="~/js/machine-actions.js"></script>

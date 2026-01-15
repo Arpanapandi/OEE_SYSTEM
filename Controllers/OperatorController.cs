@@ -105,18 +105,24 @@ public class OperatorController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Start(string machineId, string? returnUrl = null)
+    public async Task<IActionResult> Start(string machineId, int? manPowerId = null, string? returnUrl = null)
     {
-        // ✅ EVENT-DRIVEN: Gunakan UTC untuk konsistensi
+        // ✅ PERBAIKAN: Gunakan UTC untuk konsistensi
         var nowUtc = DateTime.UtcNow;
-        var nowLocal = DateTime.Now; // Untuk display/logging
+        var nowLocal = DateTime.Now;
 
         bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 
+        // ✅ VALIDASI: Cek Man Power (optional untuk Start, tapi recommended)
+        // Man Power bisa di-set nanti saat submit production data
+        
         // Cek apakah sudah ada job aktif
         var existingJob = await _context.JobRuns
             .Include(j => j.DowntimeEvents)
+                .ThenInclude(d => d.Reason)
             .Include(j => j.Machine)
+            .Include(j => j.WorkOrder)
+                .ThenInclude(w => w.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -127,33 +133,35 @@ public class OperatorController : Controller
             var openDowntime = existingJob.DowntimeEvents
                 .OrderByDescending(d => d.StartTime)
                 .FirstOrDefault(d => d.EndTime == null);
-                
+            
             if (openDowntime != null)
             {
                 // End downtime yang aktif
                 openDowntime.EndTime = nowLocal;
                 openDowntime.DurationSeconds = (int)(nowLocal - openDowntime.StartTime).TotalSeconds;
                 
-                // ✅ PERBAIKAN: Update LastStatusChangeTime untuk kalkulasi OEE operating time
+                // ✅ CRITICAL: Update LastStatusChangeTime untuk kalkulasi OEE operating time
                 existingJob.LastStatusChangeTime = nowLocal;
+                
+                // ✅ PERBAIKAN: Update ManPowerId jika diberikan
+                if (manPowerId.HasValue && manPowerId.Value > 0)
+                {
+                    existingJob.ManPowerId = manPowerId.Value;
+                }
                 
                 await _context.SaveChangesAsync();
                 
-                // ✅ EVENT-DRIVEN: Broadcast RunningStarted event (downtime ended = running started)
-                // ✅ PERBAIKAN: Gunakan waktu downtime end sebagai start time untuk running
-                // Ini memastikan durasi running melanjutkan dari waktu rest break selesai, bukan dari job start time
+                // ✅ EVENT-DRIVEN: Broadcast RunningStarted event
                 var machineIdInt = int.TryParse(machineId, out var id) ? id : 0;
                 if (machineIdInt > 0)
                 {
-                    // Convert to ISO 8601 string untuk konsistensi dengan JavaScript Date parsing
-                    // Gunakan waktu downtime end (nowUtc) sebagai start time untuk running
-                    var startTimeUtcString = nowUtc.ToString("O"); // ISO 8601 format
+                    var startTimeUtcString = nowUtc.ToString("O");
                     await _hubContext.Clients.Group($"machine_{machineIdInt}")
                         .SendAsync("RunningStarted", machineIdInt, startTimeUtcString);
-                    Console.WriteLine($"📡 Broadcasted RunningStarted (after downtime end): machine_{machineIdInt}, startTimeUtc: {startTimeUtcString}");
+                    Console.WriteLine($"📡 Broadcasted RunningStarted: machine_{machineIdInt}, startTimeUtc: {startTimeUtcString}");
                 }
                 
-                // ✅ PERBAIKAN FINAL: Update machine status ke Aktif saat downtime end (running start)
+                // ✅ CRITICAL: Update machine status ke Aktif
                 var machineForDowntime = await _context.Machines.FindAsync(machineId);
                 if (machineForDowntime != null && machineForDowntime.Status != MachineStatus.Aktif)
                 {
@@ -161,22 +169,32 @@ public class OperatorController : Controller
                     await _context.SaveChangesAsync();
                 }
                 
+                // ✅ COMPREHENSIVE BROADCAST: Include all necessary data for UI update
                 await _hubContext.Clients.All.SendAsync("OeeUpdated", new
                 {
-                    Type = "DowntimeEnded",
+                    Type = "RunningStarted",
                     MachineId = machineId,
                     MachineName = existingJob.Machine?.Name,
-                    Message = $"Downtime berakhir pada mesin {existingJob.Machine?.Name}",
+                    Message = $"Machine {existingJob.Machine?.Name} running",
                     Timestamp = nowLocal,
+                    LastStatusChangeTime = nowLocal.ToString("O"),
                     RefreshOperatorData = true,
                     RefreshTimeMetrics = true,
                     RefreshRecentDowntime = true,
-                    MachineStatus = "Aktif"
+                    RefreshOeeMetrics = true,
+                    MachineStatus = "Aktif",
+                    HasActiveDowntime = false,
+                    DowntimeDescription = ""
                 });
                 
                 if (isAjax)
                 {
-                    return Json(new { success = true, message = "Downtime berakhir, machine running" });
+                    return Json(new { 
+                        success = true, 
+                        message = "Machine running",
+                        lastStatusChangeTime = nowLocal.ToString("O"),
+                        machineStatus = "Aktif"
+                    });
                 }
                 
                 if (!string.IsNullOrEmpty(returnUrl))
@@ -185,22 +203,34 @@ public class OperatorController : Controller
             }
             else
             {
-                // ✅ PERBAIKAN: Jika job sudah aktif dan tidak ada downtime, update LastStatusChangeTime
+                // ✅ PERBAIKAN: Jika job sudah running, update LastStatusChangeTime
                 existingJob.LastStatusChangeTime = nowLocal;
+                
+                // ✅ PERBAIKAN: Update ManPowerId jika diberikan
+                if (manPowerId.HasValue && manPowerId.Value > 0)
+                {
+                    existingJob.ManPowerId = manPowerId.Value;
+                }
+                
                 await _context.SaveChangesAsync();
                 
                 if (isAjax)
                 {
-                    return Json(new { success = true, message = "Machine sudah running" });
+                    return Json(new { 
+                        success = true, 
+                        message = "Machine sudah running",
+                        lastStatusChangeTime = nowLocal.ToString("O"),
+                        machineStatus = "Aktif"
+                    });
                 }
-                TempData["OperationError"] = "Sudah ada job aktif. Tidak bisa start job baru.";
+                
                 if (!string.IsNullOrEmpty(returnUrl))
                     return Redirect(returnUrl);
                 return RedirectToAction(nameof(Index), new { machineId });
             }
         }
 
-        // Tidak ada job aktif, START job baru
+        // ✅ Tidak ada job aktif, START job baru
         var activeWorkOrder = await _context.WorkOrders
             .Include(w => w.Product)
             .Where(w => w.Status == WorkOrderStatus.InProgress)
@@ -314,28 +344,30 @@ public class OperatorController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Rest(string machineId, int reasonId, string? returnUrl = null)
     {
-        return await StartDowntime(machineId, reasonId, returnUrl);
+        return await StartDowntime(machineId, reasonId, returnUrl, isRestBreak: true);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> LineStop(string machineId, int reasonId, string? returnUrl = null)
     {
-        return await StartDowntime(machineId, reasonId, returnUrl);
+        return await StartDowntime(machineId, reasonId, returnUrl, isLineStop: true);
     }
 
-    private async Task<IActionResult> StartDowntime(string machineId, int reasonId, string? returnUrl = null)
+    private async Task<IActionResult> StartDowntime(string machineId, int reasonId, string? returnUrl = null, bool isRestBreak = false, bool isLineStop = false)
     {
         var now = DateTime.Now;
 
         var job = await _context.JobRuns
             .Include(j => j.DowntimeEvents)
+                .ThenInclude(d => d.Reason)
             .Include(j => j.Machine)
+            .Include(j => j.WorkOrder)
+                .ThenInclude(w => w.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
 
-        // Check if this is an AJAX request
         bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 
         if (job == null)
@@ -350,21 +382,18 @@ public class OperatorController : Controller
             return RedirectToAction(nameof(Index), new { machineId });
         }
 
-        // Cek apakah sudah ada downtime aktif
-        var openDowntime = job.DowntimeEvents.FirstOrDefault(d => d.EndTime == null);
+        // ✅ PERBAIKAN: End downtime aktif jika ada (untuk switch antar downtime)
+        var openDowntime = job.DowntimeEvents
+            .OrderByDescending(d => d.StartTime)
+            .FirstOrDefault(d => d.EndTime == null);
+            
         if (openDowntime != null)
         {
-            if (isAjax)
-            {
-                return Json(new { success = false, message = "Sudah ada downtime aktif. Tidak bisa start downtime baru." });
-            }
-            TempData["OperationError"] = "Sudah ada downtime aktif. Tidak bisa start downtime baru.";
-            if (!string.IsNullOrEmpty(returnUrl))
-                return Redirect(returnUrl);
-            return RedirectToAction(nameof(Index), new { machineId });
+            // End downtime yang lama
+            openDowntime.EndTime = now;
+            openDowntime.DurationSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
         }
 
-        // Tidak ada downtime aktif, START downtime baru
         var reason = await _context.DowntimeReasons.FindAsync(reasonId);
         if (reason == null)
         {
@@ -378,18 +407,27 @@ public class OperatorController : Controller
             return RedirectToAction(nameof(Index), new { machineId });
         }
 
+        // ✅ START downtime baru
         var newDowntime = new DowntimeEvent
         {
             JobRunId = job.Id,
             ReasonId = reasonId,
             StartTime = now,
             EndTime = null,
-            DurationSeconds = 0
+            DurationSeconds = 0,
+            // ✅ CUSTOM OEE: Set flags
+            IsRestBreak = isRestBreak,
+            IsNoLoading = false,
+            IsLineStop = isLineStop
         };
+
+        // ✅ CRITICAL: Update LastStatusChangeTime untuk kalkulasi OEE
+        job.LastStatusChangeTime = now;
 
         _context.DowntimeEvents.Add(newDowntime);
         await _context.SaveChangesAsync();
 
+        // ✅ COMPREHENSIVE BROADCAST: Include all necessary data
         await _hubContext.Clients.All.SendAsync("OeeUpdated", new
         {
             Type = "DowntimeStarted",
@@ -399,15 +437,24 @@ public class OperatorController : Controller
             Category = reason.Category,
             Message = $"Downtime: {reason.Description} pada mesin {job.Machine?.Name}",
             Timestamp = now,
+            LastStatusChangeTime = now.ToString("O"),
             RefreshTimeMetrics = true,
             RefreshOperatorData = true,
-            RefreshRecentDowntime = true
+            RefreshRecentDowntime = true,
+            RefreshOeeMetrics = true,
+            MachineStatus = "Aktif",
+            HasActiveDowntime = true,
+            DowntimeDescription = reason.Description
         });
 
-        // Return JSON for AJAX requests
         if (isAjax)
         {
-            return Json(new { success = true, message = $"Downtime: {reason.Description} dimulai" });
+            return Json(new { 
+                success = true, 
+                message = $"Downtime: {reason.Description} dimulai",
+                lastStatusChangeTime = now.ToString("O"),
+                downtimeDescription = reason.Description
+            });
         }
 
         if (!string.IsNullOrEmpty(returnUrl))
@@ -425,6 +472,9 @@ public class OperatorController : Controller
         var activeJob = await _context.JobRuns
             .Include(j => j.Machine)
             .Include(j => j.DowntimeEvents)
+                .ThenInclude(d => d.Reason)
+            .Include(j => j.WorkOrder)
+                .ThenInclude(w => w.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -442,28 +492,38 @@ public class OperatorController : Controller
                      ?? await _context.DowntimeReasons.FirstOrDefaultAsync(r => r.Description.Contains("Rest")) 
                      ?? await _context.DowntimeReasons.FirstOrDefaultAsync();
 
-        // End open downtime if any
-        var openDowntime = activeJob.DowntimeEvents.FirstOrDefault(d => d.EndTime == null);
+        // ✅ PERBAIKAN: End downtime aktif jika ada
+        var openDowntime = activeJob.DowntimeEvents
+            .OrderByDescending(d => d.StartTime)
+            .FirstOrDefault(d => d.EndTime == null);
+            
         if (openDowntime != null)
         {
             openDowntime.EndTime = now;
             openDowntime.DurationSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
         }
 
-        // Start NO LOADING as a DowntimeEvent for history and metrics
+        // ✅ START NO LOADING as a DowntimeEvent
         var newDowntime = new DowntimeEvent
         {
             JobRunId = activeJob.Id,
             ReasonId = reason?.Id ?? 0,
             StartTime = now,
             EndTime = null,
-            DurationSeconds = 0
+            DurationSeconds = 0,
+            // ✅ CUSTOM OEE: Set flags
+            IsRestBreak = false,
+            IsNoLoading = true,
+            IsLineStop = false
         };
 
+        // ✅ CRITICAL: Update LastStatusChangeTime untuk kalkulasi OEE
         activeJob.LastStatusChangeTime = now;
+        
         _context.DowntimeEvents.Add(newDowntime);
         await _context.SaveChangesAsync();
 
+        // ✅ COMPREHENSIVE BROADCAST: Include all necessary data
         await _hubContext.Clients.All.SendAsync("OeeUpdated", new
         {
             Type = "NoLoadingStarted",
@@ -471,12 +531,26 @@ public class OperatorController : Controller
             MachineName = activeJob.Machine?.Name,
             Message = $"NO LOADING: Mesin {activeJob.Machine?.Name} dihentikan",
             Timestamp = now,
+            LastStatusChangeTime = now.ToString("O"),
             RefreshTimeMetrics = true,
             RefreshOperatorData = true,
-            RefreshRecentDowntime = true
+            RefreshRecentDowntime = true,
+            RefreshOeeMetrics = true,
+            MachineStatus = "Aktif",
+            HasActiveDowntime = true,
+            DowntimeDescription = "No Loading",
+            IsNoLoading = true
         });
 
-        if (isAjax) return Json(new { success = true, message = "NO LOADING dimulai" });
+        if (isAjax) 
+        {
+            return Json(new { 
+                success = true, 
+                message = "NO LOADING dimulai",
+                lastStatusChangeTime = now.ToString("O"),
+                downtimeDescription = "No Loading"
+            });
+        }
         return RedirectToAction(nameof(Index), new { machineId });
     }
 

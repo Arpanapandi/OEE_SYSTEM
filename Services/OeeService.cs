@@ -188,9 +188,17 @@ public class OeeService : IOeeService
             .ToList();
 
         TimeSpan totalShiftTime = shiftEnd - shiftStart;
+        
+        // ✅ CUSTOM OEE CALCULATION:
+        // Rest Break dan No Loading TIDAK masuk Downtime Total
+        // HANYA Line Stop yang masuk Downtime Total
+        TimeSpan restBreakTime = TimeSpan.Zero;
+        TimeSpan noLoadingTime = TimeSpan.Zero;
+        TimeSpan lineStopTime = TimeSpan.Zero;  // HANYA ini yang masuk Downtime
+        
+        // Legacy tracking (untuk backward compatibility)
         TimeSpan plannedDowntime = TimeSpan.Zero;
         TimeSpan unplannedDowntime = TimeSpan.Zero;
-        TimeSpan restBreakTime = TimeSpan.Zero;
         bool hasActiveRestBreak = false;
 
         foreach (var jr in shiftJobRuns)
@@ -200,29 +208,55 @@ public class OeeService : IOeeService
                 var dEnd = d.EndTime ?? effectiveNow;
                 var overlap = GetOverlap(d.StartTime, dEnd, shiftStart, shiftEnd);
                 
-                if (d.Reason?.Category == "Unplanned")
-                    unplannedDowntime += overlap;
-                else
-                    plannedDowntime += overlap;
-
-                if (d.Reason?.Description == "Rest Break" || (d.Reason?.Category == "Planned" && d.Reason?.Description?.Contains("Rest", StringComparison.OrdinalIgnoreCase) == true))
+                // ✅ CUSTOM: Categorize berdasarkan flags
+                if (d.IsRestBreak || 
+                    d.Reason?.Description?.Contains("Rest", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     restBreakTime += overlap;
+                    plannedDowntime += overlap;  // Legacy
                     if (d.EndTime == null) hasActiveRestBreak = true;
+                }
+                else if (d.IsNoLoading || 
+                         d.Reason?.Description?.Contains("No Loading", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    noLoadingTime += overlap;
+                    plannedDowntime += overlap;  // Legacy
+                }
+                else if (d.IsLineStop || 
+                         d.Reason?.Category == "Unplanned")
+                {
+                    lineStopTime += overlap;  // HANYA ini yang masuk Downtime Total
+                    unplannedDowntime += overlap;  // Legacy
+                }
+                else
+                {
+                    // Fallback: jika tidak ada flag, gunakan Category
+                    if (d.Reason?.Category == "Unplanned")
+                    {
+                        lineStopTime += overlap;
+                        unplannedDowntime += overlap;
+                    }
+                    else
+                    {
+                        plannedDowntime += overlap;
+                    }
                 }
             }
         }
 
-        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
-        TimeSpan operatingTime = totalShiftTime - downtimeTotal;
-        if (operatingTime.TotalSeconds < 0) operatingTime = TimeSpan.Zero;
-
-        TimeSpan plannedProductionTime = totalShiftTime - plannedDowntime;
+        // ✅ CUSTOM FORMULA:
+        // Planned Production Time = Total Shift - Rest Break - No Loading
+        TimeSpan plannedProductionTime = totalShiftTime - restBreakTime - noLoadingTime;
         if (plannedProductionTime.TotalSeconds < 0) plannedProductionTime = TimeSpan.Zero;
-        if (plannedProductionTime.TotalSeconds == 0 && shiftJobRuns.Count == 0) plannedProductionTime = totalShiftTime;
-
-        TimeSpan noLoadingTime = totalShiftTime - (operatingTime + downtimeTotal);
-        if (noLoadingTime.TotalSeconds < 0) noLoadingTime = TimeSpan.Zero;
+        if (plannedProductionTime.TotalSeconds == 0 && shiftJobRuns.Count == 0) 
+            plannedProductionTime = totalShiftTime;
+        
+        // Operating Time = Planned Production - Line Stop (HANYA Line Stop)
+        TimeSpan operatingTime = plannedProductionTime - lineStopTime;
+        if (operatingTime.TotalSeconds < 0) operatingTime = TimeSpan.Zero;
+        
+        // Downtime Total = HANYA Line Stop
+        TimeSpan downtimeTotal = lineStopTime;
 
         var allCounts = shiftJobRuns
             .SelectMany(j => j.ProductionCounts
@@ -247,24 +281,25 @@ public class OeeService : IOeeService
         {
             if (activeDowntime != null)
             {
+                // Ada downtime aktif: timer hitung dari downtime start
                 lastStatusChangeTime = activeDowntime.StartTime;
                 sinceLastChangeSeconds = (int)(now - activeDowntime.StartTime).TotalSeconds;
             }
             else
             {
-                var lastDowntime = activeJob.DowntimeEvents.Where(d => d.EndTime.HasValue).OrderByDescending(d => d.EndTime).FirstOrDefault();
-                DateTime runningStartTime = lastDowntime?.EndTime ?? (activeJob.StartTime < shiftStart ? shiftStart : activeJob.StartTime);
-                
-                var runningEndInShift = now > shiftEnd ? shiftEnd : now;
-                var runningDuration = (runningEndInShift - runningStartTime).TotalSeconds;
-                if (runningDuration < 0) runningDuration = 0;
-                
-                var totalUnplannedDowntimeSeconds = activeJob.DowntimeEvents
-                    .Where(d => d.EndTime.HasValue && d.Reason?.Category == "Unplanned")
-                    .Sum(d => GetOverlap(d.StartTime < shiftStart ? shiftStart : d.StartTime, d.EndTime!.Value > shiftEnd ? shiftEnd : d.EndTime.Value, shiftStart, shiftEnd).TotalSeconds);
-                
-                sinceLastChangeSeconds = Math.Max(0, (int)(runningDuration - totalUnplannedDowntimeSeconds));
-                lastStatusChangeTime = now.AddSeconds(-(double)sinceLastChangeSeconds);
+                // Tidak ada downtime aktif (Running):
+                // Timer hitung dari LastStatusChangeTime (bisa dari job start atau downtime end terakhir)
+                if (activeJob.LastStatusChangeTime.HasValue)
+                {
+                    lastStatusChangeTime = activeJob.LastStatusChangeTime.Value;
+                    sinceLastChangeSeconds = Math.Max(0, (int)(now - activeJob.LastStatusChangeTime.Value).TotalSeconds);
+                }
+                else
+                {
+                    // Fallback: gunakan job start time
+                    lastStatusChangeTime = activeJob.StartTime;
+                    sinceLastChangeSeconds = Math.Max(0, (int)(now - activeJob.StartTime).TotalSeconds);
+                }
             }
         }
 
