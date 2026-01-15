@@ -70,8 +70,9 @@ public class OeeRealTimeService : BackgroundService
                 _logger.LogError(ex, "❌ Error in OeeRealTimeService loop");
             }
 
-            // 4. Tunggu 10 detik sebelum iterasi berikutnya
-            await Task.Delay(10000, stoppingToken);
+            // 4. Tunggu 5 detik sebelum iterasi berikutnya (Matching user expectations for real-time updates)
+            await Task.Delay(5000, stoppingToken);
+
         }
 
         _logger.LogInformation("🛑 OeeRealTimeService is stopping.");

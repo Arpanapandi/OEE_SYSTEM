@@ -169,7 +169,9 @@ public class OperatorController : Controller
                     Message = $"Downtime berakhir pada mesin {existingJob.Machine?.Name}",
                     Timestamp = nowLocal,
                     RefreshOperatorData = true,
-                    MachineStatus = "Aktif" // ✅ PERBAIKAN FINAL: Kirim status update
+                    RefreshTimeMetrics = true,
+                    RefreshRecentDowntime = true,
+                    MachineStatus = "Aktif"
                 });
                 
                 if (isAjax)
@@ -397,8 +399,9 @@ public class OperatorController : Controller
             Category = reason.Category,
             Message = $"Downtime: {reason.Description} pada mesin {job.Machine?.Name}",
             Timestamp = now,
-            RefreshTimeMetrics = true, // Flag untuk trigger refresh Time Metrics di OEE View
-            RefreshOperatorData = true // ✅ TAMBAHKAN untuk trigger refresh Operator Data
+            RefreshTimeMetrics = true,
+            RefreshOperatorData = true,
+            RefreshRecentDowntime = true
         });
 
         // Return JSON for AJAX requests
@@ -417,11 +420,8 @@ public class OperatorController : Controller
     public async Task<IActionResult> NoLoading(string machineId, string? returnUrl = null)
     {
         var now = DateTime.Now;
-
-        // Check if this is an AJAX request
         bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 
-        // Cari job aktif untuk mesin ini
         var activeJob = await _context.JobRuns
             .Include(j => j.Machine)
             .Include(j => j.DowntimeEvents)
@@ -431,58 +431,52 @@ public class OperatorController : Controller
 
         if (activeJob == null)
         {
-            if (isAjax)
-            {
-                return Json(new { success = false, message = "Tidak ada job aktif. Tidak bisa set NO LOADING." });
-            }
-            TempData["OperationError"] = "Tidak ada job aktif. Tidak bisa set NO LOADING.";
-            if (!string.IsNullOrEmpty(returnUrl))
-                return Redirect(returnUrl);
+            if (isAjax) return Json(new { success = false, message = "Tidak ada job aktif. Tidak bisa start NO LOADING." });
+            TempData["OperationError"] = "Tidak ada job aktif.";
             return RedirectToAction(nameof(Index), new { machineId });
         }
 
-        // Cek apakah ada downtime aktif, jika ada end terlebih dahulu
-        var openDowntime = activeJob.DowntimeEvents
-            .OrderByDescending(d => d.StartTime)
-            .FirstOrDefault(d => d.EndTime == null);
+        // Cari reason No Loading atau gunakan yang mirip
+        var reason = await _context.DowntimeReasons.FirstOrDefaultAsync(r => r.Description == "No Loading")
+                     ?? await _context.DowntimeReasons.FirstOrDefaultAsync(r => r.Category == "Planned" && r.Description.Contains("Loading"))
+                     ?? await _context.DowntimeReasons.FirstOrDefaultAsync(r => r.Description.Contains("Rest")) 
+                     ?? await _context.DowntimeReasons.FirstOrDefaultAsync();
 
+        // End open downtime if any
+        var openDowntime = activeJob.DowntimeEvents.FirstOrDefault(d => d.EndTime == null);
         if (openDowntime != null)
         {
-            // End downtime yang aktif
             openDowntime.EndTime = now;
             openDowntime.DurationSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
         }
 
-        // ✅ PERBAIKAN: JANGAN end job aktif saat NO LOADING
-        // NO LOADING hanya set flag/status, tidak menghentikan job
-        // Ini memungkinkan mesin bisa di-running kembali setelah NO LOADING
-        // activeJob.EndTime tetap null agar job tetap aktif dan bisa di-running kembali
-        
-        // ✅ PERBAIKAN: Update LastStatusChangeTime untuk kalkulasi OEE
-        activeJob.LastStatusChangeTime = now;
+        // Start NO LOADING as a DowntimeEvent for history and metrics
+        var newDowntime = new DowntimeEvent
+        {
+            JobRunId = activeJob.Id,
+            ReasonId = reason?.Id ?? 0,
+            StartTime = now,
+            EndTime = null,
+            DurationSeconds = 0
+        };
 
+        activeJob.LastStatusChangeTime = now;
+        _context.DowntimeEvents.Add(newDowntime);
         await _context.SaveChangesAsync();
 
-        // Broadcast SignalR update
         await _hubContext.Clients.All.SendAsync("OeeUpdated", new
         {
             Type = "NoLoadingStarted",
             MachineId = machineId,
             MachineName = activeJob.Machine?.Name,
-            Message = $"NO LOADING: Mesin {activeJob.Machine?.Name} dihentikan (tidak masuk perhitungan OEE)",
+            Message = $"NO LOADING: Mesin {activeJob.Machine?.Name} dihentikan",
             Timestamp = now,
-            RefreshTimeMetrics = true, // Flag untuk trigger refresh Time Metrics di OEE View
-            RefreshOperatorData = true // Flag untuk trigger refresh Operator Data
+            RefreshTimeMetrics = true,
+            RefreshOperatorData = true,
+            RefreshRecentDowntime = true
         });
 
-        // Return JSON for AJAX requests
-        if (isAjax)
-        {
-            return Json(new { success = true, message = "NO LOADING dimulai" });
-        }
-
-        if (!string.IsNullOrEmpty(returnUrl))
-            return Redirect(returnUrl);
+        if (isAjax) return Json(new { success = true, message = "NO LOADING dimulai" });
         return RedirectToAction(nameof(Index), new { machineId });
     }
 
@@ -498,24 +492,22 @@ public class OperatorController : Controller
         int? manPowerId = null,
         string? returnUrl = null)
     {
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest" || Request.Query["ajax"] == "1";
         var now = DateTime.Now;
 
-        // Validasi input
         if (goodQty < 0 || rejectQty < 0)
         {
+            if (isAjax) return Json(new { success = false, message = "Quantity tidak boleh negatif" });
             TempData["OperationError"] = "Quantity tidak boleh negatif";
-            if (!string.IsNullOrEmpty(returnUrl))
-                return Redirect(returnUrl);
-
+            if (!string.IsNullOrEmpty(returnUrl)) return Redirect(returnUrl);
             return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
         }
 
         if (goodQty == 0 && rejectQty == 0)
         {
+            if (isAjax) return Json(new { success = false, message = "Minimal harus ada input quantity" });
             TempData["OperationError"] = "Minimal harus ada input quantity (good atau reject)";
-            if (!string.IsNullOrEmpty(returnUrl))
-                return Redirect(returnUrl);
-
+            if (!string.IsNullOrEmpty(returnUrl)) return Redirect(returnUrl);
             return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
         }
 
@@ -529,10 +521,9 @@ public class OperatorController : Controller
 
         if (job == null)
         {
+            if (isAjax) return Json(new { success = false, message = "Tidak ada job run aktif untuk mesin ini" });
             TempData["OperationError"] = "Tidak ada job run aktif untuk mesin ini";
-            if (!string.IsNullOrEmpty(returnUrl))
-                return Redirect(returnUrl);
-
+            if (!string.IsNullOrEmpty(returnUrl)) return Redirect(returnUrl);
             return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
         }
 
@@ -567,6 +558,8 @@ public class OperatorController : Controller
             });
         }
 
+        if (isAjax) return Json(new { success = true, message = "Quantity saved successfully" });
+
         // Jika ada returnUrl (dari OEE Detail), utamakan redirect ke sana
         if (!string.IsNullOrEmpty(returnUrl))
             return Redirect(returnUrl);
@@ -580,7 +573,7 @@ public class OperatorController : Controller
     public async Task<IActionResult> SubmitProductionData(
         string machineId,
         string? nomorLot,
-        string? partNumber,
+        string? lotBo, // ✅ RENAMED from partNumber
         string? namaCompound,
         double? beratAct,
         string? penipisan,
@@ -591,7 +584,7 @@ public class OperatorController : Controller
         int? durasiProduksiSeconds,
         int qty = 1)
     {
-        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+        bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest" || Request.Query["ajax"] == "1";
         var now = DateTime.Now;
 
         try
@@ -619,7 +612,7 @@ public class OperatorController : Controller
                 GoodCount = qty, // Default 1 for item submission
                 RejectCount = 0,
                 NomorLot = nomorLot,
-                LotBo = partNumber,
+                LotBo = lotBo, // ✅ MAP to lotBo parameter
                 NamaCompound = namaCompound,
                 BeratAct = beratAct,
                 Penipisan = penipisan,
@@ -641,7 +634,7 @@ public class OperatorController : Controller
                 MachineName = job.Machine?.Name,
                 ProductName = job.WorkOrder?.Product?.Name,
                 GoodCount = qty,
-                Message = $"Data Produksi tersimpan: {nomorLot} ({partNumber})",
+                Message = $"Data Produksi tersimpan: {nomorLot} ({lotBo})",
                 Timestamp = now
             });
 
@@ -983,7 +976,21 @@ public class OperatorController : Controller
             // Time Metrics
             PlannedProductionTimeSeconds = plannedProductionTime.TotalSeconds,
             OperatingTimeSeconds = operatingTime.TotalSeconds,
-            DowntimeTotalSeconds = downtimeTotal.TotalSeconds
+            DowntimeTotalSeconds = downtimeTotal.TotalSeconds,
+            
+            // ✅ TAMBAHKAN: Recent Downtimes untuk Refresh History
+            RecentDowntimes = machine.JobRuns
+                .SelectMany(j => j.DowntimeEvents)
+                .OrderByDescending(d => d.StartTime)
+                .Take(10)
+                .Select(d => new {
+                    ReasonDescription = d.Reason?.Description,
+                    ReasonCategory = d.Reason?.Category,
+                    StartTime = d.StartTime.ToString("O"),
+                    EndTime = d.EndTime?.ToString("O"),
+                    DurationSeconds = d.DurationSeconds,
+                    IsClosed = d.EndTime.HasValue
+                })
         });
     }
 
@@ -1221,6 +1228,7 @@ public class OperatorController : Controller
     [Route("/api/Operator/GetScwRemarks")]
     public async Task<IActionResult> GetScwRemarks(int scw4MTypeId)
     {
+        Console.WriteLine($"[API] GetScwRemarks called for TypeId: {scw4MTypeId}");
         try
         {
             var remarks = await _context.ScwRemarks
@@ -1234,10 +1242,12 @@ public class OperatorController : Controller
                 })
                 .ToListAsync();
             
+            Console.WriteLine($"[API] Found {remarks.Count} remarks for TypeId: {scw4MTypeId}");
             return Json(new { success = true, remarks = remarks });
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[API] ERROR in GetScwRemarks: {ex.Message}");
             return Json(new { success = false, message = ex.Message });
         }
     }

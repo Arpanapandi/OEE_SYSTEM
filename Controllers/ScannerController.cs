@@ -93,8 +93,8 @@ public class ScannerController : ControllerBase
     [HttpPost("scan-produksi/submit")]
     public async Task<IActionResult> SubmitScanProduksi(
         [FromForm] string machineId,
-        [FromForm] string partNumber,
-        [FromForm] string lotNumber,
+        [FromForm] string lotBo,
+        [FromForm] string nomorLot,
         [FromForm] int komponenId,
         [FromForm] int? manPowerId = null,
         [FromForm] string? namaCompound = null,
@@ -105,23 +105,22 @@ public class ScannerController : ControllerBase
         try
         {
             if (string.IsNullOrWhiteSpace(machineId) ||
-                string.IsNullOrWhiteSpace(partNumber) ||
-                string.IsNullOrWhiteSpace(lotNumber) ||
+                string.IsNullOrWhiteSpace(lotBo) ||
+                string.IsNullOrWhiteSpace(nomorLot) ||
                 komponenId <= 0)
             {
                 return BadRequest(new
                 {
                     success = false,
-                    message = "MachineId, Part Number, Lot Number, dan Komponen wajib diisi."
                 });
             }
 
-            partNumber = partNumber.Trim();
-            lotNumber = lotNumber.Trim();
+            lotBo = lotBo.Trim();
+            nomorLot = nomorLot.Trim();
 
-            // 1) Validasi Part Number & Komponen di DB_HOSS
+            // 1) Validasi Lot BO (Part Number) & Komponen di DB_HOSS
             var komponen = await _context.Komponens
-                .FirstOrDefaultAsync(k => k.Id == komponenId && k.PartNumber == partNumber);
+                .FirstOrDefaultAsync(k => k.Id == komponenId && k.PartNumber == lotBo);
 
             if (komponen == null)
             {
@@ -168,8 +167,8 @@ public class ScannerController : ControllerBase
                     StartTime = now,
                     EndTime = null,
                     // 3) Simpan hasil scan
-                    ScannedPartNumber = partNumber,
-                    ScannedLotNumber = lotNumber,
+                    ScannedPartNumber = lotBo,
+                    ScannedLotNumber = nomorLot,
                     ScannedKomponenId = komponenId,
                     ScannedJmlKomponen = komponen.JmlKomponen,
                     // ✅ TAMBAHKAN: Simpan Man Power
@@ -181,8 +180,8 @@ public class ScannerController : ControllerBase
             else
             {
                 // 2b) Update JobRun aktif dengan hasil scan terbaru
-                activeJob.ScannedPartNumber = partNumber;
-                activeJob.ScannedLotNumber = lotNumber;
+                activeJob.ScannedPartNumber = lotBo;
+                activeJob.ScannedLotNumber = nomorLot;
                 activeJob.ScannedKomponenId = komponenId;
                 activeJob.ScannedJmlKomponen = komponen.JmlKomponen;
                 // ✅ TAMBAHKAN: Update Man Power jika ada
@@ -199,8 +198,8 @@ public class ScannerController : ControllerBase
                 success = true,
                 message = "Data scan produksi berhasil disimpan.",
                 jobRunId = activeJob.Id,
-                partNumber,
-                lotNumber,
+                lotBo,
+                nomorLot,
                 durasiSeconds = durasiSeconds ?? 0,
                 komponen = new
                 {

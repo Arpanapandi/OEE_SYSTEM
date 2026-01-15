@@ -637,101 +637,14 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 
-    // Seed SCW 4M Types sesuai spesifikasi - Pastikan data selalu ada dan fresh
+    // Seed SCW Data using dedicated seeder
     try
     {
-        // Gunakan list data yang diinginkan
-        var scwTypes = new List<OeeSystem.Models.Scw4MType>
-        {
-            new OeeSystem.Models.Scw4MType { Id = 1, Name = "Material", Code = "MATERIAL", DisplayOrder = 1 },
-            new OeeSystem.Models.Scw4MType { Id = 2, Name = "Methode", Code = "METHOD", DisplayOrder = 2 },
-            new OeeSystem.Models.Scw4MType { Id = 3, Name = "Machine", Code = "MACHINE", DisplayOrder = 3 },
-            new OeeSystem.Models.Scw4MType { Id = 4, Name = "Man", Code = "MAN", DisplayOrder = 4 },
-            new OeeSystem.Models.Scw4MType { Id = 5, Name = "No Problem", Code = "NO_PROBLEM", DisplayOrder = 5 }
-        };
-
-        // Jika data belum ada, tambahkan semua
-        if (!db.Scw4MTypes.Any())
-        {
-            db.Scw4MTypes.AddRange(scwTypes);
-            db.SaveChanges();
-            Console.WriteLine("INFO: SCW 4M Types seeded for the first time");
-        }
-        else
-        {
-            // Jika sudah ada, update yang perlu diupdate (terutama untuk rename Method -> Methode)
-            bool hasChanges = false;
-            foreach (var type in scwTypes)
-            {
-                var existing = db.Scw4MTypes.FirstOrDefault(t => t.Id == type.Id);
-                if (existing != null)
-                {
-                    if (existing.Name != type.Name || existing.Code != type.Code || existing.DisplayOrder != type.DisplayOrder)
-                    {
-                        existing.Name = type.Name;
-                        existing.Code = type.Code;
-                        existing.DisplayOrder = type.DisplayOrder;
-                        hasChanges = true;
-                    }
-                }
-                else
-                {
-                    // Case ID tidak sinkron (jarang terjadi di seed), kita tambahkan
-                    db.Scw4MTypes.Add(type);
-                    hasChanges = true;
-                }
-            }
-
-            if (hasChanges)
-            {
-                db.SaveChanges();
-                Console.WriteLine("INFO: SCW 4M Types updated successfully");
-            }
-        }
+        await OeeSystem.Data.ScwDataSeeder.SeedAsync(db);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"WARNING: Error saat seeding SCW 4M Types: {ex.Message}");
-    }
-
-    // Seed SCW Remarks sesuai spesifikasi - Pastikan data selalu ada
-    try
-    {
-        // Hapus data lama jika ada untuk memastikan data fresh
-        if (db.ScwRemarks.Any())
-        {
-            db.ScwRemarks.RemoveRange(db.ScwRemarks);
-            db.SaveChanges();
-        }
-        
-        // Tambahkan data baru sesuai permintaan user
-        db.ScwRemarks.AddRange(
-            // 1. Material (Id = 1)
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 1, Description = "Rejection", DisplayOrder = 1 },
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 1, Description = "Material Shortage", DisplayOrder = 2 },
-            
-            // 2. Method (Id = 2)
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 2, Description = "SOP Tak Sesuai Standar", DisplayOrder = 1 },
-            
-            // 3. Machine (Id = 3)
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 3, Description = "Problem Mesin", DisplayOrder = 1 },
-            
-            // 4. Man (Id = 4)
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Sakit", DisplayOrder = 1 },
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Izin", DisplayOrder = 2 },
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Alpha", DisplayOrder = 3 },
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 4, Description = "Cuti", DisplayOrder = 4 },
-            
-            // 5. No Problem (Id = 5)
-            new OeeSystem.Models.ScwRemark { Scw4MTypeId = 5, Description = "No Problem", DisplayOrder = 1 }
-        );
-        db.SaveChanges();
-        Console.WriteLine("INFO: SCW Remarks data seeded successfully");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"WARNING: Error saat seeding SCW Remarks: {ex.Message}");
-        // Jangan stop aplikasi, biarkan tetap berjalan
+        Console.WriteLine($"❌ WARNING: Error during SCW Seeding: {ex.Message}");
     }
 
     if (!db.JobRuns.Any())

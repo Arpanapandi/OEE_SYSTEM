@@ -668,33 +668,51 @@ public class MachineController : Controller
             .OrderBy(s => s.Name)
             .ToListAsync();
         
-            // ✅ TAMBAHKAN: Kirim SCW 4M Types & Remarks untuk dropdown
-            try
-            {
-                if (await _context.Database.CanConnectAsync())
-                {
-                    ViewBag.Scw4MTypes = await _context.Scw4MTypes
-                        .OrderBy(t => t.DisplayOrder)
-                        .ToListAsync();
+        // ✅ TAMBAHKAN: Kirim SCW 4M Types & Remarks untuk dropdown
+        // ✅ PERBAIKAN: Load data SCW SEBELUM return View() untuk memastikan data tersedia
+        Console.WriteLine($"🔍 DEBUG: Loading SCW data for machine {id}...");
+        try
+        {
+            // ✅ PERBAIKAN: Selalu load data SCW, jangan check CanConnectAsync karena sudah connect di awal
+            var scw4MTypes = await _context.Scw4MTypes
+                .OrderBy(t => t.DisplayOrder)
+                .ToListAsync();
 
-                    ViewBag.ScwRemarks = await _context.ScwRemarks
-                        .OrderBy(r => r.Scw4MTypeId)
-                        .ThenBy(r => r.DisplayOrder)
-                        .ToListAsync();
-                }
-                else
-                {
-                    ViewBag.Scw4MTypes = new List<Scw4MType>();
-                    ViewBag.ScwRemarks = new List<ScwRemark>();
-                }
-            }
-            catch (Exception ex)
+            var scwRemarks = await _context.ScwRemarks
+                .OrderBy(r => r.Scw4MTypeId)
+                .ThenBy(r => r.DisplayOrder)
+                .ToListAsync();
+            
+            ViewBag.Scw4MTypes = scw4MTypes;
+            ViewBag.ScwRemarks = scwRemarks;
+            
+            // ✅ TAMBAHKAN: Log untuk debugging
+            Console.WriteLine($"✅ SCW Data Loaded Successfully:");
+            Console.WriteLine($"   - Scw4MTypes: {scw4MTypes.Count} items");
+            Console.WriteLine($"   - ScwRemarks: {scwRemarks.Count} items");
+            
+            if (scw4MTypes.Count > 0)
             {
-                // Jika tabel Scw4MTypes/ScwRemarks belum ada atau error, gunakan empty list
-                Console.WriteLine($"Warning: Error loading SCW Data: {ex.Message}");
-                ViewBag.Scw4MTypes = new List<Scw4MType>();
-                ViewBag.ScwRemarks = new List<ScwRemark>();
+                Console.WriteLine($"   - First 4M Type: {scw4MTypes[0].Name} (ID: {scw4MTypes[0].Id})");
             }
+            if (scwRemarks.Count > 0)
+            {
+                Console.WriteLine($"   - First Remark: {scwRemarks[0].Description} (Parent ID: {scwRemarks[0].Scw4MTypeId})");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Jika tabel Scw4MTypes/ScwRemarks belum ada atau error, gunakan empty list
+            Console.WriteLine($"❌ ERROR loading SCW Data: {ex.Message}");
+            Console.WriteLine($"   Exception Type: {ex.GetType().Name}");
+            Console.WriteLine($"   StackTrace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
+            }
+            ViewBag.Scw4MTypes = new List<Scw4MType>();
+            ViewBag.ScwRemarks = new List<ScwRemark>();
+        }
         
         // Status untuk action buttons
         vm.HasActiveJob = activeJob != null;
