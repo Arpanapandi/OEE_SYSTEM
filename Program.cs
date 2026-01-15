@@ -28,7 +28,7 @@ Console.WriteLine($"🔧 DefaultConnection: {connectionStringForLog}");
 
 // ✅ PERBAIKAN: Force LocalDB untuk DefaultConnection jika environment adalah Development
 // Atau jika connection string tidak mengandung server name yang valid
-if (env == "Development" || !connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+if ((env == "Development" || !connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase)) && !connectionString.Contains("Data Source=OeeSystem.db") && !connectionString.EndsWith(".db"))
 {
     // Pastikan selalu gunakan LocalDB untuk development
     if (!connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
@@ -40,22 +40,32 @@ if (env == "Development" || !connectionString.Contains("Server=", StringComparis
     }
 }
 
-// ✅ Aktifkan retry policy untuk ApplicationDbContext (mengatasi transient failure)
-// Retry hanya untuk transient errors, bukan untuk connection errors
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString, sqlOptions =>
-    {
-        sqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3, // Kurangi retry count untuk connection errors
-            maxRetryDelay: TimeSpan.FromSeconds(10), // Kurangi delay
-            errorNumbersToAdd: null);
-    }));
+// Detect SQLite
+if (connectionString.Contains("Data Source=") && connectionString.EndsWith(".db"))
+{
+    Console.WriteLine("🔄 Using SQLite Database...");
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlite(connectionString));
+}
+else
+{
+    // ✅ Aktifkan retry policy untuk ApplicationDbContext (mengatasi transient failure)
+    // Retry hanya untuk transient errors, bukan untuk connection errors
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlServer(connectionString, sqlOptions =>
+        {
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 3, // Kurangi retry count untuk connection errors
+                maxRetryDelay: TimeSpan.FromSeconds(10), // Kurangi delay
+                errorNumbersToAdd: null);
+        }));
+}
 
 // OEE service
 builder.Services.AddScoped<IOeeService, OeeService>();
 
-// ✅ PERBAIKAN: Pastikan LocalDB instance running untuk Development
-if (env == "Development" || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+// ✅ PERBAIKAN: Pastikan LocalDB instance running untuk Development (Only if NOT using SQLite)
+if ((env == "Development" || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase)) && !connectionString.EndsWith(".db"))
 {
     try
     {

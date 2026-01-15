@@ -141,7 +141,9 @@ public static class ScwDataSeeder
     {
         try 
         {
+#pragma warning disable EF1002
             await context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT produksi.{tableName} ON");
+#pragma warning restore EF1002
         }
         catch (Exception ex)
         {
@@ -153,7 +155,9 @@ public static class ScwDataSeeder
     {
         try 
         {
+#pragma warning disable EF1002
             await context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT produksi.{tableName} OFF");
+#pragma warning restore EF1002
         }
         catch (Exception ex)
         {

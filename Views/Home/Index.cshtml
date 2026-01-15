@@ -261,7 +261,7 @@
                     <div class="mb-4">
                         <h6 class="mb-3">@timeline.MachineName</h6>
                         <div style="height: 250px; position: relative;">
-                            <canvas id="machineStateChart_@timeline.MachineId"></canvas>
+                            <canvas id="machineStateChart_@timeline?.MachineId"></canvas>
                         </div>
                     </div>
                 }
@@ -803,9 +803,9 @@
                 <text>
                 (function() {
                     try {
-                        const ctx = document.getElementById('machineStateChart_@timeline.MachineId');
+                        const ctx = document.getElementById('machineStateChart_@timeline?.MachineId');
                         if (!ctx) {
-                            console.error('Canvas not found for machine @timeline.MachineId');
+                            console.error('Canvas not found for machine @timeline?.MachineId');
                             return;
                         }
 
@@ -813,12 +813,12 @@
                         const timeLabels = @Html.Raw(Json.Serialize(timeline?.TimeLabels ?? new List<string>()));
                         const segments = @Html.Raw(Json.Serialize(timeline?.StateData ?? new List<StateSegmentData>()));
 
-                        console.log('Machine @timeline.MachineId - TimeLabels:', timeLabels);
-                        console.log('Machine @timeline.MachineId - Segments:', segments);
+                        console.log('Machine @timeline?.MachineId - TimeLabels:', timeLabels);
+                        console.log('Machine @timeline?.MachineId - Segments:', segments);
 
                         // Defensive: Check if timeLabels is valid array
                         if (!timeLabels || !Array.isArray(timeLabels) || timeLabels.length === 0) {
-                            console.warn('No time labels for machine @timeline.MachineId');
+                            console.warn('No time labels for machine @timeline?.MachineId');
                             return;
                         }
 
@@ -877,9 +877,9 @@
                             idleData.push(idleMinutes);
                         });
 
-                        console.log('Machine @timeline.MachineId - RunData:', runData);
-                        console.log('Machine @timeline.MachineId - StopData:', stopData);
-                        console.log('Machine @timeline.MachineId - IdleData:', idleData);
+                        console.log('Machine @timeline?.MachineId - RunData:', runData);
+                        console.log('Machine @timeline?.MachineId - StopData:', stopData);
+                        console.log('Machine @timeline?.MachineId - IdleData:', idleData);
 
                         new Chart(ctx, {
                             type: 'bar',
@@ -963,7 +963,7 @@
                             }
                         });
                     } catch (error) {
-                        console.error('Error creating chart for machine @timeline.MachineId:', error);
+                        console.error('Error creating chart for machine @timeline?.MachineId:', error);
                     }
                 })();
                 </text>

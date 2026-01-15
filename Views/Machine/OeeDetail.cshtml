@@ -89,12 +89,9 @@
                             <i class="fa-solid fa-exclamation-triangle me-1"></i>Machine di-set Tidak Aktif di Admin
                         </span>
                     }
-                    else if (Model.HasActiveDowntime && !string.IsNullOrEmpty(Model.ActiveDowntimeDescription))
-                    {
-                        <span class="small text-danger ms-2" id="downtime-description">
-                            @Model.ActiveDowntimeDescription
-                        </span>
-                    }
+                    <span class="small text-danger ms-2" id="downtime-description" style="@(Model.HasActiveDowntime && !string.IsNullOrEmpty(Model.ActiveDowntimeDescription) ? "" : "display:none;")">
+                        @Model.ActiveDowntimeDescription
+                    </span>
                 </div>
             </div>
             <div class="glass-card-body" style="padding: 0.75rem 1rem;">
@@ -2021,6 +2018,22 @@
         // ========== PRODUCTION DATA VARIABLES ==========
         let durasiProduksiSeconds = 0;
 
+        // ========== SERVER TIME SYNCHRONIZATION ==========
+        // Hitung offset antara jam server (dari Razor) dan jam client saat page load
+        // Gunakan ISO string standard untuk menghindari parsing error di JS
+        const serverTimeInitial = new Date('@DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss")'); 
+        const clientTimeInitial = new Date();
+        const serverTimeOffset = serverTimeInitial - clientTimeInitial;
+
+        console.log('🕒 Server Time Initial:', serverTimeInitial.toLocaleString());
+        console.log('💻 Client Time Initial:', clientTimeInitial.toLocaleString());
+        console.log('⏱️ Time Offset (ms):', serverTimeOffset);
+
+        // Fungsi global untuk mendapatkan waktu server yang disesuaikan
+        window.getAdjustedServerTime = function() {
+            return new Date(Date.now() + serverTimeOffset);
+        };
+        
         let durasiProduksiStartTime = null;
         let durasiProduksiInterval = null;
         
@@ -2356,82 +2369,25 @@
             // Validasi: pastikan Shift sudah dipilih
             if (!injectionRadio) {
                 // Group Injection belum dipilih - HENTIKAN submit
-                showWarningNotification('Silakan pilih Group Injection terlebih dahulu di bagian "Man Power & Injection"');
+                if(typeof showWarningNotification === 'function') {
+                    showWarningNotification('Silakan pilih Group Injection terlebih dahulu di bagian "Man Power & Injection"');
+                } else {
+                    alert('Silakan pilih Group Injection terlebih dahulu!');
+                }
                 
-                // ✅ PERBAIKAN: Pastikan modal tetap terbuka dengan cara yang lebih aman
-                const addQtyModalEl = document.getElementById('addQtyModal');
-                if (addQtyModalEl) {
-                    try {
-                        // Cek apakah modal sudah terbuka
-                        const isModalOpen = addQtyModalEl.classList.contains('show');
-                        
-                        if (!isModalOpen) {
-                            // Jika modal belum terbuka, buka modal
-                            let addQtyModal = bootstrap.Modal.getInstance(addQtyModalEl);
-                            if (!addQtyModal) {
-                                // Jika belum ada instance, buat baru
-                                addQtyModal = new bootstrap.Modal(addQtyModalEl, {
-                                    backdrop: 'static', // Prevent closing on backdrop click
-                                    keyboard: false // Prevent closing with ESC key
-                                });
-                            }
-                            addQtyModal.show();
-                            
-                            // ✅ PERBAIKAN: Scroll setelah modal benar-benar terbuka (setelah animasi)
-                            setTimeout(() => {
-                                const injectionGroup = document.getElementById('injection-group');
-                                if (injectionGroup) {
-                                    injectionGroup.scrollIntoView({ 
-                                        behavior: 'smooth', 
-                                        block: 'center',
-                                        inline: 'nearest'
-                                    });
-                                    
-                                    // Highlight injection group untuk menarik perhatian
-                                    injectionGroup.style.transition = 'box-shadow 0.3s ease';
-                                    injectionGroup.style.boxShadow = '0 0 20px rgba(255, 193, 7, 0.5)';
-                                    
-                                    // Remove highlight setelah 3 detik
-                                    setTimeout(() => {
-                                        if (injectionGroup) {
-                                            injectionGroup.style.boxShadow = '';
-                                        }
-                                    }, 3000);
-                                }
-                            }, 500); // Delay lebih lama untuk memastikan modal sudah terbuka
-                        } else {
-                            // Modal sudah terbuka, langsung scroll
-                            setTimeout(() => {
-                                const injectionGroup = document.getElementById('injection-group');
-                                if (injectionGroup) {
-                                    injectionGroup.scrollIntoView({ 
-                                        behavior: 'smooth', 
-                                        block: 'center',
-                                        inline: 'nearest'
-                                    });
-                                    
-                                    // Highlight injection group
-                                    injectionGroup.style.transition = 'box-shadow 0.3s ease';
-                                    injectionGroup.style.boxShadow = '0 0 20px rgba(255, 193, 7, 0.5)';
-                                    
-                                    setTimeout(() => {
-                                        if (injectionGroup) {
-                                            injectionGroup.style.boxShadow = '';
-                                        }
-                                    }, 3000);
-                                }
-                            }, 100);
-                        }
-                    } catch (error) {
-                        console.error('❌ Error saat membuka modal:', error);
-                        // Fallback: coba buka modal dengan cara sederhana
-                        try {
-                            const addQtyModal = bootstrap.Modal.getInstance(addQtyModalEl) || new bootstrap.Modal(addQtyModalEl);
-                            addQtyModal.show();
-                        } catch (fallbackError) {
-                            console.error('❌ Error fallback modal:', fallbackError);
-                        }
-                    }
+                // Scroll ke bagian injection group
+                const injectionGroup = document.getElementById('injection-group');
+                if (injectionGroup) {
+                    injectionGroup.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'center',
+                        inline: 'nearest'
+                    });
+                    
+                    // Highlight
+                    injectionGroup.style.transition = 'box-shadow 0.3s ease';
+                    injectionGroup.style.boxShadow = '0 0 20px rgba(255, 193, 7, 0.5)';
+                    setTimeout(() => { if (injectionGroup) injectionGroup.style.boxShadow = ''; }, 3000);
                 }
                 
                 console.warn('❌ Form Add Quantity dihentikan: Group Injection belum dipilih');
@@ -4110,14 +4066,14 @@
                     radio.addEventListener('change', checkAllInputsComplete);
                 });
             });
-
+        });
             // ========== DURASI PRODUKSI PER ITEM ==========
             // ========== DURASI PRODUKSI PER ITEM ==========
             // Promoted to window scope to be accessible by ensureAllDurationsUpdate
-            var durasiProduksiInterval = null;
-            var durasiProduksiStartTime = null;
-            var durasiProduksiSeconds = 0;
-            var isDurasiAuto = true;
+            var prodDurationInterval = null;
+            var prodDurationStartTime = null;
+            var prodDurationSecondsCounter = 0;
+            var isProdDurationAuto = true;
 
             // ✅ PERBAIKAN: Implementasi validateGroupInjection yang hilang
             window.validateGroupInjection = function() {
@@ -4157,15 +4113,15 @@
                 stopDurasiProduksi();
                 
                 // ✅ PERSISTENCE: Cek di localStorage dulu
-                const savedStart = localStorage.getItem('durasiProduksiStartTime');
+                const savedStart = localStorage.getItem('prodDurationStartTime');
                 if (savedStart) {
-                    durasiProduksiStartTime = new Date(savedStart);
+                    prodDurationStartTime = new Date(savedStart);
                 } else {
-                    durasiProduksiStartTime = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
-                    localStorage.setItem('durasiProduksiStartTime', durasiProduksiStartTime.toISOString());
+                    prodDurationStartTime = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
+                    localStorage.setItem('prodDurationStartTime', prodDurationStartTime.toISOString());
                 }
                 
-                durasiProduksiSeconds = 0;
+                prodDurationSecondsCounter = 0;
                 
                 // Show durasi container (selalu tampilkan saat start)
                 const durasiContainer = document.getElementById('durasi-produksi-container');
@@ -4177,15 +4133,15 @@
                 updateDurasiProduksiDisplay();
                 
                 // Start interval jika auto mode aktif
-                if (isDurasiAuto) {
-                    if (durasiProduksiInterval) {
-                        clearTimeout(durasiProduksiInterval);
+                if (isProdDurationAuto) {
+                    if (prodDurationInterval) {
+                        clearTimeout(prodDurationInterval);
                     }
                     
                     function scheduleNextDurasiUpdate() {
-                        durasiProduksiInterval = setTimeout(function() {
+                        prodDurationInterval = setTimeout(function() {
                             updateDurasiProduksiDisplay();
-                            if (isDurasiAuto && durasiProduksiStartTime) {
+                            if (isProdDurationAuto && prodDurationStartTime) {
                                 scheduleNextDurasiUpdate();
                             }
                         }, 1000 - (Date.now() % 1000));
@@ -4204,18 +4160,18 @@
 
             // Function untuk stop durasi produksi
             function stopDurasiProduksi() {
-                if (durasiProduksiInterval) {
-                    clearTimeout(durasiProduksiInterval);
-                    durasiProduksiInterval = null;
+                if (prodDurationInterval) {
+                    clearTimeout(prodDurationInterval);
+                    prodDurationInterval = null;
                 }
             }
 
             // Function untuk reset durasi produksi
             function resetDurasiProduksi() {
                 stopDurasiProduksi();
-                durasiProduksiSeconds = 0;
-                durasiProduksiStartTime = null;
-                localStorage.removeItem('durasiProduksiStartTime'); // ✅ PERSISTENCE: Clear from localStorage
+                prodDurationSecondsCounter = 0;
+                prodDurationStartTime = null;
+                localStorage.removeItem('prodDurationStartTime'); // ✅ PERSISTENCE: Clear from localStorage
                 updateDurasiProduksiDisplay();
                 console.log('🔄 Durasi produksi reset');
             }
@@ -4226,18 +4182,18 @@
                 const hiddenEl = document.getElementById('hidden-durasi-seconds');
                 
                 // ✅ PERBAIKAN: Gunakan waktu server yang disesuaikan untuk menghitung durasi
-                if (durasiProduksiStartTime) {
+                if (prodDurationStartTime) {
                     const nowAdjusted = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
-                    const elapsed = Math.floor((nowAdjusted - durasiProduksiStartTime) / 1000);
-                    durasiProduksiSeconds = elapsed;
+                    const elapsed = Math.floor((nowAdjusted - prodDurationStartTime) / 1000);
+                    prodDurationSecondsCounter = elapsed;
                 }
                 
                 if (displayEl) {
-                    displayEl.value = formatDurasiProduksi(durasiProduksiSeconds);
+                    displayEl.value = formatDurasiProduksi(prodDurationSecondsCounter);
                 }
                 
                 if (hiddenEl) {
-                    hiddenEl.value = durasiProduksiSeconds;
+                    hiddenEl.value = prodDurationSecondsCounter;
                 }
             }
 
@@ -4248,12 +4204,12 @@
                 
                 if (toggleAuto) {
                     toggleAuto.addEventListener('change', function() {
-                        isDurasiAuto = this.checked;
-                        if (isDurasiAuto && durasiProduksiStartTime && !durasiProduksiInterval) {
+                        isProdDurationAuto = this.checked;
+                        if (isProdDurationAuto && prodDurationStartTime && !prodDurationInterval) {
                             // Resume timer jika sudah start tapi belum running
                             // Clear existing timeout jika ada
-                            if (durasiProduksiInterval) {
-                                clearTimeout(durasiProduksiInterval);
+                            if (prodDurationInterval) {
+                                clearTimeout(prodDurationInterval);
                             }
                             
                             // Update display segera
@@ -4261,20 +4217,20 @@
                             
                             // ✅ PERBAIKAN: Start timeout rekursif dengan presisi tinggi (sinkron dengan jam proses)
                             function scheduleNextDurasiUpdate() {
-                                durasiProduksiInterval = setTimeout(function() {
+                                prodDurationInterval = setTimeout(function() {
                                     updateDurasiProduksiDisplay();
-                                    if (isDurasiAuto && durasiProduksiStartTime) {
+                                    if (isProdDurationAuto && prodDurationStartTime) {
                                         scheduleNextDurasiUpdate();
                                     }
                                 }, 1000 - (Date.now() % 1000)); // Sync dengan detik penuh
                             }
                             scheduleNextDurasiUpdate();
                             console.log('✅ Durasi produksi resumed (server-time-synced) - akan update setiap detik');
-                        } else if (!isDurasiAuto) {
+                        } else if (!isProdDurationAuto) {
                             // Stop timer jika auto dimatikan
                             stopDurasiProduksi();
                         }
-                        console.log('🔄 Auto durasi:', isDurasiAuto ? 'ON' : 'OFF');
+                        console.log('🔄 Auto durasi:', isProdDurationAuto ? 'ON' : 'OFF');
                     });
                 }
                 
@@ -4319,6 +4275,56 @@
             function loadProductionData() {
                 const data = localStorage.getItem('currentProductionData');
                 return data ? JSON.parse(data) : null;
+            }
+
+            // ✅ PERBAIKAN: Implementasi fungsi yang hilang
+            function loadProductionDataAndPopulateForm() {
+                try {
+                    const data = loadProductionData();
+                    if (data) {
+                        console.log('📂 Loading saved production data:', data);
+                        
+                        if (data.nomorLot) {
+                            const input = document.getElementById('input-nomor-lot');
+                            if(input) input.value = data.nomorLot;
+                        }
+                        if (data.lotBo) {
+                            const input = document.getElementById('input-lot-bo');
+                            if(input) input.value = data.lotBo;
+                        }
+                        if (data.namaCompound) {
+                            const input = document.getElementById('input-nama-compound');
+                            if(input) input.value = data.namaCompound;
+                        }
+                        if (data.beratAct) {
+                            const input = document.getElementById('input-berat-act');
+                            if(input) input.value = data.beratAct;
+                        }
+                        if (data.keterangan) {
+                            const input = document.getElementById('select-keterangan');
+                            if(input) input.value = data.keterangan;
+                        }
+                        if (data.penipisan) {
+                            const radio = document.querySelector(`#penipisan-group input[name="penipisan"][value="${data.penipisan}"]`);
+                            if(radio) radio.checked = true;
+                        }
+                        if (data.manPowerId) {
+                            const input = document.getElementById('select-man-power');
+                            if(input) input.value = data.manPowerId;
+                        }
+                        if (data.injection) {
+                            const radio = document.querySelector(`#injection-group input[name="injection"][value="${data.injection}"]`);
+                            if(radio) radio.checked = true;
+                        }
+                        
+                        // Re-validate to update UI state
+                        if(typeof checkAllInputsComplete === 'function') {
+                            checkAllInputsComplete();
+                        }
+                    }
+                } catch (err) {
+                    console.error('❌ Error loading production data:', err);
+                }
             }
 
             // ========== CRITICAL: PRODUCTION FORM VALIDATION ==========
@@ -4525,378 +4531,349 @@
                                 }
                             }
                             
-                            // ========== PHASE 2 runtime fixes ========== 
-                            
-                            // 1. SCW Dropdown Logic Fix
-                            const scwTypeSelect = document.getElementById('scw-4m-type');
-                            const scwRemarkSelect = document.getElementById('scw-remark');
-                            
-                            if (scwTypeSelect && scwRemarkSelect) {
-                                console.log('✅ SCW Elements found, attaching listener...');
-                                
-                                scwTypeSelect.addEventListener('change', function() {
-                                    const selectedTypeId = this.value;
-                                    console.log('🔄 SCW Type Changed:', selectedTypeId);
-                                    
-                                    const options = scwRemarkSelect.querySelectorAll('.scw-remark-option');
-                                    let visibleCount = 0;
-                                    
-                                    // Reset selection
-                                    scwRemarkSelect.value = "";
-                                    
-                                    if (!selectedTypeId) {
-                                        scwRemarkSelect.innerHTML = '<option value="">-- Pilih Jenis 4M terlebih dahulu --</option>';
-                                        // Re-append hidden options to keep them in DOM
-                                        options.forEach(opt => {
-                                            opt.style.display = 'none';
-                                            scwRemarkSelect.appendChild(opt);
-                                        });
-                                        return;
-                                    }
-                                    
-                                    // Update placeholder
-                                    let placeholder = scwRemarkSelect.querySelector('option[value=""]');
-                                    if(!placeholder) {
-                                        placeholder = document.createElement('option');
-                                        placeholder.value = "";
-                                        scwRemarkSelect.prepend(placeholder);
-                                    }
-                                    placeholder.textContent = "-- Pilih Remark --";
-                                    placeholder.selected = true;
-                                    
-                                    // Filter options
-                                    options.forEach(opt => {
-                                        const parentId = opt.getAttribute('data-parent-id');
-                                        if (parentId === selectedTypeId) {
-                                            opt.style.display = 'block';
-                                            visibleCount++;
-                                        } else {
-                                            opt.style.display = 'none';
-                                        }
-                                    });
-                                    
-                                    console.log(`✅ SCW Filter: Showed ${visibleCount} remarks for type ${selectedTypeId}`);
-                                });
-                            }
+                        } catch (error) {
+                            console.error('❌ Error submitting production data:', error);
+                            alert('❌ Error: ' + error.message);
+                        } finally {
+                           if (btnSubmitProduksi) { // Use variable from closure if available, or fetch again
+                                btnSubmitProduksi.disabled = false;
+                                btnSubmitProduksi.innerHTML = originalText;
+                           }
+                        }
+                    }); 
+                } // End if (btnSubmitProduksi)
 
-                            // 2. Scanner Button Fix (Re-attach explicitly)
-                            const scannerButtons = [
-                                { id: 'btn-scan-nomor-lot', target: 'nomor-lot' },
-                                { id: 'btn-scan-lot-bo', target: 'lot-bo' },
-                                { id: 'btn-scan-nama-compound', target: 'nama-compound' }
-                            ];
-                            
-                            scannerButtons.forEach(btnInfo => {
-                                const btn = document.getElementById(btnInfo.id);
-                                if (btn) {
-                                    // Clone button to remove old listeners (clean slate)
-                                    const newBtn = btn.cloneNode(true);
-                                    btn.parentNode.replaceChild(newBtn, btn);
-                                    
-                                    newBtn.addEventListener('click', function(e) {
-                                        e.preventDefault();
-                                        console.log(`📸 Opening scanner for: ${btnInfo.target}`);
-                                        if (typeof openScanner === 'function') {
-                                            openScanner(btnInfo.target);
-                                        } else {
-                                            console.error('❌ openScanner function not found!');
-                                            alert('Scanner function not loaded.');
-                                        }
-                                    });
-                                    console.log(`✅ Scanner button attached: ${btnInfo.id}`);
+                // ========== PHASE 2 FIXES (Clean & Balanced Rewrite) ==========
+                
+                // 1. SCW Dropdown Logic
+                const scwTypeSelect = document.getElementById('scw-4m-type');
+                const scwRemarkSelect = document.getElementById('scw-remark');
+                if (scwTypeSelect && scwRemarkSelect) {
+                    scwTypeSelect.addEventListener('change', function() {
+                        const selectedTypeId = this.value;
+                        const options = scwRemarkSelect.querySelectorAll('.scw-remark-option');
+                        
+                        // Reset
+                        scwRemarkSelect.innerHTML = '<option value="">-- Pilih Remark --</option>';
+                        
+                        // Filter
+                        if (selectedTypeId) {
+                            options.forEach(opt => {
+                                if (opt.getAttribute('data-parent-id') === selectedTypeId) {
+                                    opt.style.display = 'block';
+                                    scwRemarkSelect.appendChild(opt);
                                 }
                             });
+                        } else {
+                            // Keep options hidden but attached
+                            options.forEach(opt => { opt.style.display = 'none'; scwRemarkSelect.appendChild(opt); });
+                        }
+                    });
+                }
 
-                            // 3. Submit SCW Fix
-                            const btnScwSubmit = document.getElementById('btn-scw-submit');
-                            if (btnScwSubmit) {
-                                btnScwSubmit.addEventListener('click', async function() {
-                                    const typeId = document.getElementById('scw-4m-type')?.value;
-                                    const remarkId = document.getElementById('scw-remark')?.value;
-                                    
-                                    if (!typeId || !remarkId) {
-                                        if(typeof showToast === 'function') showToast('❌ Harap pilih Jenis 4M dan Remark!', 'error');
-                                        else alert('Harap pilih Jenis 4M dan Remark!');
-                                        return;
-                                    }
-                                    
-                                    // Submit logic here
-                                    const formData = new FormData();
-                                    formData.append('machineId', '@Model.MachineId');
-                                    formData.append('scw4MTypeId', typeId);
-                                    formData.append('scwRemarkId', remarkId);
-                                    
-                                    try {
-                                        btnScwSubmit.disabled = true;
-                                        btnScwSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
-                                        
-                                        const response = await fetch('/Operator/Scw', {
-                                            method: 'POST',
-                                            body: formData,
-                                            headers: {
-                                                 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
-                                            }
-                                        });
-                                        
-                                        if (response.ok) {
-                                            if(typeof showToast === 'function') showToast('✅ SCW Saved Successfully', 'success');
-                                            // Reset
-                                            document.getElementById('scw-4m-type').value = "";
-                                            document.getElementById('scw-remark').value = "";
-                                            // Reset filter
-                                            document.getElementById('scw-4m-type').dispatchEvent(new Event('change'));
-                                        } else {
-                                            throw new Error('Server returned error');
-                                        }
-                                    } catch (err) {
-                                        console.error(err);
-                                        if(typeof showToast === 'function') showToast('❌ Failed to save SCW', 'error');
-                                    } finally {
-                                        btnScwSubmit.disabled = false;
-                                        btnScwSubmit.innerHTML = '<i class="fa-solid fa-save me-1"></i>Simpan SCW';
-                                    }
-                                });
-                            }
+                // 2. Scanner Buttons (Safe)
+                const scannerButtons = [
+                    { id: 'btn-scan-nomor-lot', target: 'nomor-lot' },
+                    { id: 'btn-scan-lot-bo', target: 'lot-bo' },
+                    { id: 'btn-scan-nama-compound', target: 'nama-compound' }
+                ];
+                scannerButtons.forEach(info => {
+                    const btn = document.getElementById(info.id);
+                    if(btn) {
+                        const newBtn = btn.cloneNode(true);
+                        btn.parentNode.replaceChild(newBtn, btn);
+                        newBtn.addEventListener('click', function(e) {
+                             e.preventDefault();
+                             if(typeof openScanner === 'function') openScanner(info.target);
+                             else console.error('Scanner function missing');
+                        });
+                    }
+                });
+
+                // 3. Submit SCW (Safe)
+                const btnScwSubmit = document.getElementById('btn-scw-submit');
+                if(btnScwSubmit) {
+                    btnScwSubmit.addEventListener('click', async function(e) {
+                        e.preventDefault();
+                        const typeId = document.getElementById('scw-4m-type')?.value;
+                        const remarkId = document.getElementById('scw-remark')?.value;
+                        
+                        if(!typeId || !remarkId) {
+                            if(typeof showToast === 'function') showToast('Pilih Jenis 4M dan Remark dulu!', 'warning');
+                            else alert('Pilih Jenis 4M dan Remark dulu!');
+                            return;
+                        }
+
+                        const originalText = btnScwSubmit.innerHTML;
+                        btnScwSubmit.disabled = true;
+                        btnScwSubmit.innerHTML = 'Saving...';
+
+                        try {
+                            const formData = new FormData();
+                            formData.append('machineId', '@Model.MachineId');
+                            formData.append('jenis4MId', typeId);
+                            formData.append('jenisRemarkId', remarkId);
+                            formData.append('keterangan', document.getElementById('scw-keterangan')?.value || '');
+                            // Token
+                             const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+                             if(token) formData.append('__RequestVerificationToken', token);
+
+                            const resp = await fetch('/Operator/Scw', { method: 'POST', body: formData });
+                            const res = await resp.json();
                             
-                            /* REMOVED BROKEN/DUPLICATE SCRIPT BLOCK TO FIX SYNTAX ERROR */
-                            /* The correct handlers are now located at the end of this file */
+                            if(res.success) {
+                                if(typeof showToast === 'function') showToast('✅ SCW Saved', 'success');
+                                else alert('SCW Saved!');
+                                // Reset
+                                document.getElementById('scw-4m-type').value = '';
+                                document.getElementById('scw-4m-type').dispatchEvent(new Event('change'));
+                            } else {
+                                alert('Error: ' + res.message);
+                            }
+                        } catch(err) {
+                            console.error(err);
+                            alert('Failed to save SCW');
+                        } finally {
+                            btnScwSubmit.disabled = false;
+                            btnScwSubmit.innerHTML = originalText;
+                        }
+                    });
+                }
 
-
-
-
-        });
+            }); // End DOMContentLoaded (Closes line 4386)
         // ========== END KOMPONEN LOADING ==========
         
-        // Donut Chart: Machine Run Time
-        const runTimeCtx = document.getElementById('runTimeDonutChart').getContext('2d');
-        const runTimeDonutChart = new Chart(runTimeCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Run Time', 'Idle Time', 'Off Time'],
-                datasets: [{
-                    data: [
-                        @(Model.ChartData?.RunTimeMinutes ?? 0),
-                        @(Model.ChartData?.IdleTimeMinutes ?? 0),
-                        @(Model.ChartData?.OffTimeMinutes ?? 0)
-                    ],
-                    backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false, // ✅ PERBAIKAN: Set ke false untuk kontrol manual
-                aspectRatio: 1, // ✅ PERBAIKAN: Set aspect ratio untuk donut chart
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: '#e4e6eb',
-                            padding: 10
+        // ========== CHART INITIALIZATION (Wrapped in Load Event) ==========
+        /* 
+           Wraps all chart logic in window.addEventListener('load') to ensure
+           external Chart.js library is fully loaded before execution.
+        */
+        
+        let runTimeDonutChart;
+        let oeeBarChart;
+        let weeklyTrendChart;
+
+        window.addEventListener('load', function() {
+            console.log('📊 Window loaded. Initializing charts...');
+
+            // 1. Donut Chart: Machine Run Time
+            const runTimeCtx = document.getElementById('runTimeDonutChart')?.getContext('2d');
+            
+            try {
+                if (typeof Chart !== 'undefined' && runTimeCtx) {
+                    runTimeDonutChart = new Chart(runTimeCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Run Time', 'Idle Time', 'Off Time'],
+                            datasets: [{
+                                data: [
+                                    @(Model.ChartData?.RunTimeMinutes ?? 0),
+                                    @(Model.ChartData?.IdleTimeMinutes ?? 0),
+                                    @(Model.ChartData?.OffTimeMinutes ?? 0)
+                                ],
+                                backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+                                borderWidth: 0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            aspectRatio: 1,
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: { color: '#e4e6eb', padding: 10 }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.parsed !== null && context.parsed !== undefined ? context.parsed : 0;
+                                            return context.label + ': ' + value + ' min';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    console.log('✅ Run Time Donut Chart initialized');
+                } else {
+                    console.warn('⚠️ Chart.js or RunTimeContext missing');
+                }
+            } catch (err) {
+                console.error('❌ Error initializing Run Time Chart:', err);
+            }
+
+            // 2. Bar Chart: OEE Analysis
+            const oeeBarCtx = document.getElementById('oeeBarChart')?.getContext('2d');
+            
+            try {
+                if (typeof Chart !== 'undefined' && oeeBarCtx) {
+                    oeeBarChart = new Chart(oeeBarCtx, {
+                        type: "bar",
+                        data: {
+                            labels: ['OEE', 'Availability', 'Performance', 'Quality'],
+                            datasets: [{
+                                label: 'Percentage (%)',
+                                data: [
+                                    @Model.Oee,
+                                    @Model.Availability,
+                                    @Model.Performance,
+                                    @Model.Quality
+                                ],
+                                backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#06b6d4'],
+                                borderWidth: 0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            aspectRatio: 2.5,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    ticks: { color: '#9ca3af', callback: function(value) { return value + '%'; } },
+                                    grid: { color: '#23293a' }
+                                },
+                                x: {
+                                    ticks: { color: '#9ca3af' },
+                                    grid: { display: false }
+                                }
+                            },
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const value = context.parsed && context.parsed.y !== null && context.parsed.y !== undefined ? context.parsed.y : 0;
+                                            return value.toFixed(1) + '%';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    console.log('✅ OEE Bar Chart initialized');
+                } else {
+                     console.warn('⚠️ Chart.js or OeeBarContext missing');
+                }
+            } catch (err) {
+                console.error('❌ Error initializing OEE Bar Chart:', err);
+            }
+
+            // 3. Weekly Trend Chart
+            const weeklyTrendCtx = document.getElementById('weeklyTrendChart')?.getContext('2d');
+            
+            // Weekly Data Preparation
+            @{
+                var weeklyLabelsList = new List<string>();
+                var weeklyRunTimeList = new List<double>();
+                var weeklyIdleTimeList = new List<double>();
+                var weeklyOffTimeList = new List<double>();
+                
+                if (Model.ChartData?.WeeklyTrend != null && Model.ChartData.WeeklyTrend.Any())
+                {
+                    weeklyLabelsList = Model.ChartData.WeeklyTrend.Select(t => t.DateLabel ?? "").ToList();
+                    weeklyRunTimeList = Model.ChartData.WeeklyTrend.Select(t => t.RunTimeMinutes).ToList();
+                    weeklyIdleTimeList = Model.ChartData.WeeklyTrend.Select(t => t.IdleTimeMinutes).ToList();
+                    weeklyOffTimeList = Model.ChartData.WeeklyTrend.Select(t => t.OffTimeMinutes).ToList();
+                }
+            }
+            const weeklyLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyLabelsList));
+            const weeklyRunTime = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyRunTimeList));
+            const weeklyIdleTime = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyIdleTimeList));
+            const weeklyOffTime = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyOffTimeList));
+
+            const weeklyTrendConfig = {
+                type: "bar",
+                data: {
+                    labels: weeklyLabels,
+                    datasets: [
+                        {
+                            label: 'Run Time',
+                            data: weeklyRunTime,
+                            backgroundColor: '#3b82f6',
+                            borderWidth: 0
+                        },
+                        {
+                            label: 'Idle Time',
+                            data: weeklyIdleTime,
+                            backgroundColor: '#22c55e',
+                            borderWidth: 0
+                        },
+                        {
+                            label: 'Off Time',
+                            data: weeklyOffTime,
+                            backgroundColor: '#ef4444',
+                            borderWidth: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    aspectRatio: 2.5,
+                    scales: {
+                        x: { stacked: true, ticks: { color: '#9ca3af' }, grid: { display: false } },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: { color: '#9ca3af', callback: function(value) { return value + ' min'; } },
+                            grid: { color: '#23293a' }
                         }
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const value = context.parsed !== null && context.parsed !== undefined ? context.parsed : 0;
-                                return context.label + ': ' + value + ' min';
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e4e6eb', padding: 10 } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed && context.parsed.y !== null && context.parsed.y !== undefined ? context.parsed.y : 0;
+                                    return context.dataset.label + ': ' + value + ' min';
+                                }
                             }
                         }
                     }
                 }
+            };
+
+            try {
+                if (typeof Chart !== 'undefined' && weeklyTrendCtx) {
+                    weeklyTrendChart = new Chart(weeklyTrendCtx, weeklyTrendConfig);
+                    console.log('✅ Weekly Trend Chart initialized');
+                } else {
+                    console.warn('⚠️ Chart.js or WeeklyContext missing');
+                }
+            } catch (err) {
+                console.error('❌ Error initializing Weekly chart:', err);
             }
         });
 
-        // ✅ PERBAIKAN: Handle window resize untuk mencegah chart mengecil
+        // Resize Handlers (Global Scope but check checks instance existence)
         let resizeTimerDonut;
+        let resizeTimerOee;
+        let resizeTimerWeekly;
+
         window.addEventListener('resize', function() {
+            // Donut
             clearTimeout(resizeTimerDonut);
             resizeTimerDonut = setTimeout(function() {
-                if (runTimeDonutChart) {
-                    runTimeDonutChart.resize();
-                }
+                if (runTimeDonutChart && typeof runTimeDonutChart.resize === 'function') runTimeDonutChart.resize();
             }, 250);
-        });
 
-        // Bar Chart: OEE Analysis
-        const oeeBarCtx = document.getElementById('oeeBarChart').getContext('2d');
-        // ✅ PERBAIKAN: Gunakan data langsung dari Model untuk sinkronisasi dengan KPI cards
-        const oeeBarChart = new Chart(oeeBarCtx, {
-            type: "bar",
-            data: {
-                labels: ['OEE', 'Availability', 'Performance', 'Quality'],
-                datasets: [{
-                    label: 'Percentage (%)',
-                    data: [
-                        @Model.Oee, // ✅ PERBAIKAN: Gunakan Model.Oee langsung (sinkron dengan KPI cards)
-                        @Model.Availability, // ✅ PERBAIKAN: Gunakan Model.Availability langsung
-                        @Model.Performance, // ✅ PERBAIKAN: Gunakan Model.Performance langsung
-                        @Model.Quality // ✅ PERBAIKAN: Gunakan Model.Quality langsung
-                    ],
-                    backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b', '#06b6d4'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false, // ✅ PERBAIKAN: Set ke false untuk kontrol manual
-                aspectRatio: 2.5, // ✅ PERBAIKAN: Sesuaikan dengan width full (lebih lebar)
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: {
-                            color: '#9ca3af',
-                            callback: function(value) {
-                                return value + '%';
-                            }
-                        },
-                        grid: {
-                            color: '#23293a'
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            color: '#9ca3af'
-                        },
-                        grid: {
-                            display: false
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const value = context.parsed && context.parsed.y !== null && context.parsed.y !== undefined ? context.parsed.y : 0;
-                                return value.toFixed(1) + '%';
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        // ✅ PERBAIKAN: Handle window resize untuk mencegah chart mengecil
-        let resizeTimerOee;
-        window.addEventListener('resize', function() {
+            // OEE
             clearTimeout(resizeTimerOee);
             resizeTimerOee = setTimeout(function() {
-                if (oeeBarChart) {
-                    oeeBarChart.resize();
-                }
+                if (oeeBarChart && typeof oeeBarChart.resize === 'function') oeeBarChart.resize();
             }, 250);
-        });
 
-        // Stacked Bar Chart: Weekly Trend
-        const weeklyTrendCtx = document.getElementById('weeklyTrendChart').getContext('2d');
-        @{
-            // ✅ PERBAIKAN: Gunakan JSON serialization untuk menghindari syntax error JavaScript
-            var weeklyLabelsList = new List<string>();
-            var weeklyRunTimeList = new List<double>();
-            var weeklyIdleTimeList = new List<double>();
-            var weeklyOffTimeList = new List<double>();
-            
-            if (Model.ChartData?.WeeklyTrend != null && Model.ChartData.WeeklyTrend.Any())
-            {
-                weeklyLabelsList = Model.ChartData.WeeklyTrend.Select(t => t.DateLabel ?? "").ToList();
-                weeklyRunTimeList = Model.ChartData.WeeklyTrend.Select(t => t.RunTimeMinutes).ToList();
-                weeklyIdleTimeList = Model.ChartData.WeeklyTrend.Select(t => t.IdleTimeMinutes).ToList();
-                weeklyOffTimeList = Model.ChartData.WeeklyTrend.Select(t => t.OffTimeMinutes).ToList();
-            }
-        }
-        // ✅ PERBAIKAN: Gunakan JSON serialization untuk menghindari syntax error
-        const weeklyLabels = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyLabelsList));
-        const weeklyRunTime = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyRunTimeList));
-        const weeklyIdleTime = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyIdleTimeList));
-        const weeklyOffTime = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(weeklyOffTimeList));
-
-        const weeklyTrendChart = new Chart(weeklyTrendCtx, {
-            type: "bar",
-            data: {
-                labels: weeklyLabels,
-                datasets: [
-                    {
-                        label: 'Run Time',
-                        data: weeklyRunTime,
-                        backgroundColor: '#3b82f6',
-                        borderWidth: 0
-                    },
-                    {
-                        label: 'Idle Time',
-                        data: weeklyIdleTime,
-                        backgroundColor: '#22c55e',
-                        borderWidth: 0
-                    },
-                    {
-                        label: 'Off Time',
-                        data: weeklyOffTime,
-                        backgroundColor: '#ef4444',
-                        borderWidth: 0
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false, // ✅ PERBAIKAN: Set ke false untuk kontrol manual
-                aspectRatio: 2.5, // ✅ PERBAIKAN: Sesuaikan dengan width full (lebih lebar)
-                scales: {
-                    x: {
-                        stacked: true,
-                        ticks: {
-                            color: '#9ca3af'
-                        },
-                        grid: {
-                            display: false
-                        }
-                    },
-                    y: {
-                        stacked: true,
-                        beginAtZero: true,
-                        ticks: {
-                            color: '#9ca3af',
-                            callback: function(value) {
-                                return value + ' min';
-                            }
-                        },
-                        grid: {
-                            color: '#23293a'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: '#e4e6eb',
-                            padding: 10
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const value = context.parsed && context.parsed.y !== null && context.parsed.y !== undefined ? context.parsed.y : 0;
-                                return context.dataset.label + ': ' + value + ' min';
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        // ✅ PERBAIKAN: Handle window resize untuk mencegah chart mengecil
-        let resizeTimerWeekly;
-        window.addEventListener('resize', function() {
+            // Weekly
             clearTimeout(resizeTimerWeekly);
             resizeTimerWeekly = setTimeout(function() {
-                if (weeklyTrendChart) {
-                    weeklyTrendChart.resize();
-                }
+                if (weeklyTrendChart && typeof weeklyTrendChart.resize === 'function') weeklyTrendChart.resize();
             }, 250);
         });
+
+        console.log('✅ OeeDetail script block execution complete.');
     </script>
 
     <script>
@@ -4974,72 +4951,9 @@
         let previousHasActiveJob = hasActiveJob;
         let previousHasActiveDowntime = hasActiveDowntime;
 
-        // ========== PRODUCTION DURATION TIMER (PER ITEM) ==========
-        let durasiProduksiSeconds = 0;
-        let durasiProduksiInterval = null;
-        let isProduksiRunning = false;
-
-        function updateDurasiProduksiDisplay() {
-            const displayEl = document.getElementById('durasi-produksi-display');
-            if (displayEl) {
-                const hours = Math.floor(durasiProduksiSeconds / 3600);
-                const minutes = Math.floor((durasiProduksiSeconds % 3600) / 60);
-                const seconds = durasiProduksiSeconds % 60;
-                displayEl.value = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                
-                // Update hidden input
-                const hiddenEl = document.getElementById('hidden-durasi-seconds');
-                if (hiddenEl) hiddenEl.value = durasiProduksiSeconds;
-            }
-        }
-
-        function startDurasiProduksi() {
-            if (durasiProduksiInterval) clearInterval(durasiProduksiInterval);
-            isProduksiRunning = true;
-            durasiProduksiInterval = setInterval(() => {
-                if(isProduksiRunning) {
-                    durasiProduksiSeconds++;
-                    updateDurasiProduksiDisplay();
-                }
-            }, 1000);
-            document.getElementById('durasi-produksi-display')?.classList.add('text-primary');
-        }
-
-        function stopDurasiProduksi() {
-            isProduksiRunning = false;
-            if (durasiProduksiInterval) {
-                clearInterval(durasiProduksiInterval);
-                durasiProduksiInterval = null;
-            }
-            document.getElementById('durasi-produksi-display')?.classList.remove('text-primary');
-        }
-
-        function resetDurasiProduksi() {
-            stopDurasiProduksi();
-            durasiProduksiSeconds = 0;
-            updateDurasiProduksiDisplay();
-            
-            // Check auto start
-            const autoStart = document.getElementById('toggle-auto-durasi')?.checked;
-            if (autoStart) {
-                startDurasiProduksi();
-            }
-        }
-
-        // Initialize Timer Controls
-        document.addEventListener('DOMContentLoaded', () => {
-             const btnReset = document.getElementById('btn-reset-durasi');
-             if(btnReset) {
-                 btnReset.style.display = 'inline-block'; // Ensure visible
-                 btnReset.addEventListener('click', resetDurasiProduksi);
-             }
-
-             // Start initially if auto-start is checked
-             const autoStart = document.getElementById('toggle-auto-durasi')?.checked;
-             if(autoStart) {
-                 startDurasiProduksi();
-             }
-        });
+        // ========== PRODUCTION DURATION TIMER (PER ITEM) - REMOVED (DUPLICATE) ==========
+        // Legacy code removed to prevent conflict with the improved logic above.
+        // See 'DURASI PRODUKSI PER ITEM' section around line 4060.
 
         // ========== EVENT-DRIVEN TIMER ARCHITECTURE ==========
         // PRINSIP:
@@ -6061,24 +5975,34 @@
         }
 
         // ========== SIGNALR CONNECTION FOR REAL-TIME UPDATES ==========
-        // ✅ PERBAIKAN: oeeConnection sudah dideklarasikan di atas (line 4147), gunakan yang sudah ada
-        // Inisialisasi SignalR connection jika belum ada
-        if (!oeeConnection) {
-            try {
-                // ✅ FIX: Check if signalR is defined before using it
-                if (typeof signalR !== 'undefined') {
-                    oeeConnection = new signalR.HubConnectionBuilder()
-                        .withUrl("/oeeHub")
-                        .build();
-                } else {
-                    console.warn('⚠️ SignalR library not yet loaded, skipping connection creation');
-                }
-            } catch (error) {
-                console.error('❌ Error creating SignalR connection:', error);
-            }
-        }
+        // ✅ PERBAIKAN: Bungkus inisialisasi dalam window load untuk memastikan library SignalR sudah termuat
         
-        if (oeeConnection) {
+        function initSignalRConnection() {
+            console.log('🔌 Initializing SignalRConnection...');
+            
+            // Inisialisasi SignalR connection jika belum ada
+            if (!oeeConnection) {
+                try {
+                    // ✅ FIX: Check if signalR is defined before using it
+                    if (typeof signalR !== 'undefined') {
+                        oeeConnection = new signalR.HubConnectionBuilder()
+                            .withUrl("/oeeHub")
+                            .build();
+                        console.log('✅ SignalR HubConnectionBuilder created');
+                    } else {
+                        console.warn('⚠️ SignalR library not found even after window.load!');
+                        return;
+                    }
+                } catch (error) {
+                    console.error('❌ Error creating SignalR connection:', error);
+                    return;
+                }
+            }
+            
+            if (oeeConnection) {
+                // Remove existing handlers to avoid duplicates if re-initialized (though init should run once)
+                oeeConnection.off("OeeUpdated");
+                oeeConnection.off("ReceiveRealTimeSync");
 
                 oeeConnection.on("OeeUpdated", function (data) {
                     console.log('📢 OeeUpdated received in OEE View:', data);
@@ -6110,20 +6034,32 @@
                 // Receive real-time sync from BackgroundService every 10 seconds
                 oeeConnection.on("ReceiveRealTimeSync", function (data) {
                     if (!data) return;
-                    console.log('📡 ReceiveRealTimeSync received:', data.ShiftKey);
+                    // console.log('📡 ReceiveRealTimeSync received:', data.ShiftKey); // Verbose log removed
                     
                     // Apply the metrics received from server
                     applyTimeMetrics(data);
                 });
 
-                oeeConnection.start()
-                    .then(() => {
-                        console.log('✅ SignalR connected in OEE View');
-                    })
-                    .catch(err => {
-                        console.error('❌ SignalR connection error in OEE View:', err);
-                    });
+                // Check if connection is disconnected before starting
+                // SignalR State: 0=Connecting, 1=Connected, 2=Reconnecting, 4=Disconnected
+                if (oeeConnection.state === signalR.HubConnectionState.Disconnected) {
+                    oeeConnection.start()
+                        .then(() => {
+                            console.log('✅ SignalR connected in OEE View');
+                        })
+                        .catch(err => {
+                            console.error('❌ SignalR connection error in OEE View:', err);
+                        });
+                } else {
+                    console.log('ℹ️ SignalR connection already active (State: ' + oeeConnection.state + ')');
+                }
             }
+        }
+
+        // Initialize SignalR only after everything is loaded
+        window.addEventListener('load', function() {
+            initSignalRConnection();
+        });
 
             // 9. Cleanup saat Page Unload
             window.addEventListener('beforeunload', () => {

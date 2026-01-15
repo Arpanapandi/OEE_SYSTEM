@@ -46,7 +46,7 @@
                     <span class="sidebar-title">OEE SYSTEM</span>
                 </div>
                 <nav class="sidebar-nav">
-                    <a asp-controller="Home" asp-action="Index" class="nav-item @(ViewData["Title"]?.ToString().Contains("Dashboard") == true ? "active" : "")">
+                    <a asp-controller="Home" asp-action="Index" class="nav-item @(ViewData["Title"]?.ToString()?.Contains("Dashboard") == true ? "active" : "")">
                         <i class="bi bi-speedometer2"></i>
                         <span>Dashboard</span>
                     </a>

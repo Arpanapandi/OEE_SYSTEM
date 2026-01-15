@@ -25,6 +25,7 @@
     };
 
     // ========== UNIFIED TIMER MANAGEMENT ==========
+    // ========== UNIFIED TIMER MANAGEMENT ==========
     window.MachineTimer = {
         interval: null,
         startTime: null,
@@ -46,22 +47,30 @@
         start: function (startTimeUtc) {
             this.reset();
 
+            // Use adjusted now if available
+            const now = (typeof window.getAdjustedServerTime === 'function')
+                ? window.getAdjustedServerTime()
+                : new Date();
+
             if (startTimeUtc) {
                 this.startTime = new Date(startTimeUtc);
             } else {
-                this.startTime = new Date();
+                this.startTime = now;
             }
 
             this.update();
             this.interval = setInterval(() => this.update(), 1000);
-            console.log('✅ Timer started from:', this.startTime.toISOString());
+            console.log('✅ Timer started from:', this.startTime.toISOString(), 'Current Time:', now.toISOString());
         },
 
         update: function () {
             const timerEl = document.getElementById('since-last-status');
             if (!timerEl || !this.startTime) return;
 
-            const now = new Date();
+            const now = (typeof window.getAdjustedServerTime === 'function')
+                ? window.getAdjustedServerTime()
+                : new Date();
+
             const elapsedSeconds = Math.max(0, Math.floor((now - this.startTime) / 1000));
 
             const hours = Math.floor(elapsedSeconds / 3600);

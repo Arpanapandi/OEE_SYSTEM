@@ -28,7 +28,7 @@ public class OperatorController : Controller
             .AsNoTracking()
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.WorkOrder)
-                    .ThenInclude(w => w.Product)
+                    .ThenInclude(w => w!.Product)
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.Operator)
             .Include(m => m.JobRuns)
@@ -122,7 +122,7 @@ public class OperatorController : Controller
                 .ThenInclude(d => d.Reason)
             .Include(j => j.Machine)
             .Include(j => j.WorkOrder)
-                .ThenInclude(w => w.Product)
+                .ThenInclude(w => w!.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -363,7 +363,7 @@ public class OperatorController : Controller
                 .ThenInclude(d => d.Reason)
             .Include(j => j.Machine)
             .Include(j => j.WorkOrder)
-                .ThenInclude(w => w.Product)
+                .ThenInclude(w => w!.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -474,7 +474,7 @@ public class OperatorController : Controller
             .Include(j => j.DowntimeEvents)
                 .ThenInclude(d => d.Reason)
             .Include(j => j.WorkOrder)
-                .ThenInclude(w => w.Product)
+                .ThenInclude(w => w!.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -588,7 +588,7 @@ public class OperatorController : Controller
         var job = await _context.JobRuns
             .Include(j => j.Machine)
             .Include(j => j.WorkOrder)
-                .ThenInclude(w => w.Product)
+                .ThenInclude(w => w!.Product)
             .Where(j => j.MachineId == machineId)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -667,7 +667,7 @@ public class OperatorController : Controller
             var job = await _context.JobRuns
                 .Include(j => j.Machine)
                 .Include(j => j.WorkOrder)
-                    .ThenInclude(w => w.Product)
+                    .ThenInclude(w => w!.Product)
                 .Where(j => j.MachineId == machineId)
                 .OrderByDescending(j => j.StartTime)
                 .FirstOrDefaultAsync(j => j.EndTime == null);
@@ -807,7 +807,7 @@ public class OperatorController : Controller
             .AsNoTracking()
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.WorkOrder)
-                    .ThenInclude(w => w.Product)
+                    .ThenInclude(w => w!.Product)
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.ProductionCounts)
             .Include(m => m.JobRuns)

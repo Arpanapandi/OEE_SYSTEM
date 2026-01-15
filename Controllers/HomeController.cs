@@ -64,7 +64,7 @@ public class HomeController : Controller
             var maxRetries = 5; // Increase retries
             var retryDelay = TimeSpan.FromSeconds(3); // Increase delay
             bool canConnect = false;
-            Exception lastException = null;
+            Exception? lastException = null;
             var connectionString = _configuration?.GetConnectionString("DefaultConnection") ?? "";
             var isLocalDb = connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase);
             
@@ -376,7 +376,7 @@ public class HomeController : Controller
         var machinesQuery = _context.Machines
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.WorkOrder)
-                    .ThenInclude(w => w.Product)
+                    .ThenInclude(w => w!.Product)
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.DowntimeEvents)
                     .ThenInclude(d => d.Reason)
@@ -485,8 +485,8 @@ public class HomeController : Controller
                     var productMachine = await _context.ProductMachines
                         .AsNoTracking()
                         .Include(pm => pm.Machine)
-                        .Where(pm => pm.ProductId == currentProduct.Id && !string.IsNullOrEmpty(pm.Machine.ImageUrl))
-                        .Select(pm => pm.Machine.ImageUrl)
+                        .Where(pm => pm.ProductId == currentProduct.Id && pm.Machine != null && !string.IsNullOrEmpty(pm.Machine.ImageUrl))
+                        .Select(pm => pm.Machine!.ImageUrl)
                         .FirstOrDefaultAsync();
                     
                     if (!string.IsNullOrWhiteSpace(productMachine))
@@ -946,7 +946,7 @@ public class HomeController : Controller
         var machinesQuery = _context.Machines
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.WorkOrder)
-                    .ThenInclude(w => w.Product)
+                    .ThenInclude(w => w!.Product)
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.DowntimeEvents)
                     .ThenInclude(d => d.Reason)
