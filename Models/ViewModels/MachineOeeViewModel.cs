@@ -54,6 +54,8 @@ public class MachineOeeViewModel
     public bool HasActiveJob { get; set; }
     public bool HasActiveDowntime { get; set; }
     public bool HasActiveRestBreak { get; set; } // ✅ Status Rest Break aktif
+    public bool IsNoLoading { get; set; } // ✅ Status No Loading aktif
+    public bool IsIdle { get; set; } // ✅ Status Idle (tidak ada job)
     public string? ActiveDowntimeDescription { get; set; }
     public MachineStatus MachineStatus { get; set; } // Status dari Admin (Aktif/TidakAktif)
 }

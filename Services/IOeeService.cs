@@ -81,6 +81,8 @@ public class TimeMetricsResult
     public int TotalCount { get; set; }
     
     public string MachineStatus { get; set; } = string.Empty;
+    public bool IsNoLoading { get; set; }
+    public bool IsIdle { get; set; } // idle = tidak ada job aktif
     
     public int? DandoriDurationSeconds { get; set; }
     public string? DandoriStartTime { get; set; }

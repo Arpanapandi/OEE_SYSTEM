@@ -576,7 +576,7 @@ public class AdminController : Controller
                     return RedirectToAction(nameof(Machines));
                 }
             }
-            catch (DbUpdateConcurrencyException ex)
+            catch (DbUpdateConcurrencyException)
             {
                 ModelState.AddModelError("", "Data telah diubah oleh user lain. Silakan refresh dan coba lagi.");
             }
@@ -845,7 +845,7 @@ public class AdminController : Controller
                 // Commit transaction
                 await transaction.CommitAsync();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Rollback jika ada error
                 try
@@ -1854,7 +1854,7 @@ public class AdminController : Controller
         {
             var errors = ModelState
                 .Where(x => x.Value?.Errors.Count > 0)
-                .SelectMany(x => x.Value.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}"));
+                .SelectMany(x => x.Value!.Errors.Select(e => $"{x.Key}: {e.ErrorMessage}"));
             
             System.Diagnostics.Debug.WriteLine("Validation Errors:");
             foreach (var error in errors)
@@ -2410,7 +2410,7 @@ public class AdminController : Controller
                 .ToListAsync();
             return View(manPowers);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // Jika tabel belum ada, tampilkan pesan error yang user-friendly
             TempData["ErrorMessage"] = "Tabel ManPower belum tersedia. Silakan jalankan migration terlebih dahulu.";

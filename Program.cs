@@ -135,11 +135,10 @@ if (env == "Development" || connectionString.Contains("(localdb)", StringCompari
     }
 }
 
-// OEE Logic Services
-builder.Services.AddScoped<IOeeService, OeeService>();
 
 // Real-Time Background Service
 // builder.Services.AddHostedService<OeeRealTimeService>(); // Disabled temporary due to EventLog permission issue
+
 
 
 var app = builder.Build();
@@ -428,14 +427,14 @@ using (var scope = app.Services.CreateScope())
             new OeeSystem.Models.Shift
             {
                 Name = "Shift 1",
-                StartTime = new TimeSpan(7, 30, 0),
-                EndTime = new TimeSpan(19, 30, 0)
+                StartTime = new TimeSpan(22, 0, 0), // Mulai pukul 22:00
+                EndTime = new TimeSpan(22, 10, 0)   // Berakhir pukul 22:10 (10 Menit)
             },
             new OeeSystem.Models.Shift
             {
                 Name = "Shift 2",
-                StartTime = new TimeSpan(19, 30, 0),
-                EndTime = new TimeSpan(7, 30, 0) // 07:30 hari berikutnya
+                StartTime = new TimeSpan(22, 10, 0), // Mulai pukul 22:10
+                EndTime = new TimeSpan(22, 20, 0)   // Berakhir pukul 22:20 (10 Menit)
             }
         );
         db.SaveChanges();
@@ -527,36 +526,28 @@ using (var scope = app.Services.CreateScope())
     {
         try
         {
-            var setupId = db.DowntimeReasons.First(r => r.Category == "Planned" && r.Description == "Setup / Changeover").Id;
-            var restId = db.DowntimeReasons.First(r => r.Category == "Planned" && r.Description == "Rest Break").Id;
-            var failureId = db.DowntimeReasons.First(r => r.Category == "Unplanned" && r.Description == "Machine Failure").Id;
-            var materialId = db.DowntimeReasons.First(r => r.Category == "Unplanned" && r.Description == "Material Shortage").Id;
-            var toolingId = db.DowntimeReasons.First(r => r.Category == "Unplanned" && r.Description == "Tooling Broken").Id;
+            var setupId = db.DowntimeReasons.FirstOrDefault(r => r.Category == "Planned" && r.Description == "Setup / Changeover")?.Id;
+            var restId = db.DowntimeReasons.FirstOrDefault(r => r.Category == "Planned" && r.Description == "Rest Break")?.Id;
+            var failureId = db.DowntimeReasons.FirstOrDefault(r => r.Category == "Unplanned" && r.Description == "Machine Failure")?.Id;
+            var materialId = db.DowntimeReasons.FirstOrDefault(r => r.Category == "Unplanned" && r.Description == "Material Shortage")?.Id;
+            var toolingId = db.DowntimeReasons.FirstOrDefault(r => r.Category == "Unplanned" && r.Description == "Tooling Broken")?.Id;
 
-            // Cek apakah machine dengan ID tersebut ada di database
-            var machineIds = new[] { "M001", "M002", "M003" };
-            var existingMachines = db.Machines.Where(m => machineIds.Contains(m.Id)).Select(m => m.Id).ToList();
-            
             var mappings = new List<OeeSystem.Models.MachineDowntimeReason>();
             
-            if (existingMachines.Contains("M001"))
-            {
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M001", DowntimeReasonId = setupId });
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M001", DowntimeReasonId = restId });
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M001", DowntimeReasonId = failureId });
+            // Hanya add jika MachineId ada di database
+            void TryAddMapping(string mId, int? rId) {
+                if (rId.HasValue && db.Machines.Any(m => m.Id == mId)) {
+                    mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = mId, DowntimeReasonId = rId.Value });
+                }
             }
-            
-            if (existingMachines.Contains("M002"))
-            {
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M002", DowntimeReasonId = failureId });
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M002", DowntimeReasonId = materialId });
-            }
-            
-            if (existingMachines.Contains("M003"))
-            {
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M003", DowntimeReasonId = toolingId });
-                mappings.Add(new OeeSystem.Models.MachineDowntimeReason { MachineId = "M003", DowntimeReasonId = failureId });
-            }
+
+            TryAddMapping("M001", setupId);
+            TryAddMapping("M001", restId);
+            TryAddMapping("M001", failureId);
+            TryAddMapping("M002", failureId);
+            TryAddMapping("M002", materialId);
+            TryAddMapping("M003", toolingId);
+            TryAddMapping("M003", failureId);
             
             if (mappings.Any())
             {
@@ -566,8 +557,7 @@ using (var scope = app.Services.CreateScope())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"WARNING: Error saat seeding MachineDowntimeReasons: {ex.Message}");
-            // Jangan stop aplikasi, biarkan tetap berjalan
+            Console.WriteLine($"WARNING: Error seeding MachineDowntimeReasons: {ex.Message}");
         }
     }
 

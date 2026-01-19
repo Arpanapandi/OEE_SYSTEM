@@ -232,7 +232,7 @@ public class OperationController : Controller
     {
         var activeJobRuns = await _context.JobRuns
             .Include(j => j.WorkOrder)
-                .ThenInclude(w => w.Product)
+                .ThenInclude(w => w!.Product)
             .Include(j => j.Operator)
             .Where(j => j.MachineId == machineId && j.EndTime == null)
             .OrderByDescending(j => j.StartTime)

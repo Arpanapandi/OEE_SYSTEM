@@ -13,9 +13,8 @@ public class MachineController : Controller
     private readonly IOeeService _oeeService;
     private static readonly List<(string Code, TimeSpan Start, TimeSpan End)> ShiftTemplates = new()
     {
-        ("A", new TimeSpan(6, 0, 0), new TimeSpan(14, 0, 0)),
-        ("B", new TimeSpan(14, 0, 0), new TimeSpan(22, 0, 0)),
-        ("C", new TimeSpan(22, 0, 0), new TimeSpan(6, 0, 0))
+        ("A", new TimeSpan(22, 0, 0), new TimeSpan(22, 10, 0)),
+        ("B", new TimeSpan(22, 10, 0), new TimeSpan(22, 20, 0))
     };
 
     public MachineController(ApplicationDbContext context, IOeeService oeeService)
@@ -33,174 +32,36 @@ public class MachineController : Controller
 
     private static (DateTime Start, DateTime End, DateTime ShiftDate, string Code, string Key) ResolveShiftWindow(DateTime now, DateTime? shiftDate, string? shiftCode)
     {
-        var code = string.IsNullOrWhiteSpace(shiftCode)
-            ? null
-            : shiftCode!.Trim().ToUpperInvariant();
-
-        // Tentukan kode shift jika tidak dikirim
-        if (code == null)
-        {
-            var tod = now.TimeOfDay;
-            if (tod >= ShiftTemplates[0].Start && tod < ShiftTemplates[0].End)
-            {
-                code = "A";
-            }
-            else if (tod >= ShiftTemplates[1].Start && tod < ShiftTemplates[1].End)
-            {
-                code = "B";
-            }
-            else
-            {
-                code = "C";
-            }
-        }
-
-        var template = ShiftTemplates.FirstOrDefault(s => s.Code == code);
-        if (template == default)
-        {
-            template = ShiftTemplates[0];
-            code = template.Code;
-        }
-
-        var baseDate = shiftDate?.Date ?? now.Date;
-
-        // Jika tidak ada shiftDate dan shift C berjalan lewat tengah malam, tarik ke hari sebelumnya
-        if (!shiftDate.HasValue && code == "C" && now.TimeOfDay < template.End)
-        {
-            baseDate = baseDate.AddDays(-1);
-        }
-
-        var start = baseDate.Add(template.Start);
-        var end = template.End > template.Start
-            ? baseDate.Add(template.End)
-            : baseDate.AddDays(1).Add(template.End);
-
-        var key = $"{baseDate:yyyy-MM-dd}|{code}";
-        return (start, end, baseDate, code!, key);
+        // ✅ LOGIKA ROLLING SHIFT (UNTUK TESTING KAPAN SAJA):
+        int blockIndex = now.Minute / 10;
+        bool isEvenBlock = blockIndex % 2 == 0;
+        
+        string rollingShiftCode = isEvenBlock ? "A" : "B";
+        DateTime shiftStart = now.Date.AddHours(now.Hour).AddMinutes(blockIndex * 10);
+        DateTime shiftEnd = shiftStart.AddMinutes(10);
+        DateTime baseDate = now.Date;
+        
+        var key = $"{baseDate:yyyy-MM-dd}|{rollingShiftCode}";
+        return (shiftStart, shiftEnd, baseDate, rollingShiftCode, key);
     }
 
     public async Task<IActionResult> OeeDetail(string id, int? shiftId = null, DateTime? shiftDate = null, string? shiftCode = null, string? filterDate = null, string? filterTime = null)
     {
         var now = DateTime.Now;
-        var today = now.Date;
         
-        // Ambil semua shifts dari database
-        var shifts = await _context.Shifts.ToListAsync();
+        // ✅ LOGIKA ROLLING SHIFT (UNTUK TESTING KAPAN SAJA):
+        // Setiap 1 jam dibagi 6 blok (10 menit per blok)
+        int blockIndex = now.Minute / 10;
+        bool isEvenBlock = blockIndex % 2 == 0;
         
-        // Tentukan shift yang dipilih atau shift saat ini
-        Shift? selectedShift = null;
-        if (shiftId.HasValue)
-        {
-            selectedShift = shifts.FirstOrDefault(s => s.Id == shiftId.Value);
-        }
+        string rollingShiftName = isEvenBlock ? "Shift 1" : "Shift 2";
+        DateTime shiftStart = now.Date.AddHours(now.Hour).AddMinutes(blockIndex * 10);
+        DateTime shiftEnd = shiftStart.AddMinutes(10);
+        DateTime shiftDateForWindow = now.Date;
         
-        // Jika tidak ada shift yang dipilih, gunakan shift saat ini
-        if (selectedShift == null)
-        {
-            foreach (var s in shifts)
-            {
-                var start = today + s.StartTime;
-                var end = today + s.EndTime;
-                
-                // Handle shift malam (end < start)
-                if (s.EndTime < s.StartTime)
-                {
-                    if (now >= start || now <= end)
-                    {
-                        selectedShift = s;
-                        break;
-                    }
-                }
-                else
-                {
-                    if (now >= start && now <= end)
-                    {
-                        selectedShift = s;
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Jika masih tidak ada shift, gunakan shift pertama sebagai default
-        if (selectedShift == null)
-        {
-            selectedShift = shifts.FirstOrDefault();
-        }
-        
-        // Tentukan periode shift yang dipilih
-        DateTime shiftStart;
-        DateTime shiftEnd;
-        DateTime shiftDateForWindow;
-        
-        if (selectedShift != null)
-        {
-            // Handle shift malam (end < start, contoh: 22:00 - 06:00)
-            if (selectedShift.EndTime < selectedShift.StartTime)
-            {
-                // Shift malam: mulai hari ini, selesai besok
-                var shiftStartToday = today + selectedShift.StartTime;
-                var shiftEndToday = today.AddDays(1) + selectedShift.EndTime;
-                
-                // ✅ PERBAIKAN: Jika ada shiftDate dari parameter (sudah di-resolve oleh JavaScript), gunakan itu
-                if (shiftDate.HasValue)
-                {
-                    // shiftDate sudah di-resolve dengan logika shift melewati tengah malam
-                    shiftDateForWindow = shiftDate.Value.Date;
-                    shiftStart = shiftDateForWindow + selectedShift.StartTime;
-                    shiftEnd = shiftDateForWindow.AddDays(1) + selectedShift.EndTime;
-                }
-                else if (shiftId.HasValue)
-                {
-                    // Jika shift dipilih secara eksplisit, tentukan shift hari ini atau kemarin
-                    // Jika sekarang masih dalam periode shift hari ini
-                    if (now >= shiftStartToday && now < shiftEndToday)
-                    {
-                        shiftStart = shiftStartToday;
-                        shiftEnd = shiftEndToday;
-                        shiftDateForWindow = today;
-                    }
-                    else
-                    {
-                        // Shift kemarin (mulai kemarin, selesai hari ini)
-                        shiftStart = today.AddDays(-1) + selectedShift.StartTime;
-                        shiftEnd = shiftEndToday;
-                        shiftDateForWindow = today.AddDays(-1);
-                    }
-                }
-                else
-                {
-                    // Auto-detect: jika sekarang sebelum end time, berarti shift kemarin
-                    if (now.TimeOfDay < selectedShift.EndTime)
-                    {
-                        shiftStart = today.AddDays(-1) + selectedShift.StartTime;
-                        shiftEnd = shiftEndToday;
-                        shiftDateForWindow = today.AddDays(-1);
-                    }
-                    else
-                    {
-                        shiftStart = shiftStartToday;
-                        shiftEnd = shiftEndToday;
-                        shiftDateForWindow = today;
-                    }
-                }
-            }
-            else
-            {
-                // Shift normal (start < end)
-                shiftStart = today + selectedShift.StartTime;
-                shiftEnd = today + selectedShift.EndTime;
-                shiftDateForWindow = today;
-            }
-        }
-        else
-        {
-            // Fallback: gunakan shift template A
-            shiftStart = today + new TimeSpan(6, 0, 0);
-            shiftEnd = today + new TimeSpan(14, 0, 0);
-            shiftDateForWindow = today;
-        }
-        
+        // Mock selectedShift untuk UI
+        var selectedShift = new Shift { Id = (isEvenBlock ? 1 : 2), Name = rollingShiftName };
+
         var shiftWindow = (Start: shiftStart, End: shiftEnd, ShiftDate: shiftDateForWindow, Code: selectedShift?.Name ?? "A", Key: $"{shiftDateForWindow:yyyy-MM-dd}|{selectedShift?.Id ?? 0}");
         var effectiveNow = now < shiftWindow.End ? now : shiftWindow.End;
 
@@ -377,6 +238,13 @@ public class MachineController : Controller
             goodCount,
             standarCycleTime > 0 ? standarCycleTime : 1);
 
+        // Check active downtime for No Loading status
+        var activeDowntime = activeJob?.DowntimeEvents
+            .OrderByDescending(d => d.StartTime)
+            .FirstOrDefault(d => d.EndTime == null);
+
+        bool isNoLoading = activeDowntime != null && (activeDowntime.IsNoLoading || activeDowntime.Reason?.Description?.Contains("No Loading", StringComparison.OrdinalIgnoreCase) == true);
+
         // Build ViewModel
         var vm = new MachineOeeViewModel
         {
@@ -406,7 +274,9 @@ public class MachineController : Controller
             TotalCount = totalCount,
             GoodCount = goodCount,
             RejectCount = rejectCount,
-            HasActiveRestBreak = hasActiveRestBreak // ✅ Status Rest Break aktif
+            HasActiveRestBreak = hasActiveRestBreak, // ✅ Status Rest Break aktif
+            IsNoLoading = isNoLoading, // ✅ Status No Loading aktif
+            IsIdle = activeJob == null // ✅ Status Idle
         };
 
         // Active Job Info

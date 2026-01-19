@@ -25,55 +25,8 @@
     };
 
     // ========== UNIFIED TIMER MANAGEMENT ==========
-    window.MachineTimer = {
-        interval: null,
-        startTime: null,
-
-        reset: function () {
-            if (this.interval) {
-                clearInterval(this.interval);
-                this.interval = null;
-            }
-            this.startTime = null;
-
-            const timerEl = document.getElementById('since-last-status');
-            if (timerEl) {
-                timerEl.textContent = '00:00:00';
-            }
-            console.log('✅ Timer reset to 00:00:00');
-        },
-
-        start: function (startTimeUtc) {
-            this.reset();
-
-            if (startTimeUtc) {
-                this.startTime = new Date(startTimeUtc);
-            } else {
-                this.startTime = new Date();
-            }
-
-            this.update();
-            this.interval = setInterval(() => this.update(), 1000);
-            console.log('✅ Timer started from:', this.startTime.toISOString());
-        },
-
-        update: function () {
-            const timerEl = document.getElementById('since-last-status');
-            if (!timerEl || !this.startTime) return;
-
-            const now = new Date();
-            const elapsedSeconds = Math.max(0, Math.floor((now - this.startTime) / 1000));
-
-            const hours = Math.floor(elapsedSeconds / 3600);
-            const minutes = Math.floor((elapsedSeconds % 3600) / 60);
-            const seconds = elapsedSeconds % 60;
-
-            timerEl.textContent =
-                String(hours).padStart(2, '0') + ':' +
-                String(minutes).padStart(2, '0') + ':' +
-                String(seconds).padStart(2, '0');
-        }
-    };
+    // DEPRECATED: MachineTimer removed to prevent conflict with OeeDetail.cshtml
+    // Using global window.updateSinceLastChange instead.
 
     // ========== RUNNING BUTTON HANDLER ==========
     window.handleRunningClick = async function (button) {
@@ -125,8 +78,22 @@
                     return false;
                 }
 
-                // ✅ CRITICAL: Reset timer ke 00:00:00 dan start
-                window.MachineTimer.start(result.lastStatusChangeTime);
+                // ✅ CRITICAL: Gunakan unified timer dari OeeDetail.cshtml
+                // Calculate elapsed seconds based on server timestamp
+                const startTime = new Date(result.lastStatusChangeTime);
+                const now = new Date();
+                const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+
+                // Set global UTC start time for precision
+                if (window.setRunningStartTimeUtc) {
+                    window.setRunningStartTimeUtc(startTime);
+                } else {
+                    window.runningStartTimeUtc = startTime;
+                }
+
+                if (typeof window.updateSinceLastChange === 'function') {
+                    window.updateSinceLastChange(elapsedSeconds, true); // true = isRunning
+                }
 
                 // ✅ Update UI
                 if (typeof window.updateMachineStatusUI === 'function') {
@@ -136,6 +103,11 @@
                 // ✅ SUCCESS TOAST
                 if (typeof showToast === 'function') {
                     showToast('✅ Machine Running dimulai', 'success');
+                }
+
+                // ✅ UPDATE BUTTON STATES
+                if (typeof window.updateButtonStates === 'function') {
+                    window.updateButtonStates('RUNNING');
                 }
 
                 button.disabled = false;
@@ -215,8 +187,14 @@
             const result = await response.json();
 
             if (result.success) {
-                // ✅ CRITICAL: Reset timer dan start
-                window.MachineTimer.start(result.lastStatusChangeTime);
+                // ✅ CRITICAL: Gunakan unified timer dari OeeDetail.cshtml
+                const startTime = new Date(result.lastStatusChangeTime);
+                const now = new Date();
+                const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+
+                if (typeof window.updateSinceLastChange === 'function') {
+                    window.updateSinceLastChange(elapsedSeconds, false); // false = Not Running (Rest)
+                }
 
                 // ✅ Update UI
                 if (typeof window.updateMachineStatusUI === 'function') {
@@ -226,6 +204,11 @@
                 // ✅ SUCCESS TOAST
                 if (typeof showToast === 'function') {
                     showToast('☕ Rest Break dimulai', 'warning');
+                }
+
+                // ✅ UPDATE BUTTON STATES
+                if (typeof window.updateButtonStates === 'function') {
+                    window.updateButtonStates('REST_BREAK');
                 }
 
                 button.disabled = false;
@@ -299,8 +282,14 @@
             const result = await response.json();
 
             if (result.success) {
-                // ✅ CRITICAL: Reset timer dan start
-                window.MachineTimer.start(result.lastStatusChangeTime);
+                // ✅ CRITICAL: Gunakan unified timer dari OeeDetail.cshtml
+                const startTime = new Date(result.lastStatusChangeTime);
+                const now = new Date();
+                const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+
+                if (typeof window.updateSinceLastChange === 'function') {
+                    window.updateSinceLastChange(elapsedSeconds, false); // false = Not Running (Downtime)
+                }
 
                 // ✅ Update UI
                 const reasonSelect = form.querySelector('select[name="reasonId"]');
@@ -313,6 +302,11 @@
                 // ✅ SUCCESS TOAST
                 if (typeof showToast === 'function') {
                     showToast('🛑 Line Stop dimulai', 'danger');
+                }
+
+                // ✅ UPDATE BUTTON STATES
+                if (typeof window.updateButtonStates === 'function') {
+                    window.updateButtonStates('LINE_STOP');
                 }
 
                 // Close modal
@@ -382,8 +376,14 @@
             const result = await response.json();
 
             if (result.success) {
-                // ✅ CRITICAL: Reset timer dan start
-                window.MachineTimer.start(result.lastStatusChangeTime);
+                // ✅ CRITICAL: Gunakan unified timer dari OeeDetail.cshtml
+                const startTime = new Date(result.lastStatusChangeTime);
+                const now = new Date();
+                const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+
+                if (typeof window.updateSinceLastChange === 'function') {
+                    window.updateSinceLastChange(elapsedSeconds, false); // false = Not Running (No Loading)
+                }
 
                 // ✅ Update UI
                 if (typeof window.updateMachineStatusUI === 'function') {
@@ -393,6 +393,11 @@
                 // ✅ SUCCESS TOAST
                 if (typeof showToast === 'function') {
                     showToast('⏳ No Loading aktif', 'info');
+                }
+
+                // ✅ UPDATE BUTTON STATES
+                if (typeof window.updateButtonStates === 'function') {
+                    window.updateButtonStates('NO_LOADING');
                 }
 
                 // Close modal

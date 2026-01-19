@@ -1,383 +1,200 @@
-# MACHINE ACTIONS - TESTING CHECKLIST
+# Testing Machine Actions - OEE Detail Page
 
-## ✅ Perbaikan Yang Sudah Dilakukan
+## Masalah yang Diperbaiki
+Tombol-tombol Machine Actions (Running, Rest Break, Line Stop, No Loading) tidak bisa diklik karena ada bug di JavaScript `oee-logic.js`.
 
-### Backend (OperatorController.cs)
-- [x] **Start Method**: Enhanced dengan Man Power parameter, LastStatusChangeTime update, comprehensive SignalR broadcast
-- [x] **StartDowntime Method**: Auto-end existing downtime, LastStatusChangeTime update, comprehensive broadcast
-- [x] **NoLoading Method**: Auto-end existing downtime, LastStatusChangeTime update, comprehensive broadcast
-- [x] **SignalR Broadcast**: Semua method broadcast data lengkap (LastStatusChangeTime, DowntimeDescription, RefreshOeeMetrics, dll)
+### Root Cause
+Fungsi `handleAction` menggunakan variabel `event.currentTarget` tanpa parameter `event` yang didefinisikan dengan benar, menyebabkan error JavaScript dan tombol tidak responsif.
 
-### Frontend (OeeDetail.cshtml)
-- [x] **Consolidated Script**: Created `machine-actions.js` dengan unified timer management
-- [x] **Validation**: Added `validateMachineAction()` untuk cek Man Power & Injection
-- [x] **Timer Management**: Unified `MachineTimer` object dengan reset(), start(), update()
-- [x] **Success Toast**: Added success notifications untuk semua actions
-- [x] **Standardized Naming**: handleRunningClick, handleRestClick, handleLineStopClick, handleNoLoadingClick
-- [x] **Modals**: Added Line Stop dan No Loading modals
-- [x] **Button Handlers**: Updated onclick handlers untuk semua buttons
+## Perbaikan yang Dilakukan
 
-### Controller (MachineController.cs)
-- [x] **ViewBag.DowntimeReasons**: Added untuk populate modal Line Stop
+### 1. **File: `wwwroot/js/oee-logic.js`**
 
----
+#### a. Perbaikan fungsi `handleAction` (Baris 231-270)
+- **Sebelum**: Fungsi menggunakan `event.currentTarget` tanpa parameter event
+- **Sesudah**: 
+  - Menambahkan parameter `event = null` 
+  - Menambahkan fallback logic untuk mendapatkan button reference
+  - Menambahkan antiforgery token ke FormData
 
-## 📋 MANUAL TESTING CHECKLIST
-
-### Pre-requisites
-- [ ] Database seeded dengan:
-  - [ ] Work Order (Status: InProgress)
-  - [ ] Man Power data
-  - [ ] Downtime Reasons (Planned & Unplanned)
-  - [ ] Machine (Status: Aktif)
-- [ ] Application running di port 6002
-- [ ] Browser console open untuk monitoring
-
----
-
-### TEST 1: Running Button
-
-#### Scenario 1.1: Start Running (Tanpa Job Aktif)
-**Steps**:
-1. Navigate ke `/Machine/OeeDetail/M001`
-2. Pastikan tidak ada job aktif
-3. Pilih Man Power
-4. Pilih Group Injection (Merah/Biru)
-5. Click button "Running"
-
-**Expected Results**:
-- [ ] Button disabled dengan spinner "Processing..."
-- [ ] Toast notification muncul: "✅ Machine Running dimulai"
-- [ ] Timer "Durasi sejak status terakhir" reset ke 00:00:00
-- [ ] Timer mulai berjalan detik per detik (00:00:01, 00:00:02, ...)
-- [ ] Status badge berubah menjadi "AKTIF" (hijau)
-- [ ] Downtime description hilang
-- [ ] Button kembali enabled
-- [ ] Console log: "✅ Timer started from: [timestamp]"
-- [ ] Time Metrics update (Operating Time bertambah)
-- [ ] Recent Downtime table tidak ada entry baru
-
-**Database Check**:
-```sql
-SELECT * FROM JobRuns WHERE MachineId = 'M001' AND EndTime IS NULL;
--- Should have 1 row with LastStatusChangeTime = NOW()
+```javascript
+handleAction: async function (action, data = {}, event = null) {
+    // Get button from event or fallback to selector
+    let btn;
+    if (event && event.currentTarget) {
+        btn = $(event.currentTarget);
+    } else {
+        // Fallback: find button by action type
+        const btnMap = {
+            'Start': '#btn-running',
+            'Rest': '#btn-rest',
+            'LineStop': '#btn-line-stop',
+            'NoLoading': '#btn-no-loading'
+        };
+        btn = $(btnMap[action] || '#btn-running');
+    }
+    // ... rest of the code
+}
 ```
 
-#### Scenario 1.2: Start Running (Ada Downtime Aktif)
-**Steps**:
-1. Pastikan ada downtime aktif (Rest Break atau Line Stop)
-2. Click button "Running"
-
-**Expected Results**:
-- [ ] Downtime aktif di-end (EndTime != NULL)
-- [ ] DurationSeconds dihitung
-- [ ] LastStatusChangeTime di-update
-- [ ] Timer reset ke 00:00:00 dan mulai berjalan
-- [ ] Status badge tetap "AKTIF"
-- [ ] Downtime description hilang
-- [ ] Toast: "✅ Machine Running dimulai"
-
-**Database Check**:
-```sql
-SELECT * FROM DowntimeEvents WHERE EndTime IS NULL;
--- Should return 0 rows
-
-SELECT TOP 1 * FROM DowntimeEvents ORDER BY EndTime DESC;
--- EndTime should be recent, DurationSeconds > 0
-```
-
-#### Scenario 1.3: Running Tanpa Man Power
-**Steps**:
-1. Clear Man Power selection
-2. Click button "Running"
-
-**Expected Results**:
-- [ ] Alert muncul: "⚠️ Harap pilih Man Power dan Group Injection terlebih dahulu!"
-- [ ] Request tidak dikirim ke server
-- [ ] Timer tidak berubah
-
----
-
-### TEST 2: Rest Break Button
-
-#### Scenario 2.1: Start Rest Break
-**Steps**:
-1. Pastikan ada job aktif dan running
-2. Pilih Man Power & Injection
-3. Click button "Rest Break"
-
-**Expected Results**:
-- [ ] Button disabled dengan spinner
-- [ ] Toast notification: "☕ Rest Break dimulai"
-- [ ] Timer reset ke 00:00:00 dan mulai berjalan
-- [ ] Status badge tetap "AKTIF"
-- [ ] Downtime description muncul: "Rest Break"
-- [ ] Button kembali enabled
-- [ ] Time Metrics update (Downtime Total bertambah, Rest Break Time bertambah)
-- [ ] Recent Downtime table ada entry baru dengan status "Active"
-
-**Database Check**:
-```sql
-SELECT * FROM DowntimeEvents WHERE EndTime IS NULL;
--- Should have 1 row with Reason = "Rest Break"
-
-SELECT TOP 1 * FROM JobRuns WHERE MachineId = 'M001' AND EndTime IS NULL;
--- LastStatusChangeTime should be updated
-```
-
-#### Scenario 2.2: Rest Break Tanpa Validation
-**Steps**:
-1. Clear Man Power
-2. Click "Rest Break"
-
-**Expected Results**:
-- [ ] Alert: "⚠️ Harap pilih Man Power dan Group Injection terlebih dahulu!"
-- [ ] No server request
-
----
-
-### TEST 3: Line Stop Button
-
-#### Scenario 3.1: Start Line Stop
-**Steps**:
-1. Pastikan ada job aktif
-2. Pilih Man Power & Injection
-3. Click button "Line Stop"
-4. Modal muncul
-5. Pilih alasan (e.g., "Machine Breakdown")
-6. Click "Submit Line Stop"
-
-**Expected Results**:
-- [ ] Modal muncul dengan dropdown alasan
-- [ ] Dropdown berisi alasan kategori "Unplanned"
-- [ ] Submit button disabled dengan spinner
-- [ ] Toast: "🛑 Line Stop dimulai"
-- [ ] Modal close otomatis
-- [ ] Timer reset ke 00:00:00 dan mulai berjalan
-- [ ] Status badge tetap "AKTIF"
-- [ ] Downtime description muncul: [alasan yang dipilih]
-- [ ] Time Metrics update (Downtime Total bertambah)
-- [ ] Recent Downtime table ada entry baru
-
-**Database Check**:
-```sql
-SELECT d.*, r.Description, r.Category 
-FROM DowntimeEvents d
-JOIN DowntimeReasons r ON d.ReasonId = r.Id
-WHERE d.EndTime IS NULL;
--- Should have 1 row with Category = "Unplanned"
-```
-
-#### Scenario 3.2: Line Stop Tanpa Pilih Alasan
-**Steps**:
-1. Open modal
-2. Click submit tanpa pilih alasan
-
-**Expected Results**:
-- [ ] Alert: "❌ Pilih alasan LINE STOP terlebih dahulu"
-- [ ] Modal tetap terbuka
-
----
-
-### TEST 4: No Loading Button
-
-#### Scenario 4.1: Set No Loading
-**Steps**:
-1. Pastikan ada job aktif
-2. Pilih Man Power & Injection
-3. Click button "NoLoading"
-4. Modal muncul
-5. Click "Ya, Set No Loading"
-
-**Expected Results**:
-- [ ] Modal muncul dengan konfirmasi
-- [ ] Submit button disabled dengan spinner
-- [ ] Toast: "⏳ No Loading aktif"
-- [ ] Modal close otomatis
-- [ ] Timer reset ke 00:00:00 dan mulai berjalan
-- [ ] Status badge tetap "AKTIF"
-- [ ] Downtime description: "No Loading"
-- [ ] Time Metrics update (No Loading Time bertambah)
-
-**Database Check**:
-```sql
-SELECT d.*, r.Description 
-FROM DowntimeEvents d
-JOIN DowntimeReasons r ON d.ReasonId = r.Id
-WHERE d.EndTime IS NULL;
--- Should have 1 row with Description = "No Loading"
-```
-
----
-
-### TEST 5: Timer Synchronization
-
-#### Scenario 5.1: Timer Real-time Update
-**Steps**:
-1. Start Running
-2. Observe timer selama 10 detik
-
-**Expected Results**:
-- [ ] Timer update setiap detik
-- [ ] Format: HH:MM:SS (e.g., 00:00:01, 00:00:02, ...)
-- [ ] Tidak ada skip atau jump
-- [ ] Console log tidak ada error
-
-#### Scenario 5.2: Timer Persistence (Page Refresh)
-**Steps**:
-1. Start Running
-2. Wait 30 seconds
-3. Refresh page (F5)
-
-**Expected Results**:
-- [ ] Timer continue dari waktu yang benar (sekitar 00:00:30+)
-- [ ] Tidak reset ke 00:00:00
-- [ ] Sinkron dengan backend LastStatusChangeTime
-
----
-
-### TEST 6: OEE Calculation Integration
-
-#### Scenario 6.1: OEE Metrics Update After Actions
-**Steps**:
-1. Note initial OEE metrics (OEE%, Availability%, Performance%, Quality%)
-2. Start Running for 60 seconds
-3. Start Rest Break for 30 seconds
-4. Start Running again
-5. Observe OEE metrics
-
-**Expected Results**:
-- [ ] Availability% berubah (karena downtime bertambah)
-- [ ] Operating Time bertambah saat Running
-- [ ] Downtime Total bertambah saat Rest Break
-- [ ] Rest Break Time bertambah
-- [ ] OEE% recalculated correctly
-- [ ] Formula: OEE = Availability × Performance × Quality
-
-**Formula Verification**:
-```
-Availability = (Operating Time / Planned Production Time) × 100
-Performance = (Standar CT × Total Output) / Operating Time × 100
-Quality = (Good Count / Total Count) × 100
-OEE = (Availability / 100) × (Performance / 100) × (Quality / 100) × 100
-```
-
----
-
-### TEST 7: Real-time Updates (SignalR)
-
-#### Scenario 7.1: Multi-tab Synchronization
-**Steps**:
-1. Open 2 browser tabs dengan URL yang sama
-2. Di Tab 1: Start Running
-3. Observe Tab 2
-
-**Expected Results**:
-- [ ] Tab 2 timer update otomatis
-- [ ] Tab 2 status badge update
-- [ ] Tab 2 downtime description update
-- [ ] Tab 2 Time Metrics update
-- [ ] Console log di Tab 2: "📡 ReceiveRealTimeSync received"
-
----
-
-### TEST 8: Switch Between Actions
-
-#### Scenario 8.1: Running → Rest Break → Running
-**Steps**:
-1. Start Running (wait 10s)
-2. Start Rest Break (wait 10s)
-3. Start Running again
-
-**Expected Results**:
-- [ ] Each action resets timer ke 00:00:00
-- [ ] Timer berjalan dari 0 setiap kali
-- [ ] Downtime description update sesuai action
-- [ ] Database: DowntimeEvents closed correctly
-- [ ] LastStatusChangeTime updated setiap action
-
-#### Scenario 8.2: Rest Break → Line Stop
-**Steps**:
-1. Start Rest Break
-2. Immediately start Line Stop
-
-**Expected Results**:
-- [ ] Rest Break downtime di-end otomatis
-- [ ] Line Stop downtime created
-- [ ] Timer reset
-- [ ] No duplicate downtime entries
-
----
-
-### TEST 9: Time Metrics Real-time
-
-#### Scenario 9.1: Operating Time Increment
-**Steps**:
-1. Start Running
-2. Observe "Operating Time" di Time Metrics card
-3. Wait 60 seconds
-
-**Expected Results**:
-- [ ] Operating Time bertambah setiap detik
-- [ ] Format: HH:MM:SS
-- [ ] Increment smooth (tidak jump)
-
-#### Scenario 9.2: Downtime Total Increment
-**Steps**:
-1. Start Rest Break
-2. Observe "Downtime Total"
-3. Wait 60 seconds
-
-**Expected Results**:
-- [ ] Downtime Total bertambah setiap detik
-- [ ] Rest Break Time bertambah setiap detik
-
----
-
-### TEST 10: Recent Downtime Table
-
-#### Scenario 10.1: New Entry After Downtime
-**Steps**:
-1. Start Line Stop dengan alasan "Machine Breakdown"
-2. Wait 30 seconds
-3. Start Running
-4. Check "Recent Downtimes" table
-
-**Expected Results**:
-- [ ] Table ada entry baru
-- [ ] Reason: "Machine Breakdown"
-- [ ] Category: "Unplanned"
-- [ ] Duration: ~00:00:30
-- [ ] Status: "Closed" (badge hijau)
-
----
-
-## 🐛 Known Issues & Limitations
-
-1. **Timer Drift**: Client-side timer mungkin drift jika tab inactive. Solusi: Refresh dari server setiap 2 detik.
-2. **Modal Validation**: Form validation hanya client-side. Backend juga validate.
-3. **Race Condition**: Multiple rapid clicks bisa create duplicate entries. Solusi: Disable button saat processing.
-
----
-
-## 📊 Performance Metrics
-
-Target:
-- [ ] Timer update latency < 100ms
-- [ ] SignalR broadcast latency < 500ms
-- [ ] Page load time < 2s
-- [ ] No memory leaks after 1 hour operation
-
----
-
-## ✅ Sign-off
-
-**Tested By**: _________________
-**Date**: _________________
-**Environment**: Development / Staging / Production
-**Result**: PASS / FAIL
-
-**Notes**:
-_________________________________________________________________
-_________________________________________________________________
-_________________________________________________________________
+#### b. Perbaikan event listener untuk tombol Running (Baris 484)
+- **Sebelum**: `$('#btn-running').on('click', (e) => this.handleAction('Start'));`
+- **Sesudah**: `$('#btn-running').on('click', (e) => this.handleAction('Start', {}, e));`
+
+### 2. **File: `Controllers/OperatorController.cs`**
+- Menambahkan `using OeeSystem.Services;` untuk mengatasi error CS0246
+
+### 3. **File: `Program.cs`**
+- Menghapus duplikasi registrasi `IOeeService`
+
+## Cara Testing
+
+### Prerequisites
+1. Pastikan aplikasi sudah running: `dotnet run`
+2. Buka browser dan akses: `http://localhost:6001`
+3. Login sebagai operator (jika ada authentication)
+4. Navigasi ke halaman OEE Detail untuk salah satu mesin
+
+### Test Case 1: Tombol Running
+**Langkah:**
+1. Pilih **Man Power** dari dropdown
+2. Pilih **Group Injection** (Merah atau Biru)
+3. Klik tombol **Running** (hijau dengan icon play)
+
+**Expected Result:**
+- Tombol menampilkan spinner loading
+- Status mesin berubah menjadi "AKTIF"
+- Badge status di navbar berubah menjadi hijau
+- Timer "Durasi sejak status terakhir" mulai berjalan
+- Production timer mulai berjalan
+- Tombol Running menjadi disabled (tidak bisa diklik lagi)
+- Tombol lain (Rest Break, Line Stop, No Loading) tetap enabled
+
+### Test Case 2: Tombol Rest Break
+**Langkah:**
+1. Pastikan mesin dalam status Running
+2. Klik tombol **Rest Break** (kuning dengan icon pause)
+
+**Expected Result:**
+- Tombol menampilkan spinner loading
+- Status berubah menjadi "REST BREAK"
+- Downtime description muncul di header
+- Timer "Durasi sejak status terakhir" reset dan mulai dari 0
+- Production timer berhenti
+- Tombol Rest Break menjadi disabled
+- Tombol Running kembali enabled
+
+### Test Case 3: Tombol Line Stop
+**Langkah:**
+1. Klik tombol **Line Stop** (merah dengan icon stop)
+2. Modal "Line Stop" muncul
+3. Pilih alasan dari dropdown (contoh: "Machine Failure")
+4. Klik **Submit Line Stop**
+
+**Expected Result:**
+- Modal tertutup
+- Status berubah menjadi "LINE STOP"
+- Downtime description menampilkan alasan yang dipilih
+- Timer reset dan mulai menghitung durasi downtime
+- Production timer berhenti
+- Tombol Line Stop menjadi disabled
+
+### Test Case 4: Tombol No Loading
+**Langkah:**
+1. Klik tombol **No Loading** (biru dengan icon hourglass)
+2. Modal konfirmasi muncul
+3. Klik **Ya, Set No Loading**
+
+**Expected Result:**
+- Modal tertutup
+- Status berubah menjadi "NO LOADING"
+- Current Job card menjadi opacity 25% dan tidak bisa diklik
+- Timer reset dan mulai menghitung
+- Tombol No Loading menjadi disabled
+
+### Test Case 5: Validasi Input
+**Langkah:**
+1. **JANGAN** pilih Man Power atau Injection
+2. Coba klik salah satu tombol action
+
+**Expected Result:**
+- Alert muncul: "⚠️ Harap pilih Man Power dan Group Injection terlebih dahulu!"
+- Tidak ada request ke server
+- Status mesin tidak berubah
+
+### Test Case 6: Persistence
+**Langkah:**
+1. Pilih Man Power dan Injection
+2. Klik Running
+3. Refresh halaman (F5)
+
+**Expected Result:**
+- Man Power dan Injection yang dipilih tetap tersimpan (localStorage)
+- Status mesin tetap "RUNNING"
+- Timer melanjutkan dari waktu terakhir
+
+## Debugging Tips
+
+### Jika tombol masih tidak bisa diklik:
+
+1. **Buka Browser Console** (F12 → Console tab)
+   - Cek apakah ada error JavaScript
+   - Cek apakah `window.OeeApp` sudah ter-initialize
+   - Ketik: `window.OeeApp` dan tekan Enter, seharusnya menampilkan object
+
+2. **Cek Network Tab** (F12 → Network tab)
+   - Klik tombol Running
+   - Lihat apakah ada request ke `/Operator/Start`
+   - Cek response status (200 = OK, 400/500 = Error)
+
+3. **Cek Element Inspector** (F12 → Elements tab)
+   - Klik kanan pada tombol → Inspect
+   - Cek apakah ada attribute `disabled` atau class `disabled`
+   - Cek apakah ada CSS yang menghalangi klik (z-index, pointer-events)
+
+4. **Cek jQuery**
+   - Di console, ketik: `$('#btn-running').length`
+   - Seharusnya return `1` (artinya element ditemukan)
+   - Ketik: `$('#btn-running').prop('disabled')`
+   - Seharusnya return `false` (artinya tidak disabled)
+
+### Common Issues:
+
+**Issue 1: "validateInputs() returns false"**
+- **Cause**: Man Power atau Injection belum dipilih
+- **Fix**: Pilih kedua input tersebut sebelum klik tombol
+
+**Issue 2: "401 Unauthorized"**
+- **Cause**: Antiforgery token tidak valid
+- **Fix**: Refresh halaman untuk mendapatkan token baru
+
+**Issue 3: "404 Not Found"**
+- **Cause**: Route `/Operator/Start` tidak ditemukan
+- **Fix**: Pastikan `OperatorController.cs` memiliki method `Start`
+
+**Issue 4: "SignalR connection error"**
+- **Cause**: SignalR hub tidak bisa connect
+- **Fix**: Ini tidak mempengaruhi fungsi tombol, hanya real-time update yang tidak jalan
+
+## Checklist Sebelum Testing
+- [ ] Build berhasil tanpa error (`dotnet build`)
+- [ ] Aplikasi running di port 6001/6002
+- [ ] Database connection OK
+- [ ] Browser console tidak ada error saat load halaman
+- [ ] Man Power dropdown terisi dengan data
+- [ ] Injection radio buttons berfungsi
+
+## Expected Behavior Summary
+
+| Action | Button State After | Status Display | Timer Behavior |
+|--------|-------------------|----------------|----------------|
+| **Running** | Running: Disabled<br>Others: Enabled | AKTIF (Green) | Machine timer: Running<br>Production timer: Running |
+| **Rest Break** | Rest: Disabled<br>Others: Enabled | REST BREAK (Yellow) | Machine timer: Running<br>Production timer: Stopped |
+| **Line Stop** | Line Stop: Disabled<br>Others: Enabled | LINE STOP (Red) | Machine timer: Running<br>Production timer: Stopped |
+| **No Loading** | No Loading: Disabled<br>Others: Enabled | NO LOADING (Blue) | Machine timer: Running<br>Production timer: Stopped<br>Job card: Disabled |
+
+## Notes
+- Semua action memerlukan Man Power dan Injection dipilih terlebih dahulu
+- Hanya satu status yang bisa aktif pada satu waktu
+- Timer "Durasi sejak status terakhir" selalu berjalan selama ada job aktif
+- Production timer hanya berjalan saat status RUNNING

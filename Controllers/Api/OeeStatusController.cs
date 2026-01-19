@@ -98,11 +98,55 @@ public class OeeStatusController : ControllerBase
                 }
                 : null;
 
+            // ✅ PERBAIKAN: Ambil detail downtime jika ada
+            var activeDowntime = hasActiveDowntime 
+                ? await _context.DowntimeEvents
+                    .Include(d => d.Reason)
+                    .Where(d => d.JobRunId == activeJob.Id && d.EndTime == null)
+                    .OrderByDescending(d => d.StartTime)
+                    .FirstOrDefaultAsync()
+                : null;
+
+            object? downtimeStatus = null;
+            string statusText = "Idle";
+
+            if (activeDowntime != null)
+            {
+                // Tentukan status text berdasarkan tipe downtime
+                if (activeDowntime.IsRestBreak || (activeDowntime.Reason?.Description?.Contains("Rest", StringComparison.OrdinalIgnoreCase) == true))
+                    statusText = "Rest Break";
+                else if (activeDowntime.IsNoLoading || (activeDowntime.Reason?.Description?.Contains("No Loading", StringComparison.OrdinalIgnoreCase) == true))
+                    statusText = "No Loading";
+                else if (activeDowntime.IsLineStop)
+                    statusText = "Line Stop";
+                else
+                    statusText = activeDowntime.Reason?.Description ?? "Downtime";
+
+                downtimeStatus = new 
+                {
+                    id = activeDowntime.Id,
+                    reason = activeDowntime.Reason?.Description ?? "Unknown",
+                    startTimeUtc = activeDowntime.StartTime.ToUniversalTime().ToString("O"),
+                    isRestBreak = activeDowntime.IsRestBreak,
+                    isLineStop = activeDowntime.IsLineStop,
+                    isNoLoading = activeDowntime.IsNoLoading
+                };
+            }
+            else if (runningStatus != null)
+            {
+                statusText = "Running";
+            }
+            else if (dandoriStatus != null)
+            {
+                statusText = "Dandori";
+            }
+
             return Ok(new
             {
-                status = runningStatus != null ? "Running" : (dandoriStatus != null ? "Dandori" : "Idle"),
+                status = statusText,
                 running = runningStatus,
-                dandori = dandoriStatus
+                dandori = dandoriStatus,
+                downtime = downtimeStatus
             });
         }
         catch (Exception ex)

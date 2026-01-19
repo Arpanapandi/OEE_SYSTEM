@@ -141,7 +141,7 @@ public static class ScwDataSeeder
     {
         try 
         {
-            await context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT produksi.{tableName} ON");
+            await context.Database.ExecuteSqlAsync($"SET IDENTITY_INSERT produksi.{tableName} ON");
         }
         catch (Exception ex)
         {
@@ -153,7 +153,7 @@ public static class ScwDataSeeder
     {
         try 
         {
-            await context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT produksi.{tableName} OFF");
+            await context.Database.ExecuteSqlAsync($"SET IDENTITY_INSERT produksi.{tableName} OFF");
         }
         catch (Exception ex)
         {
