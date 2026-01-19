@@ -1,0 +1,28 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+@{
+    var shiftDateStr = Model.ShiftDate.ToString("yyyy-MM-dd");
+}
+
+<div id="shift-meta"
+     data-shift-key="@Model.ShiftKey"
+     data-shift-date="@shiftDateStr"
+     data-shift-code="@Model.ShiftCode"
+     data-shift-id="@(Model.ShiftId?.ToString() ?? "")"></div>
+
+<div class="row">
+    <div class="col-12">
+        <h4 class="mb-3">
+            @ViewData["Title"]
+            <small class="text-muted d-block d-md-inline ms-md-3 fs-6">
+                @ViewData["ShiftName"] (@ViewData["ShiftTime"])
+            </small>
+        </h4>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item"><a href="/Machine/Index">Machines</a></li>
+                <li class="breadcrumb-item active" aria-current="page">@Model.MachineName</li>
+            </ol>
+        </nav>
+    </div>
+</div>

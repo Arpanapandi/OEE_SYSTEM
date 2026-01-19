@@ -1,0 +1,63 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Data for Charts via attributes or JSON -->
+<!-- Data for Charts via attributes or JSON -->
+<div id="chart-data-container" style="display:none;"
+     data-runtime="@((Model.ChartData?.RunTimeMinutes ?? 0))"
+     data-idletime="@((Model.ChartData?.IdleTimeMinutes ?? 0))"
+     data-offtime="@((Model.ChartData?.OffTimeMinutes ?? 0))"
+     data-oee-availability="@((Model.ChartData?.Availability ?? 0))"
+     data-oee-performance="@((Model.ChartData?.Performance ?? 0))"
+     data-oee-quality="@((Model.ChartData?.Quality ?? 0))"
+     data-weekly-trend='@Html.Raw(JsonSerializer.Serialize(Model.ChartData?.WeeklyTrend ?? new List<OeeSystem.Models.ViewModels.WeeklyTrendData>()))'>
+</div>
+
+<!-- Machine Run Time Donut Chart -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-clock me-2"></i>Machine Run Time (min)
+            </div>
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <canvas id="runTimeDonutChart" style="height: 250px !important; max-height: 250px !important;"></canvas>
+                <div class="text-center mt-3">
+                    <div class="fw-bold">Total @((Model.ChartData?.RunTimeMinutes ?? 0) + (Model.ChartData?.IdleTimeMinutes ?? 0) + (Model.ChartData?.OffTimeMinutes ?? 0))</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- OEE Analysis Bar Chart -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-chart-bar me-2"></i>OEE Analysis
+            </div>
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <canvas id="oeeBarChart" style="height: 250px !important; max-height: 250px !important;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Machine Operation Trend -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="glass-card" style="margin-bottom: 0;">
+            <div class="glass-card-header" style="padding: 1rem 1.25rem;">
+                <i class="fa-solid fa-chart-line me-2"></i>Machine Operation Trend
+            </div>
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <canvas id="weeklyTrendChart" style="height: 250px !important; max-height: 250px !important;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Note: Chart initialization scripts will be in a dedicated JS file or block in main view
+    // checking for #runTimeDonutChart, #oeeBarChart etc.
+</script>

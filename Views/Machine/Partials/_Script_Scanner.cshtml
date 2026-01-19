@@ -1,0 +1,470 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<script>
+    // ========== SCANNER FUNCTIONALITY (QUAGGA2 + HTML5-QRCODE) ==========
+    let quaggaInitialized = false;
+    let html5QrCode = null; // For QR code
+    let currentScanTarget = null; // 'part-number' or 'lot-number' or 'nama-compound'
+    let scannerLibraryLoaded = false;
+    let qrCodeLibraryLoaded = false;
+    let availableCameras = [];
+    let currentCameraId = null;
+    let cameraIndex = 0;
+    let scanCooldown = false; // Cooldown to prevent duplicate scans
+    
+    // Load Quagga2 library (for barcode)
+    function loadScannerLibrary() {
+        return new Promise((resolve, reject) => {
+            if (typeof Quagga !== 'undefined') {
+                scannerLibraryLoaded = true;
+                resolve();
+                return;
+            }
+            
+            // Load Quagga2 CSS
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/quagga@0.12.1/dist/quagga.min.css';
+            document.head.appendChild(link);
+            
+            // Load Quagga2 JS
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/quagga@0.12.1/dist/quagga.min.js';
+            script.async = true;
+            script.onload = () => {
+                scannerLibraryLoaded = true;
+                console.log('✅ Quagga2 library loaded');
+                resolve();
+            };
+            script.onerror = () => {
+                console.error('❌ Failed to load Quagga2 library');
+                reject(new Error('Failed to load Quagga2 library'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    
+    // Load html5-qrcode library (for QR code)
+    function loadQrCodeLibrary() {
+        return new Promise((resolve, reject) => {
+            if (typeof Html5Qrcode !== 'undefined') {
+                qrCodeLibraryLoaded = true;
+                resolve();
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+            script.async = true;
+            script.onload = () => {
+                qrCodeLibraryLoaded = true;
+                console.log('✅ html5-qrcode library loaded');
+                resolve();
+            };
+            script.onerror = () => {
+                console.error('❌ Failed to load html5-qrcode library');
+                reject(new Error('Failed to load html5-qrcode library'));
+            };
+            document.head.appendChild(script);
+        });
+    }
+    
+    // Initialize scanner functionality
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🔧 Initializing scanner event listeners...');
+        try {
+            // Scanner Button mappings
+            const scanButtons = {
+                'btn-scan-nomor-lot': 'nomor-lot',
+                'btn-scan-lot-bo': 'lot-bo',
+                'btn-scan-nama-compound': 'nama-compound'
+            };
+
+            for (const [btnId, target] of Object.entries(scanButtons)) {
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        currentScanTarget = target;
+                        openScanner();
+                    });
+                }
+            }
+
+            // Edit Buttons
+            const editMappings = {
+                'btn-edit-nomor-lot': 'input-nomor-lot',
+                'btn-edit-lot-bo': 'input-lot-bo',
+                'btn-edit-nama-compound': 'input-nama-compound'
+            };
+
+            Object.keys(editMappings).forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                if (btn) {
+                    btn.addEventListener('click', function() {
+                        const input = document.getElementById(editMappings[btnId]);
+                        if (input) {
+                            input.disabled = false;
+                            input.focus();
+                            input.select();
+                        }
+                    });
+                }
+            });
+
+            // Stop Scanner Button
+            const btnStopScanner = document.getElementById('btn-stop-scanner');
+            if (btnStopScanner) {
+                btnStopScanner.addEventListener('click', function() {
+                    stopScanner();
+                });
+            }
+
+            // Close modal events - stop scanner
+            const scannerModal = document.getElementById('scannerModal');
+            if (scannerModal) {
+                scannerModal.addEventListener('hidden.bs.modal', function() {
+                    stopScanner();
+                    const backdrop = document.getElementById('scannerModalBackdrop');
+                    if (backdrop) backdrop.remove();
+                });
+
+                const closeButtons = scannerModal.querySelectorAll('[data-bs-dismiss="modal"], .btn-close');
+                closeButtons.forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const backdrop = document.getElementById('scannerModalBackdrop');
+                        if (backdrop) backdrop.remove();
+                        // Bootstrap handles hiding the modal via data-bs-dismiss
+                        stopScanner();
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Error initializing scanner functionality:', error);
+        }
+    });
+    
+    window.openScanner = async function() {
+        console.log('🔧 openScanner called, target:', currentScanTarget);
+        
+        const scannerModalEl = document.getElementById('scannerModal');
+        if (!scannerModalEl) {
+            alert('Error: Scanner modal tidak ditemukan.');
+            return;
+        }
+
+        // Cleanup old state
+        const oldBackdrop = document.querySelector('.modal-backdrop');
+        if (oldBackdrop) oldBackdrop.remove();
+        
+        scannerModalEl.classList.remove('show');
+        scannerModalEl.style.display = 'none';
+        document.body.classList.remove('modal-open');
+
+        // Update title
+        const targetLabel = document.getElementById('scanner-target-label');
+        if (targetLabel) {
+            if (currentScanTarget === 'lot-bo') targetLabel.textContent = 'Lot BO';
+            else if (currentScanTarget === 'nomor-lot') targetLabel.textContent = 'Nomor Lot';
+            else if (currentScanTarget === 'nama-compound') targetLabel.textContent = 'Nama Compound';
+            else targetLabel.textContent = 'Barcode/QR Code';
+        }
+        
+        // Stop existing scanners
+        await stopScannerInternal();
+        
+        // Reset container UI
+        const scannerReader = document.getElementById('scanner-reader');
+        if (scannerReader) {
+            scannerReader.innerHTML = `
+                <canvas id="scanner-canvas" style="display: none;"></canvas>
+                <video id="scanner-video" style="width: 100%; height: auto; display: block;"></video>
+                <div id="scanner-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
+            `;
+        }
+        
+        // Load libraries waterfall
+        if (!scannerLibraryLoaded) {
+            try { await loadScannerLibrary(); } catch (e) { console.error(e); }
+        }
+        if (!qrCodeLibraryLoaded) {
+            try { await loadQrCodeLibrary(); } catch (e) { console.error(e); }
+        }
+        
+        if (typeof Quagga === 'undefined' && typeof Html5Qrcode === 'undefined') {
+            alert('Scanner library gagal dimuat. Silakan refresh halaman.');
+            return;
+        }
+        
+        // Initialize logic wrapped function
+        const initializeScanner = async () => {
+             // Check permissions
+             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Browser tidak mendukung akses kamera. Pastikan menggunakan HTTPS atau localhost.');
+                stopScanner();
+                return;
+            }
+            
+            try {
+                // Request Permission
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                stream.getTracks().forEach(track => track.stop()); // Stop immediately
+                
+                // Enumerate Devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                availableCameras = devices.filter(device => device.kind === 'videoinput');
+                
+                // Select Camera
+                let selectedCameraId = null;
+                if (availableCameras.length > 1) {
+                    const backCamera = availableCameras.find(cam => 
+                        cam.label.toLowerCase().includes('back') || 
+                        cam.label.toLowerCase().includes('rear') ||
+                        cam.label.toLowerCase().includes('environment')
+                    );
+                    selectedCameraId = backCamera ? backCamera.deviceId : availableCameras[1].deviceId;
+                    
+                    const btnSwitchCamera = document.getElementById('btn-switch-camera');
+                    if (btnSwitchCamera) {
+                        btnSwitchCamera.style.display = 'inline-block';
+                        btnSwitchCamera.onclick = window.switchCamera;
+                    }
+                } else if (availableCameras.length === 1) {
+                    selectedCameraId = availableCameras[0].deviceId;
+                }
+                
+                currentCameraId = selectedCameraId;
+                cameraIndex = selectedCameraId ? availableCameras.findIndex(c => c.deviceId === selectedCameraId) : 0;
+                
+                await startScanning();
+                
+            } catch (permErr) {
+                console.error('Camera access denied or error:', permErr);
+                alert('Akses kamera ditolak. Silakan izinkan akses kamera.');
+                stopScanner();
+            }
+        };
+
+        // Open Modal
+        try {
+            let modalInstance = bootstrap.Modal.getInstance(scannerModalEl);
+            if (modalInstance) modalInstance.dispose();
+            
+            modalInstance = new bootstrap.Modal(scannerModalEl, { backdrop: 'static', keyboard: true });
+            
+            scannerModalEl.addEventListener('shown.bs.modal', async function() {
+                await initializeScanner();
+            }, { once: true });
+            
+            modalInstance.show();
+        } catch (err) {
+            console.error('Error opening modal:', err);
+            alert('Gagal membuka scanner: ' + err.message);
+        }
+    };
+    
+    async function stopScannerInternal() {
+         if (quaggaInitialized && typeof Quagga !== 'undefined') {
+            try {
+                Quagga.stop();
+                Quagga.offDetected();
+                quaggaInitialized = false;
+            } catch (e) {}
+        }
+        if (html5QrCode && typeof Html5Qrcode !== 'undefined') {
+            try {
+                await html5QrCode.stop();
+                html5QrCode.clear();
+                html5QrCode = null;
+            } catch (e) {}
+        }
+    }
+        
+    window.switchCamera = async function() {
+        if (availableCameras.length <= 1) {
+            alert('Hanya ada satu camera yang tersedia.');
+            return;
+        }
+        try {
+            Quagga.stop();
+            Quagga.offDetected();
+            quaggaInitialized = false;
+            
+            cameraIndex = (cameraIndex + 1) % availableCameras.length;
+            currentCameraId = availableCameras[cameraIndex].deviceId;
+            
+            await startScanning(); // Restart with new ID logic handling inside startScanning if customized
+            // NOTE: Simple Quagga restart logic from original script
+             const scannerContainer = document.getElementById('scanner-container');
+             const containerWidth = scannerContainer ? scannerContainer.offsetWidth : 640;
+             const containerHeight = scannerContainer ? scannerContainer.offsetHeight : 480;
+             
+              Quagga.init({
+                 inputStream: {
+                    name: "Live", type: "LiveStream",
+                    target: document.querySelector('#scanner-reader'),
+                    constraints: {
+                        width: containerWidth, height: containerHeight,
+                        deviceId: { exact: currentCameraId }
+                    }
+                },
+                decoder: { readers: ["code_128_reader", "ean_reader", "code_39_reader"] },
+                locate: true
+             }, function(err) {
+                 if(!err) {
+                     Quagga.start();
+                     quaggaInitialized = true;
+                     Quagga.onDetected(function(result) {
+                        if (scanCooldown) return;
+                        if (result.codeResult && result.codeResult.code) handleScanSuccess(result.codeResult.code);
+                    });
+                 }
+             });
+
+        } catch (err) {
+            alert('Gagal switch camera');
+        }
+    };
+
+    async function startScanning() {
+        const scannerReader = document.getElementById('scanner-reader');
+        if (!scannerReader) return;
+        
+        const scannerContainer = document.getElementById('scanner-container');
+        const containerWidth = scannerContainer ? scannerContainer.offsetWidth : 640;
+        const containerHeight = scannerContainer ? scannerContainer.offsetHeight : 480;
+        const qrboxWidth = Math.max(250, Math.min(containerWidth * 0.7, 300));
+
+        // 1. Try html5-qrcode
+        if (typeof Html5Qrcode !== 'undefined') {
+            try {
+                html5QrCode = new Html5Qrcode("scanner-reader");
+                const cameraConfig = currentCameraId ? { deviceId: { exact: currentCameraId } } : { facingMode: "environment" };
+                
+                await html5QrCode.start(
+                    cameraConfig,
+                    { fps: 10, qrbox: { width: qrboxWidth, height: qrboxWidth }, aspectRatio: 1.0 },
+                    (text) => {
+                        if (!scanCooldown) handleScanSuccess(text);
+                    }
+                );
+                return;
+            } catch (err) {
+                console.warn('html5-qrcode success failed, trying Quagga...', err);
+                if(html5QrCode) { try{ await html5QrCode.stop(); }catch(e){} html5QrCode = null; }
+            }
+        }
+
+        // 2. Try Quagga2
+        if (typeof Quagga !== 'undefined') {
+             scannerReader.innerHTML = '<div id="quagga-reader" style="width:100%;height:100%;"></div>';
+             Quagga.init({
+                inputStream: {
+                    name: "Live", type: "LiveStream",
+                    target: document.querySelector('#quagga-reader'),
+                    constraints: {
+                        width: containerWidth, height: containerHeight,
+                        facingMode: "environment",
+                        deviceId: currentCameraId ? { exact: currentCameraId } : undefined
+                    }
+                },
+                decoder: { readers: ["code_128_reader", "code_39_reader", "ean_reader"] }
+            }, function(err) {
+                if (!err) {
+                    Quagga.start();
+                    quaggaInitialized = true;
+                    Quagga.onDetected((res) => {
+                        if (!scanCooldown && res.codeResult.code) handleScanSuccess(res.codeResult.code);
+                    });
+                }
+            });
+        }
+    }
+    
+    window.stopScanner = function() {
+        stopScannerInternal();
+    }
+
+    async function handleScanSuccess(decodedText) {
+        if (!decodedText) return;
+        decodedText = decodedText.trim();
+        
+        // Cooldown
+        scanCooldown = true;
+        setTimeout(() => { scanCooldown = false; }, 2000);
+
+        console.log('✅ Scan successful:', decodedText, 'Target:', currentScanTarget);
+
+        if ((currentScanTarget === 'lot-bo' || currentScanTarget === 'nomor-lot') && decodedText.length > 12) {
+             alert(`Code terlalu panjang (max 12 karakter): ${decodedText}`);
+             return;
+        }
+
+        // Validasi Lot BO
+        if (currentScanTarget === 'lot-bo') {
+            try {
+                const resp = await fetch(`/api/Scanner/komponen/validate/${encodeURIComponent(decodedText)}`);
+                const res = await resp.json();
+                if (!res.success) {
+                    alert('Lot BO tidak ditemukan: ' + decodedText);
+                    return;
+                }
+            } catch (e) {
+                alert('Error validasi Lot BO');
+                return;
+            }
+        }
+        
+        stopScanner();
+        
+        // Close modal
+        const scannerModalEl = document.getElementById('scannerModal');
+        if (scannerModalEl) {
+            const modal = bootstrap.Modal.getInstance(scannerModalEl);
+            if (modal) modal.hide();
+             // Force cleanup
+            const backdrop = document.querySelector('.modal-backdrop');
+            if (backdrop) backdrop.remove();
+        }
+
+        // Fill Input
+        let inputId;
+        if (currentScanTarget === 'lot-bo') inputId = 'input-lot-bo';
+        else if (currentScanTarget === 'nomor-lot') inputId = 'input-nomor-lot';
+        else if (currentScanTarget === 'nama-compound') inputId = 'input-nama-compound';
+        else if (currentScanTarget === 'berat-act') inputId = 'input-berat-act';
+        
+        if (inputId) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.disabled = false;
+                input.readOnly = false;
+                
+                if (currentScanTarget === 'berat-act') {
+                    const val = parseFloat(decodedText);
+                    if (!isNaN(val) && val >= 0) input.value = val.toFixed(2);
+                    else alert('Berat Act tidak valid');
+                } else {
+                    input.value = decodedText;
+                }
+                
+                // Trigger events
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                input.classList.add('border-success');
+                setTimeout(() => input.classList.remove('border-success'), 2000);
+                
+                if (typeof showToast === 'function') showToast(`Scan Berhasil: ${decodedText}`, 'success');
+
+                // Trigger downstream logic
+                if (currentScanTarget === 'lot-bo' || currentScanTarget === 'nomor-lot') {
+                     setTimeout(() => {
+                        if (typeof checkAndLoadKomponen === 'function') checkAndLoadKomponen();
+                    }, 500);
+                }
+                if (typeof checkAllInputsComplete === 'function') setTimeout(checkAllInputsComplete, 600);
+            }
+        }
+    }
+</script>

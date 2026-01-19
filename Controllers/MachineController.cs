@@ -406,7 +406,8 @@ public class MachineController : Controller
             TotalCount = totalCount,
             GoodCount = goodCount,
             RejectCount = rejectCount,
-            HasActiveRestBreak = hasActiveRestBreak // ✅ Status Rest Break aktif
+            HasActiveRestBreak = hasActiveRestBreak, // ✅ Status Rest Break aktif
+            IsNoLoading = activeJob?.DowntimeEvents.Any(d => d.EndTime == null && d.IsNoLoading) ?? false // ✅ Status No Loading aktif
         };
 
         // Active Job Info
@@ -631,6 +632,26 @@ public class MachineController : Controller
             })
             .ToList();
 
+        // Populate Form Data
+        vm.ManPowerList = await _context.ManPowers.Where(m => m.IsActive).OrderBy(m => m.Value).ToListAsync();
+        vm.ActiveManPowerId = activeJob?.ManPowerId;
+        vm.ActiveInjection = activeJob?.InjectionGroup ?? "MERAH";
+
+        // Chart Data
+        vm.ChartData = new ChartDataViewModel
+        {
+            RunTimeMinutes = operatingTime.TotalMinutes,
+            IdleTimeMinutes = downtimeTotal.TotalMinutes,
+            OffTimeMinutes = (totalShiftTime - operatingTime - downtimeTotal).TotalMinutes,
+            
+            Oee = oeeResult.Oee,
+            Availability = oeeResult.Availability,
+            Performance = oeeResult.Performance,
+            Quality = oeeResult.Quality,
+            
+            WeeklyTrend = new List<WeeklyTrendData>() 
+        };
+
         // Action Buttons Data
         var plannedRests = await _context.DowntimeReasons
             .Where(r => r.Category == "Planned")
@@ -736,21 +757,7 @@ public class MachineController : Controller
         vm.ActiveDowntimeDescription = openDowntimeForStatus?.Reason?.Description;
         vm.MachineStatus = machine.Status; // Status dari Admin (Aktif/TidakAktif)
 
-        // Chart Data - gunakan data shift
-        var runTimeMinutes = operatingTime.TotalMinutes;
-        var idleTimeMinutes = 0;
-        var offTimeMinutes = downtimeTotal.TotalMinutes;
 
-        vm.ChartData = new ChartDataViewModel
-        {
-            RunTimeMinutes = runTimeMinutes,
-            IdleTimeMinutes = idleTimeMinutes,
-            OffTimeMinutes = offTimeMinutes,
-            OeeValue = oeeResult.Oee,
-            AvailabilityValue = oeeResult.Availability,
-            PerformanceValue = oeeResult.Performance,
-            QualityValue = oeeResult.Quality
-        };
 
         // Weekly Trend Data (7 hari terakhir) tetap disajikan per hari untuk konteks historis
         var startOfWeek = now.Date.AddDays(-6);

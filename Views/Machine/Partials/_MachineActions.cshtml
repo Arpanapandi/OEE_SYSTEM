@@ -1,0 +1,97 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+@using OeeSystem.Models
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="glass-card">
+            <div class="glass-card-header d-flex justify-content-between align-items-center" style="padding: 0.75rem 1rem;">
+                <div>
+                    <i class="fa-solid fa-sliders me-2"></i>Machine Actions
+                </div>
+                <div>
+                    <span class="badge @(Model.MachineStatus == MachineStatus.Aktif ? "bg-success" : "bg-warning")" id="machine-status-badge">
+                        @(Model.MachineStatus == MachineStatus.Aktif ? "AKTIF" : "TIDAK AKTIF")
+                    </span>
+                    @if (Model.MachineStatus == MachineStatus.TidakAktif)
+                    {
+                        <span class="small text-warning ms-2" id="machine-status-info">
+                            <i class="fa-solid fa-exclamation-triangle me-1"></i>Machine di-set Tidak Aktif di Admin
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="small text-danger ms-2" id="downtime-description" style="@(Model.HasActiveDowntime && !string.IsNullOrEmpty(Model.ActiveDowntimeDescription) ? "" : "display: none;")">
+                            @(Model.HasActiveDowntime ? Model.ActiveDowntimeDescription : "")
+                        </span>
+                    }
+                </div>
+            </div>
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
+                
+                <!-- Action Buttons -->
+                <div class="row g-2 justify-content-center text-center">
+                    <!-- Running Button -->
+                    <div class="col-md-3 col-6">
+                        @Html.AntiForgeryToken()
+                        <button type="button" 
+                                id="btn-running" 
+                                class="btn w-100 btn-outline-success machine-action-btn"
+                                data-machine-id="@Model.MachineId"
+                                style="pointer-events: auto !important; cursor: pointer !important;"
+                                onclick="if(typeof handleRunningClickDirect === 'function') { handleRunningClickDirect(this); } else { console.error('❌ handleRunningClickDirect not found'); } return false;">
+                            <i class="fa-solid fa-play-circle me-1"></i>
+                            Running
+                        </button>
+                    </div>
+
+                    <!-- Rest Break Button -->
+                    @if (Model.RestReason != null)
+                    {
+                        <div class="col-md-3 col-6">
+                            <form asp-controller="Operator" asp-action="Rest" method="post" id="rest-form" style="margin: 0;" onsubmit="return false;">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                <input type="hidden" name="reasonId" value="@Model.RestReason.Id" />
+                                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                                <button type="button" 
+                                        id="btn-rest" 
+                                        class="btn w-100 btn-outline-warning machine-action-btn"
+                                        style="pointer-events: auto !important; cursor: pointer !important;">
+                                    <i class="fa-solid fa-pause-circle me-1"></i>
+                                    <span class="btn-text">Rest Break</span>
+                                </button>
+                            </form>
+                        </div>
+                    }
+
+                    <!-- Line Stop Button -->
+                    <div class="col-md-3 col-6">
+                        <button type="button" 
+                                id="btn-line-stop" 
+                                class="btn w-100 btn-outline-danger machine-action-btn"
+                                style="pointer-events: auto !important; cursor: pointer !important;"
+                                onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('lineStopModal')); m.show(); } else { alert('Bootstrap load failed'); }">
+                            <i class="fa-solid fa-stop-circle me-1"></i>
+                            <span class="btn-text">Line Stop</span>
+                        </button>
+                    </div>
+
+                    <!-- No Loading Button -->
+                    <div class="col-md-3 col-6">
+                        <button type="button" 
+                                id="btn-no-loading" 
+                                class="btn w-100 btn-outline-info machine-action-btn"
+                                style="pointer-events: auto !important; cursor: pointer !important;"
+                                onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('noLoadingModal')); m.show(); } else { alert('Bootstrap load failed'); }">
+                            <i class="fa-regular fa-hourglass-half me-1"></i>
+                            <span class="btn-text">NoLoading</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals for Actions -->
+<partial name="Partials/_ModalsActions" model="Model" />

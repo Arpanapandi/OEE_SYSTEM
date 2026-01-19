@@ -13,127 +13,24 @@ builder.Services.AddControllersWithViews();
 // SignalR Service
 builder.Services.AddSignalR();
 
-// DbContext
-// Ganti nama database untuk menghindari konflik schema lama di LocalDB
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                     ?? "Server=(localdb)\\MSSQLLocalDB;Database=Velasto;Trusted_Connection=True;MultipleActiveResultSets=true";
+// DbContext configuration for SQLite
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+                      ?? "Data Source=OeeSystem.db";
 
-// Log connection string untuk debugging (tidak log password jika ada)
-var env = builder.Environment.EnvironmentName;
-var connectionStringForLog = connectionString.Contains("Password=") 
-    ? connectionString.Substring(0, connectionString.IndexOf("Password=")) + "Password=***" 
-    : connectionString;
-Console.WriteLine($"🔧 Environment: {env}");
-Console.WriteLine($"🔧 DefaultConnection: {connectionStringForLog}");
+Console.WriteLine($"🔧 DefaultConnection: {connectionString}");
 
-// ✅ PERBAIKAN: Force LocalDB untuk DefaultConnection jika environment adalah Development
-// Atau jika connection string tidak mengandung server name yang valid
-if (env == "Development" || !connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-{
-    // Pastikan selalu gunakan LocalDB untuk development
-    if (!connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-    {
-    Console.WriteLine("🔄 Overriding connection string to use LocalDB for development...");
-    connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=Velasto;Trusted_Connection=True;MultipleActiveResultSets=true";
-    connectionStringForLog = connectionString;
-    Console.WriteLine($"🔧 Updated DefaultConnection: {connectionStringForLog}");
-    }
-}
-
-// ✅ Aktifkan retry policy untuk ApplicationDbContext (mengatasi transient failure)
-// Retry hanya untuk transient errors, bukan untuk connection errors
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString, sqlOptions =>
-    {
-        sqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 3, // Kurangi retry count untuk connection errors
-            maxRetryDelay: TimeSpan.FromSeconds(10), // Kurangi delay
-            errorNumbersToAdd: null);
-    }));
-
-// OEE service
-builder.Services.AddScoped<IOeeService, OeeService>();
-
-// ✅ PERBAIKAN: Pastikan LocalDB instance running untuk Development
-if (env == "Development" || connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
 {
-    try
+    if (connectionString.Contains("Server=") || connectionString.Contains("server="))
     {
-        // Cek status LocalDB terlebih dahulu
-        var checkInfo = new ProcessStartInfo
-        {
-            FileName = "sqllocaldb",
-            Arguments = "info MSSQLLocalDB",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        
-        bool isRunning = false;
-        using (var checkProcess = Process.Start(checkInfo))
-        {
-            if (checkProcess != null)
-            {
-                var output = await checkProcess.StandardOutput.ReadToEndAsync();
-                await checkProcess.WaitForExitAsync();
-                isRunning = output.Contains("State: Running");
-            }
-        }
-        
-        // Jika tidak running, start LocalDB
-        if (!isRunning)
-        {
-            Console.WriteLine("🔄 LocalDB instance tidak berjalan, mencoba start...");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "sqllocaldb",
-            Arguments = "start MSSQLLocalDB",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        
-        using (var process = Process.Start(startInfo))
-        {
-            if (process != null)
-            {
-                await process.WaitForExitAsync();
-                    // Wait lebih lama untuk memastikan instance benar-benar ready
-                    await Task.Delay(5000);
-                    
-                    // Verify instance is running
-                    using (var verifyProcess = Process.Start(checkInfo))
-                    {
-                        if (verifyProcess != null)
-                        {
-                            var verifyOutput = await verifyProcess.StandardOutput.ReadToEndAsync();
-                            await verifyProcess.WaitForExitAsync();
-                            if (verifyOutput.Contains("State: Running"))
-                            {
-                                Console.WriteLine("✅ LocalDB instance started and verified");
-                            }
-                            else
-                            {
-                                Console.WriteLine("⚠️  Warning: LocalDB instance may not be running properly");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        else
-        {
-            Console.WriteLine("✅ LocalDB instance sudah berjalan");
-        }
+        options.UseSqlServer(connectionString);
     }
-    catch (Exception ex)
+    else
     {
-        Console.WriteLine($"⚠️  Warning: Could not auto-start LocalDB: {ex.Message}");
-        Console.WriteLine("   Please run manually: sqllocaldb start MSSQLLocalDB");
+        options.UseSqlite(connectionString);
     }
-}
+});
+
 
 // OEE Logic Services
 builder.Services.AddScoped<IOeeService, OeeService>();
@@ -171,226 +68,44 @@ using (var scope = app.Services.CreateScope())
         // db.Database.EnsureDeleted();
         db.Database.EnsureCreated();
         
-        // ✅ PERBAIKAN: Test database connection with timeout dan auto-start LocalDB
+        // ✅ PERBAIKAN: Test database connection 
         bool canConnect = false;
         try
         {
-            // ✅ PERBAIKAN: Jika menggunakan LocalDB, pastikan instance berjalan
-            if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
+            Console.WriteLine($"🔄 Testing database connection...");
+            canConnect = await db.Database.CanConnectAsync();
+            if (canConnect)
             {
-                try
-                {
-                    // Cek apakah LocalDB instance berjalan
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "sqllocaldb",
-                        Arguments = "info MSSQLLocalDB",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    
-                    using (var process = Process.Start(startInfo))
-                    {
-                        if (process != null)
-                        {
-                            var output = await process.StandardOutput.ReadToEndAsync();
-                            await process.WaitForExitAsync();
-                            
-                            // Jika instance tidak running, coba start
-                            if (!output.Contains("State: Running"))
-                            {
-                                Console.WriteLine("🔄 LocalDB instance tidak berjalan, mencoba start...");
-                                var startProcess = new ProcessStartInfo
-                                {
-                                    FileName = "sqllocaldb",
-                                    Arguments = "start MSSQLLocalDB",
-                                    RedirectStandardOutput = true,
-                                    RedirectStandardError = true,
-                                    UseShellExecute = false,
-                                    CreateNoWindow = true
-                                };
-                                
-                                using (var startProc = Process.Start(startProcess))
-                                {
-                                    if (startProc != null)
-                                    {
-                                        await startProc.WaitForExitAsync();
-                                        // Wait lebih lama untuk memastikan instance benar-benar ready
-                                        await Task.Delay(5000);
-                                        
-                                        // Verify instance is running
-                                        var verifyInfo = new ProcessStartInfo
-                                        {
-                                            FileName = "sqllocaldb",
-                                            Arguments = "info MSSQLLocalDB",
-                                            RedirectStandardOutput = true,
-                                            RedirectStandardError = true,
-                                            UseShellExecute = false,
-                                            CreateNoWindow = true
-                                        };
-                                        
-                                        using (var verifyProc = Process.Start(verifyInfo))
-                                        {
-                                            if (verifyProc != null)
-                                            {
-                                                var verifyOutput = await verifyProc.StandardOutput.ReadToEndAsync();
-                                                await verifyProc.WaitForExitAsync();
-                                                
-                                                if (verifyOutput.Contains("State: Running"))
-                                                {
-                                                    Console.WriteLine("✅ LocalDB instance started and verified");
-                                                }
-                                                else
-                                                {
-                                                    Console.WriteLine("⚠️  Warning: LocalDB instance may not be running properly");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                Console.WriteLine("✅ LocalDB instance sudah berjalan");
-                            }
-                        }
-                    }
-                }
-                catch (Exception localDbEx)
-                {
-                    Console.WriteLine($"⚠️  Warning: Tidak bisa auto-start LocalDB: {localDbEx.Message}");
-                    Console.WriteLine("   Silakan jalankan manual: sqllocaldb start MSSQLLocalDB");
-                }
+                Console.WriteLine("✅ Database connection successful!");
             }
-            
-            // Untuk LocalDB, berikan waktu lebih lama untuk start instance
-            var timeout = connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase) 
-                ? TimeSpan.FromSeconds(30) 
-                : TimeSpan.FromSeconds(10);
-            
-            Console.WriteLine($"🔄 Testing database connection (timeout: {timeout.TotalSeconds}s)...");
-            using (var cts = new CancellationTokenSource(timeout))
-            {
-                canConnect = await db.Database.CanConnectAsync(cts.Token);
-                if (canConnect)
-                {
-                    Console.WriteLine("✅ Database connection successful!");
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Console.WriteLine("WARNING: Database connection timeout. Melanjutkan tanpa database...");
-            canConnect = false;
         }
         catch (Exception ex)
         {
             Console.WriteLine("═══════════════════════════════════════════════════════════");
             Console.WriteLine($"❌ WARNING: Tidak dapat terhubung ke database");
-            Console.WriteLine($"   Connection String: {connectionStringForLog}");
             Console.WriteLine($"   Error: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
-            }
-            
-            // Berikan saran berdasarkan connection string
-            if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine("");
-                Console.WriteLine("💡 Saran untuk LocalDB:");
-                Console.WriteLine("   1. Pastikan SQL Server LocalDB sudah terinstall");
-                Console.WriteLine("   2. Cek LocalDB instance: sqllocaldb info MSSQLLocalDB");
-                Console.WriteLine("   3. Start LocalDB instance: sqllocaldb start MSSQLLocalDB");
-                Console.WriteLine("   4. Atau install SQL Server Express LocalDB dari Microsoft");
-                Console.WriteLine("   5. Atau jalankan: RUN-DEV.bat untuk setup otomatis");
-            }
-            else
-            {
-                Console.WriteLine("");
-                Console.WriteLine("💡 Saran:");
-                Console.WriteLine("   1. Pastikan SQL Server berjalan dan bisa diakses");
-                Console.WriteLine("   2. Cek connection string di appsettings.json");
-                Console.WriteLine("   3. Untuk development offline, gunakan LocalDB:");
-                Console.WriteLine("      - Ubah appsettings.json ke LocalDB");
-                Console.WriteLine("      - Atau set ASPNETCORE_ENVIRONMENT=Development");
-                Console.WriteLine("      - Atau jalankan: RUN-DEV.bat");
-            }
             Console.WriteLine("═══════════════════════════════════════════════════════════");
             canConnect = false;
         }
         
         if (!canConnect)
         {
-            Console.WriteLine("");
-            Console.WriteLine("🔄 Mencoba membuat database...");
-            
-            // Coba buat database jika belum ada (untuk development atau local SQL Server)
             try
             {
                 Console.WriteLine("   Attempting to create database...");
-                
-                // Untuk LocalDB, tambahkan retry logic
-                if (connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase))
-                {
-                    var createRetries = 3;
-                    var createRetryDelay = TimeSpan.FromSeconds(2);
-                    bool dbCreated = false;
-                    
-                    for (int retry = 1; retry <= createRetries; retry++)
-                    {
-                        try
-                        {
-                            await db.Database.EnsureCreatedAsync();
-                            dbCreated = true;
-                            Console.WriteLine($"   ✅ Database created successfully! (attempt {retry})");
-                            break;
-                        }
-                        catch (Exception createEx)
-                        {
-                            if (retry < createRetries)
-                            {
-                                Console.WriteLine($"   ⚠️  Attempt {retry} failed: {createEx.Message}, retrying in {createRetryDelay.TotalSeconds}s...");
-                                await Task.Delay(createRetryDelay);
-        }
-        else
-                            {
-                                throw; // Re-throw on last attempt
-                            }
-                        }
-                    }
-                    
-                    if (dbCreated)
-                    {
-                        canConnect = true; // Set ke true setelah database dibuat
-                    }
-                }
-                else
-                {
-                    await db.Database.EnsureCreatedAsync();
-                    Console.WriteLine("   ✅ Database created successfully!");
-                    canConnect = true; // Set ke true setelah database dibuat
-                }
+                await db.Database.EnsureCreatedAsync();
+                Console.WriteLine("   ✅ Database created successfully!");
+                canConnect = true;
             }
             catch (Exception createEx)
             {
                 Console.WriteLine("═══════════════════════════════════════════════════════════");
                 Console.WriteLine($"❌ ERROR: Gagal membuat database");
                 Console.WriteLine($"   Error: {createEx.Message}");
-                if (createEx.InnerException != null)
-                {
-                    Console.WriteLine($"   Inner Exception: {createEx.InnerException.Message}");
-                    Console.WriteLine($"   Inner StackTrace: {createEx.InnerException.StackTrace}");
-                }
-                Console.WriteLine($"   StackTrace: {createEx.StackTrace}");
-                Console.WriteLine("");
-                Console.WriteLine("⚠️  Aplikasi akan berjalan tanpa database.");
-                Console.WriteLine("   Fitur yang memerlukan database mungkin tidak berfungsi.");
                 Console.WriteLine("═══════════════════════════════════════════════════════════");
             }
         }
+
         
         if (canConnect)
         {

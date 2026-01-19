@@ -1,0 +1,56 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card kpi-card border-primary" style="margin-bottom: 0;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">OEE</div>
+                        <div class="kpi-value text-primary" id="oee-value">@Model.Oee.ToString("F0")%</div>
+                    </div>
+                    <i class="fa-solid fa-chart-line fa-2x text-primary opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card border-success" style="margin-bottom: 0;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">Availability</div>
+                        <div class="kpi-value text-success" id="availability-value">@Model.Availability.ToString("F0")%</div>
+                    </div>
+                    <i class="fa-solid fa-clock fa-2x text-success opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card border-warning" style="margin-bottom: 0;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">Performance</div>
+                        <div class="kpi-value text-warning" id="performance-value">@Model.Performance.ToString("F0")%</div>
+                    </div>
+                    <i class="fa-solid fa-gauge-high fa-2x text-warning opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card kpi-card border-info" style="margin-bottom: 0;">
+            <div class="glass-card-body" style="padding: 1.25rem;">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary small mb-1">Quality</div>
+                        <div class="kpi-value text-info" id="quality-value">@Model.Quality.ToString("F0")%</div>
+                    </div>
+                    <i class="fa-solid fa-check-circle fa-2x text-info opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

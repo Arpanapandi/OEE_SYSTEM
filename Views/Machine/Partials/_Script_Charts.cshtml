@@ -1,0 +1,145 @@
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        initCharts();
+    });
+
+    function initCharts() {
+        const dataContainer = document.getElementById('chart-data-container');
+        if(!dataContainer) return;
+
+        // 1. Machine Run Time Donut Chart
+        const runtime = parseFloat(dataContainer.dataset.runtime || 0);
+        const idletime = parseFloat(dataContainer.dataset.idletime || 0);
+        const offtime = parseFloat(dataContainer.dataset.offtime || 0);
+
+        const ctxRun = document.getElementById('runTimeDonutChart');
+        if (ctxRun) {
+            new Chart(ctxRun, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Run Time', 'Idle Time', 'Off Time'],
+                    datasets: [{
+                        data: [runtime, idletime, offtime],
+                        backgroundColor: ['#198754', '#ffc107', '#dc3545'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#adb5bd' } }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        // 2. OEE Analysis Bar Chart
+        const oeeAvail = parseFloat(dataContainer.dataset.oeeAvailability || 0);
+        const oeePerf = parseFloat(dataContainer.dataset.oeePerformance || 0);
+        const oeeQual = parseFloat(dataContainer.dataset.oeeQuality || 0);
+
+        const ctxOee = document.getElementById('oeeBarChart');
+        if (ctxOee) {
+            new Chart(ctxOee, {
+                type: 'bar',
+                data: {
+                    labels: ['Availability', 'Performance', 'Quality'],
+                    datasets: [{
+                        label: 'OEE Metrics (%)',
+                        data: [oeeAvail, oeePerf, oeeQual],
+                        backgroundColor: ['#0d6efd', '#0dcaf0', '#20c997'],
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            max: 100,
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: '#adb5bd' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#adb5bd' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // 3. Weekly Trend Chart (Stacked Bar)
+        const weeklyDataRaw = dataContainer.dataset.weeklyTrend;
+        let weeklyLabels = [];
+        let weeklyRun = [];
+        let weeklyIdle = [];
+        let weeklyOff = [];
+
+        if (weeklyDataRaw) {
+            try {
+                const weeklyTrend = JSON.parse(weeklyDataRaw);
+                weeklyTrend.forEach(d => {
+                    weeklyLabels.push(d.DateLabel);
+                    weeklyRun.push(d.RunTimeMinutes);
+                    weeklyIdle.push(d.IdleTimeMinutes);
+                    weeklyOff.push(d.OffTimeMinutes);
+                });
+            } catch (e) {
+                console.error("Error parsing weekly trend data", e);
+            }
+        }
+
+        const ctxTrend = document.getElementById('weeklyTrendChart');
+        if (ctxTrend && weeklyLabels.length > 0) {
+            new Chart(ctxTrend, {
+                type: 'bar',
+                data: {
+                    labels: weeklyLabels,
+                    datasets: [
+                        {
+                            label: 'Run Time',
+                            data: weeklyRun,
+                            backgroundColor: '#198754'
+                        },
+                        {
+                            label: 'Idle Time',
+                            data: weeklyIdle,
+                            backgroundColor: '#ffc107'
+                        },
+                        {
+                            label: 'Off Time',
+                            data: weeklyOff,
+                            backgroundColor: '#dc3545'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: { display: false },
+                            ticks: { color: '#adb5bd' }
+                        },
+                        y: {
+                            stacked: true,
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: '#adb5bd' }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#adb5bd' } }
+                    }
+                }
+            });
+        }
+    }
+</script>

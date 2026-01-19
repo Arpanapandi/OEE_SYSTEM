@@ -55,63 +55,37 @@ public static class ScwDataSeeder
 
                 if (hasChanges)
                 {
-                    // Enable IDENTITY_INSERT inside the transaction
-                    await context.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT produksi.tb_lwpmixing_Scw4MTypes ON");
+                    bool isSqlServer = context.Database.IsSqlServer();
+                    if (isSqlServer) await context.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT produksi.tb_lwpmixing_Scw4MTypes ON");
                     await context.SaveChangesAsync();
-                    await context.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT produksi.tb_lwpmixing_Scw4MTypes OFF");
-                    
-                    await transaction.CommitAsync();
-                    Console.WriteLine("✅ SCW 4M Types seeded/updated.");
+                    if (isSqlServer) await context.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT produksi.tb_lwpmixing_Scw4MTypes OFF");
                 }
-                else
-                {
-                    // No changes needed, but checking/updating might have opened transaction
-                     await transaction.RollbackAsync(); 
-                     Console.WriteLine("✅ SCW 4M Types up to date.");
-                }
+                
+                await transaction.CommitAsync();
             }
-            catch (Exception ex)
+            catch
             {
                 await transaction.RollbackAsync();
-                throw new Exception($"Failed to seed SCW Types: {ex.Message}", ex);
+                throw;
             }
         });
     }
 
     private static async Task SeedRemarksAsync(ApplicationDbContext context)
     {
-        // Define Remarks Data
-        // Format: (TypeId, Description, DisplayOrder)
-        // Type 1: Material
-        // Type 2: Methode
-        // Type 3: Machine
-        // Type 4: Man
-        // Type 5: No Problem
-        
         var remarksData = new List<ScwRemark>
         {
-            // Material
             new() { Scw4MTypeId = 1, Description = "Rejection", DisplayOrder = 1 },
             new() { Scw4MTypeId = 1, Description = "Material Shortage", DisplayOrder = 2 },
-
-            // Methode
             new() { Scw4MTypeId = 2, Description = "SOP Tak Sesuai Standar", DisplayOrder = 1 },
-
-            // Machine
             new() { Scw4MTypeId = 3, Description = "Problem Mesin", DisplayOrder = 1 },
-
-            // Man
             new() { Scw4MTypeId = 4, Description = "Sakit", DisplayOrder = 1 },
             new() { Scw4MTypeId = 4, Description = "Izin", DisplayOrder = 2 },
             new() { Scw4MTypeId = 4, Description = "Alpha", DisplayOrder = 3 },
             new() { Scw4MTypeId = 4, Description = "Cuti", DisplayOrder = 4 },
-
-            // No Problem
             new() { Scw4MTypeId = 5, Description = "No Problem", DisplayOrder = 1 }
         };
 
-        // Check Existing Remarks
-        // We match by (Scw4MTypeId, Description) to avoid duplicates if IDs are auto-generated
         var existingRemarks = await context.ScwRemarks.ToListAsync();
         bool hasChanges = false;
 
@@ -129,35 +103,6 @@ public static class ScwDataSeeder
         if (hasChanges)
         {
             await context.SaveChangesAsync();
-            Console.WriteLine("✅ SCW Remarks seeded.");
-        }
-        else
-        {
-            Console.WriteLine("✅ SCW Remarks up to date.");
-        }
-    }
-
-    private static async Task OpenIdentityInsertAsync(ApplicationDbContext context, string tableName)
-    {
-        try 
-        {
-            await context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT produksi.{tableName} ON");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"⚠️ Could not set IDENTITY_INSERT ON for {tableName}: {ex.Message}");
-        }
-    }
-
-    private static async Task CloseIdentityInsertAsync(ApplicationDbContext context, string tableName)
-    {
-        try 
-        {
-            await context.Database.ExecuteSqlRawAsync($"SET IDENTITY_INSERT produksi.{tableName} OFF");
-        }
-        catch (Exception ex)
-        {
-           Console.WriteLine($"⚠️ Could not set IDENTITY_INSERT OFF for {tableName}: {ex.Message}");
         }
     }
 }

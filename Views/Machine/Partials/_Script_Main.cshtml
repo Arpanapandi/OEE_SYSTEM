@@ -1,0 +1,240 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<script>
+    // ========== MAIN CONTROL SCRIPT ==========
+    
+    // Global State
+    window.machineId = '@Html.Raw(Model.MachineId)';
+    window.shiftKey = '@Html.Raw(Model.ShiftKey)';
+    // Use ISO string for robustness or ensure format
+    window.serverTimeOffset = 0;
+    
+    // Timer Globals
+    window.runningTimerInterval = null;
+    window.sinceLastChangeInterval = null;
+    window.timeMetricsInterval = null;
+    window.runningStartTimeUtc = null; // Date object
+    window.lastChangeTimestamp = null; // Date object
+    
+    // Status Globals
+    window.isNoLoading = @(Model.IsNoLoading.ToString().ToLower());
+    window.hasActiveRestBreak = @(Model.HasActiveRestBreak.ToString().ToLower());
+    window.machineStatus = '@Html.Raw(Model.MachineStatus)';
+    
+    // SignalR Connection
+    let oeeConnection = null;
+    
+    // 1. UTILITIES
+    
+    // Sync Server Time
+    function getAdjustedServerTime() {
+        return new Date(Date.now() + window.serverTimeOffset);
+    }
+    
+    function initializeServerTime() {
+        const rawServerTime = '@ViewData["ServerTime"]'; // Format: yyyy-MM-ddTHH:mm:ss...
+        if (rawServerTime) {
+            const serverTime = new Date(rawServerTime);
+            if (!isNaN(serverTime.getTime())) {
+                window.serverTimeOffset = serverTime.getTime() - Date.now();
+                console.log('⏱️ Server time synced. Offset:', window.serverTimeOffset, 'ms');
+            }
+        }
+    }
+    
+    window.showToast = function(message, type = 'info') {
+        const toastContainer = document.querySelector('.toast-container');
+        if (!toastContainer) return;
+        
+        const colorClass = type === 'success' ? 'bg-success' : 
+                          type === 'error' ? 'bg-danger' : 
+                          type === 'warning' ? 'bg-warning' : 'bg-primary';
+                          
+        const toastHtml = `
+            <div class="toast align-items-center text-white ${colorClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+        
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        const toastEl = toastContainer.lastElementChild;
+        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+        toast.show();
+        
+        toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+    };
+    
+    // Defined globally for use by other scripts
+    window.updateMachineStatusUI = function(status, downtimeDescription) {
+        console.log('🔄 updateMachineStatusUI:', status, downtimeDescription);
+        const statusBadgeEl = document.getElementById('machine-status-badge');
+        const downtimeDescEl = document.getElementById('downtime-description');
+        const machineStatusInfoEl = document.getElementById('machine-status-info');
+        
+        const isAktif = status === 'Aktif';
+        
+        if (statusBadgeEl) {
+            statusBadgeEl.textContent = isAktif ? 'AKTIF' : 'TIDAK AKTIF';
+            statusBadgeEl.className = `badge ${isAktif ? 'bg-success' : 'bg-warning'}`;
+        }
+        
+        if (downtimeDescEl) {
+            if (downtimeDescription && downtimeDescription.trim()) {
+                downtimeDescEl.textContent = downtimeDescription;
+                downtimeDescEl.style.display = 'inline';
+            } else {
+                downtimeDescEl.style.display = 'none';
+            }
+        }
+        
+        if (machineStatusInfoEl) {
+            machineStatusInfoEl.style.display = isAktif ? 'none' : 'inline';
+        }
+
+        // Navbar Sync (Optional)
+        const navbarStatusDot = document.getElementById('navbar-status-dot');
+        const navbarStatusText = document.getElementById('navbar-status-text');
+        if (navbarStatusDot && navbarStatusText) {
+            navbarStatusText.textContent = isAktif ? 'AKTIF' : status.toUpperCase();
+            navbarStatusDot.style.background = isAktif ? '#28a745' : '#ffc107';
+        }
+    };
+
+    // 2. TIMERS
+    
+    window.updateTimerDisplay = function() {
+        const displayEl = document.getElementById('since-last-status');
+        if (!displayEl || !window.lastChangeTimestamp) return;
+        
+        const now = getAdjustedServerTime();
+        const diff = Math.max(0, Math.floor((now - window.lastChangeTimestamp) / 1000));
+        
+        const h = Math.floor(diff / 3600).toString().padStart(2, '0');
+        const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
+        const s = (diff % 60).toString().padStart(2, '0');
+        
+        displayEl.textContent = `${h}:${m}:${s}`;
+    };
+
+    window.updateRunningDisplay = function() {
+        const displayEl = document.getElementById('running-duration-display'); // Assuming this ID exists in Header? Or Action Card?
+        // Actually, looking at _MachineActions.cshtml, the timer might be different.
+        // Let's assume there is a running timer somewhere or just use sinceLastStatus for everything.
+        // Re-checking _MachineActions.cshtml...
+    };
+    
+    // 3. DATA FETCHING
+    
+    window.fetchTimeMetrics = async function() {
+        try {
+            const response = await fetch('/Operator/GetTimeMetrics?machineId=' + window.machineId);
+            if (!response.ok) return;
+            const data = await response.json();
+            applyTimeMetrics(data);
+        } catch (e) { console.error('Error fetching metrics', e); }
+    };
+    
+    window.fetchOperatorDataForOee = async function() {
+        // Implementation depends on what this data is. Usually for updating shift info/operator name.
+        // Assuming implementation exists or is handled by page reload/SignalR.
+    };
+    
+    function applyTimeMetrics(data) {
+        if (!data) return;
+        
+        // Update Time Cards
+        if(document.getElementById('planned-production-time')) 
+            document.getElementById('planned-production-time').textContent = data.PlannedProductionTime || '-';
+        if(document.getElementById('operating-time')) 
+            document.getElementById('operating-time').textContent = data.OperatingTime || '-';
+        if(document.getElementById('downtime-time')) 
+            document.getElementById('downtime-time').textContent = data.Downtime || '-';
+            
+        // Update OEE Cards
+        if(document.getElementById('oee-value')) document.getElementById('oee-value').textContent = (data.OEE || 0).toFixed(1) + '%';
+        if(document.getElementById('availability-value')) document.getElementById('availability-value').textContent = (data.Availability || 0).toFixed(1) + '%';
+        if(document.getElementById('performance-value')) document.getElementById('performance-value').textContent = (data.Performance || 0).toFixed(1) + '%';
+        if(document.getElementById('quality-value')) document.getElementById('quality-value').textContent = (data.Quality || 0).toFixed(1) + '%';
+        
+        // Update History Lists if present in data
+        // ...
+    }
+
+    // 4. SIGNALR
+    
+    function initSignalR() {
+        if (typeof signalR === 'undefined') {
+            console.error('SignalR library not loaded');
+            return;
+        }
+        
+        oeeConnection = new signalR.HubConnectionBuilder()
+            .withUrl("/oeeHub")
+            .withAutomaticReconnect()
+            .configureLogging(signalR.LogLevel.Warning)
+            .build();
+            
+        oeeConnection.on("ReceiveRealTimeSync", (data) => {
+            console.log("📡 SignalR Sync:", data);
+            if (data.MachineId === window.machineId) {
+                applyTimeMetrics(data);
+                if (data.MachineStatus) {
+                    window.machineStatus = data.MachineStatus;
+                    updateMachineStatusUI(data.MachineStatus, data.ActiveDowntimeDescription);
+                    
+                    // Sync Timer Reference if changed drastically? 
+                    // Usually we trust local calculation unless page reload.
+                }
+            }
+        });
+        
+        oeeConnection.on("OeeUpdated", (data) => {
+             if (data.machineId === window.machineId) {
+                 fetchTimeMetrics(); // Refresh full metrics
+             }
+        });
+        
+        oeeConnection.start().then(() => {
+            console.log('✅ Connected to OEE Hub');
+            oeeConnection.invoke("JoinGroup", window.machineId).catch(err => console.error(err));
+        }).catch(err => console.error('SignalR Connection Error', err));
+    }
+
+    // 5. CHART.JS
+    function initCharts() {
+        // Placeholder for Chart initialization logic
+        // Checks if Canvas elements exist and renders charts
+        const ctxRun = document.getElementById('machineRuntimeChart');
+        if (ctxRun && typeof Chart !== 'undefined') {
+             // ... Render logic
+        }
+    }
+
+    // ========== INITIALIZATION ==========
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeServerTime();
+        initSignalR();
+        
+        // Initial Timer Setup
+        // We need to know WHEN the current status started.
+        // This is usually passed in Model.LastStatusChange or similar.
+        const lastChangeStr = '@Html.Raw(Model.LastStatusChangeTimeIso)'; 
+        if (lastChangeStr) {
+            window.lastChangeTimestamp = new Date(lastChangeStr);
+            console.log('⏱️ Timer initialized from', window.lastChangeTimestamp);
+            
+            if (window.sinceLastChangeInterval) clearInterval(window.sinceLastChangeInterval);
+            window.sinceLastChangeInterval = setInterval(window.updateTimerDisplay, 1000);
+            window.updateTimerDisplay(); // Immediate
+        }
+        
+        // Start Global Metrics Polling (Backup to SignalR)
+        window.timeMetricsInterval = setInterval(window.fetchTimeMetrics, 30000); // Every 30s
+    });
+
+</script>

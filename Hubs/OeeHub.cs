@@ -32,7 +32,7 @@ public class OeeHub : Hub
     /// Join group untuk machine tertentu (untuk broadcast selektif)
     /// Group format: machine_{machineId}
     /// </summary>
-    public async Task JoinMachineGroup(int machineId)
+    public async Task JoinMachineGroup(string machineId)
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, $"machine_{machineId}");
         Console.WriteLine($"✅ Client {Context.ConnectionId} joined machine_{machineId}");
@@ -41,7 +41,7 @@ public class OeeHub : Hub
     /// <summary>
     /// Leave group untuk machine tertentu
     /// </summary>
-    public async Task LeaveMachineGroup(int machineId)
+    public async Task LeaveMachineGroup(string machineId)
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"machine_{machineId}");
         Console.WriteLine($"❌ Client {Context.ConnectionId} left machine_{machineId}");

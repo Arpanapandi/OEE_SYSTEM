@@ -1,0 +1,70 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Modal Line Stop -->
+<div class="modal fade" id="lineStopModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">LINE STOP - Pilih Alasan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-controller="Operator" asp-action="LineStop" method="post" id="line-stop-start-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="machineId" value="@Model.MachineId" />
+                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Pilih Alasan Line Stop:</label>
+                        <select class="form-control-glass" name="reasonId" required>
+                            <option value="">-- Pilih Alasan --</option>
+                            @foreach (var r in Model.LineStopReasons)
+                            {
+                                <option value="@r.Id">@r.Description (@r.Category)</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fa-solid fa-play me-2"></i>START LINE STOP
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal No Loading -->
+<div class="modal fade" id="noLoadingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">NO LOADING - Konfirmasi</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-controller="Operator" asp-action="NoLoading" method="post" id="no-loading-form">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="machineId" value="@Model.MachineId" />
+                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fa-solid fa-info-circle me-2"></i>
+                        Mesin akan di-set ke status <strong>NO LOADING</strong>. Status ini menandakan mesin tidak memiliki material untuk diproses.
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="fa-solid fa-exclamation-triangle me-2"></i>
+                        <strong>Catatan Penting:</strong> Waktu NO LOADING <strong>tidak akan</strong> dihitung sebagai Operating Time atau Downtime.
+                    </div>
+                    <p>Apakah Anda yakin ingin melanjutkan?</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-info">
+                        <i class="fa-solid fa-check me-2"></i>KONFIRMASI NO LOADING
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

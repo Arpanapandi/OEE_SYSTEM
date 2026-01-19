@@ -1,0 +1,378 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<script>
+    // ========== PRODUCTION DATA INPUT LOGIC ==========
+
+    // Variables for Production Timer
+    var durasiProduksiInterval = null;
+    var durasiProduksiStartTime = null;
+    var durasiProduksiSeconds = 0;
+    var isDurasiAuto = true;
+    var selectedKomponenId = null;
+
+    // 1. Man Power & Injection Persistence
+    function saveManPowerAndGroup() {
+        const manPower = document.getElementById('select-man-power')?.value;
+        const injection = document.querySelector('#injection-group input[name="injection"]:checked')?.value;
+        if (manPower) localStorage.setItem('lastManPower', manPower);
+        if (injection) localStorage.setItem('lastInjection', injection);
+    }
+
+    function loadManPowerAndGroup() {
+        const lastManPower = localStorage.getItem('lastManPower');
+        const lastInjection = localStorage.getItem('lastInjection');
+
+        if (lastManPower) {
+            const selectManPower = document.getElementById('select-man-power');
+            if (selectManPower) {
+                selectManPower.value = lastManPower;
+                // Dispatch event to update validation state
+                selectManPower.dispatchEvent(new Event('change'));
+            }
+        }
+        if (lastInjection) {
+            const radioInjection = document.querySelector(`#injection-group input[name="injection"][value="${lastInjection}"]`);
+            if (radioInjection) {
+                radioInjection.checked = true;
+                radioInjection.dispatchEvent(new Event('change'));
+            }
+        }
+    }
+    
+    // 2. Production Data & History Persistence
+    function saveProductionData(data) {
+        localStorage.setItem('currentProductionData', JSON.stringify(data));
+        
+        // Add to history
+        try {
+            const history = JSON.parse(localStorage.getItem('productionDataHistory') || '[]');
+            data.timestamp = new Date().toISOString();
+            history.push(data);
+             if (history.length > 50) history.shift();
+            localStorage.setItem('productionDataHistory', JSON.stringify(history));
+        } catch(e) { console.error('History save error', e); }
+    }
+    
+    // 3. Komponen Loading from HOSS
+    async function loadKomponenFromHoss(partNumber) {
+        if (!partNumber) return;
+        
+        console.log('🔄 Loading components for Part Number:', partNumber);
+        const container = document.getElementById('komponen-container');
+        const select = document.getElementById('select-komponen');
+        
+        try {
+            if (container) container.style.display = 'block';
+            if (select) select.innerHTML = '<option value="">Loading...</option>';
+            
+            const response = await fetch(`/api/Scanner/komponen/${encodeURIComponent(partNumber)}`);
+             if (!response.ok) throw new Error('Network response was not ok');
+
+            const data = await response.json();
+            
+            if (select) {
+                select.innerHTML = '<option value="">-- Pilih Komponen --</option>';
+                 if (data && data.length > 0) {
+                    data.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item.id;
+                        option.textContent = `${item.kodeKomponen} - ${item.namaKomponen} (${item.qtyPerUnit} ${item.satuan})`;
+                         option.setAttribute('data-part-number', partNumber);
+                        option.setAttribute('data-jml-komponen', item.qtyPerUnit);
+                        select.appendChild(option);
+                    });
+                     // Auto select if only one
+                    if (data.length === 1) {
+                         select.selectedIndex = 1;
+                        selectedKomponenId = data[0].id;
+                        select.dispatchEvent(new Event('change'));
+                    }
+                } else {
+                    select.innerHTML = '<option value="">Tidak ada komponen</option>';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading components:', error);
+             if (select) select.innerHTML = '<option value="">Error loading components</option>';
+        }
+    }
+
+    window.checkAndLoadKomponen = function() {
+        const lotNumber = document.getElementById('input-nomor-lot')?.value;
+        const partNumber = document.getElementById('input-lot-bo')?.value;
+        const container = document.getElementById('komponen-container');
+        
+        if (lotNumber && partNumber) {
+            if (container && container.style.display === 'none') {
+                 loadKomponenFromHoss(partNumber);
+            }
+        } else {
+            // Optional: hide if cleared? Keep it visible usually better.
+        }
+        window.checkAllInputsComplete();
+    };
+
+    // 4. Input Completeness Check
+    window.checkAllInputsComplete = function() {
+        const lotNumber = document.getElementById('input-nomor-lot')?.value?.trim();
+        const partNumber = document.getElementById('input-lot-bo')?.value?.trim();
+        const namaCompound = document.getElementById('input-nama-compound')?.value?.trim();
+        const beratAct = document.getElementById('input-berat-act')?.value?.trim();
+        const penipisan = document.querySelector('#penipisan-group input[name="penipisan"]:checked')?.value;
+        const keterangan = document.getElementById('select-keterangan')?.value?.trim();
+        const manPower = document.getElementById('select-man-power')?.value;
+        const injection = document.querySelector('#injection-group input[name="injection"]:checked')?.value;
+        // Component is optional depending on data, but let's check if selectedKomponenId is needed
+        // Just standard checks
+        
+        const allComplete = lotNumber && partNumber && namaCompound && beratAct && 
+                            penipisan && keterangan && manPower && injection;
+        
+        const btnSubmit = document.getElementById('btn-submit-produksi');
+        if (btnSubmit) {
+            if (allComplete) {
+                btnSubmit.disabled = false;
+                btnSubmit.classList.remove('btn-secondary');
+                btnSubmit.classList.add('btn-primary');
+            } else {
+                btnSubmit.disabled = true;
+                btnSubmit.classList.remove('btn-primary');
+                btnSubmit.classList.add('btn-secondary');
+            }
+        }
+    };
+
+    // 5. Item Timer Logic
+    function formatDurasiProduksi(seconds) {
+        const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+        const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    }
+
+    window.updateDurasiProduksiDisplay = function() {
+        const displayEl = document.getElementById('durasi-produksi-display');
+        const hiddenEl = document.getElementById('hidden-durasi-seconds');
+        
+        if (durasiProduksiStartTime) {
+            const nowAdjusted = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
+            durasiProduksiSeconds = Math.floor((nowAdjusted - durasiProduksiStartTime) / 1000);
+        }
+        
+        if (displayEl) displayEl.value = formatDurasiProduksi(durasiProduksiSeconds);
+        if (hiddenEl) hiddenEl.value = durasiProduksiSeconds;
+    };
+
+    window.startDurasiProduksi = function() {
+        if (durasiProduksiInterval) clearInterval(durasiProduksiInterval);
+        
+        const savedStart = localStorage.getItem('durasiProduksiStartTime');
+        durasiProduksiStartTime = savedStart ? new Date(savedStart) : (window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date());
+        
+        if (!savedStart) localStorage.setItem('durasiProduksiStartTime', durasiProduksiStartTime.toISOString());
+        
+        const container = document.getElementById('durasi-produksi-container');
+        if (container) container.style.display = 'block';
+        
+        window.updateDurasiProduksiDisplay();
+        
+        if (isDurasiAuto) {
+            durasiProduksiInterval = setInterval(window.updateDurasiProduksiDisplay, 1000);
+        }
+    };
+
+    window.stopDurasiProduksi = function() {
+        if (durasiProduksiInterval) {
+            clearInterval(durasiProduksiInterval);
+            durasiProduksiInterval = null;
+        }
+    };
+
+    window.resetDurasiProduksi = function() {
+        window.stopDurasiProduksi();
+        durasiProduksiSeconds = 0;
+        durasiProduksiStartTime = null;
+        localStorage.removeItem('durasiProduksiStartTime');
+        window.updateDurasiProduksiDisplay();
+    };
+
+    function validateProductionForm() {
+        const errors = [];
+        if (!document.getElementById('select-man-power')?.value) errors.push('Man Power harus dipilih');
+        if (!document.querySelector('#injection-group input[name="injection"]:checked')) errors.push('Group Injection harus dipilih');
+        if (!document.getElementById('input-nomor-lot')?.value) errors.push('Nomor Lot harus diisi');
+        if (!document.getElementById('input-lot-bo')?.value) errors.push('Lot BO harus diisi');
+        if (!document.getElementById('input-nama-compound')?.value) errors.push('Nama Compound harus diisi');
+        if (!document.getElementById('input-berat-act')?.value) errors.push('Berat Act harus diisi');
+        if (!document.querySelector('#penipisan-group input[name="penipisan"]:checked')) errors.push('Penipisan harus dipilih');
+        if (!document.getElementById('select-keterangan')?.value) errors.push('Keterangan harus dipilih');
+        
+        if (errors.length > 0) {
+            const msg = `❌ Form belum lengkap:\n\n${errors.map((e,i)=>`${i+1}. ${e}`).join('\n')}`;
+            if(typeof showToast==='function') showToast(msg, 'error'); else alert(msg);
+            return false;
+        }
+        return true;
+    }
+
+    function resetProductionForm() {
+        document.getElementById('input-nomor-lot').value = '';
+        document.getElementById('input-lot-bo').value = '';
+        document.getElementById('input-nama-compound').value = '';
+        document.getElementById('input-berat-act').value = '';
+        document.getElementById('select-keterangan').value = '';
+        
+        document.querySelectorAll('#penipisan-group input').forEach(r => r.checked = false);
+        
+        // Components
+        selectedKomponenId = null;
+        const compSelect = document.getElementById('select-komponen');
+        if(compSelect) compSelect.innerHTML = '<option value="">-- Pilih Komponen --</option>';
+        const compCont = document.getElementById('komponen-container');
+        if(compCont) compCont.style.display = 'none';
+        
+        // Remove validations
+        document.querySelectorAll('.is-valid, .is-invalid').forEach(el => el.classList.remove('is-valid','is-invalid'));
+        
+        window.checkAllInputsComplete();
+        
+        // NOTE: Man Power & Injection preserved!
+    }
+
+    // Initialization and Event Listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🔧 Initializing Production Logic...');
+        
+        loadManPowerAndGroup();
+        
+        // Watch inputs
+        const inputs = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'input-berat-act', 'select-man-power', 'select-komponen', 'select-keterangan'];
+        inputs.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+                el.addEventListener('change', window.checkAllInputsComplete);
+                el.addEventListener('input', window.checkAllInputsComplete);
+            }
+        });
+        
+        document.querySelectorAll('input[type=radio]').forEach(r => r.addEventListener('change', window.checkAllInputsComplete));
+
+        // Logic toggle Keterangan for Penipisan NG
+        const penipisanGroup = document.getElementById('penipisan-group');
+        if (penipisanGroup) {
+            penipisanGroup.addEventListener('change', function(e) {
+                if (e.target && e.target.name === 'penipisan') {
+                     const isNg = e.target.value === 'NG';
+                     const ketContainer = document.getElementById('keterangan-container');
+                     if (ketContainer) {
+                         ketContainer.style.display = isNg ? 'block' : 'none';
+                         const selectKet = document.getElementById('select-keterangan');
+                         if (!isNg && selectKet) selectKet.value = ''; // Reset if OK
+                     }
+                }
+            });
+        }
+
+
+        // Part Number debounce for component loading
+        const lotBoInput = document.getElementById('input-lot-bo');
+        let lotBoTimeout;
+        if (lotBoInput) {
+            lotBoInput.addEventListener('input', function() {
+                clearTimeout(lotBoTimeout);
+                lotBoTimeout = setTimeout(window.checkAndLoadKomponen, 800);
+            });
+             lotBoInput.addEventListener('blur', window.checkAndLoadKomponen);
+        }
+
+        // Toggle Auto Timer
+        const toggleAuto = document.getElementById('toggle-auto-durasi');
+        if (toggleAuto) {
+            toggleAuto.addEventListener('change', function() {
+                isDurasiAuto = this.checked;
+                if(isDurasiAuto && durasiProduksiStartTime && !durasiProduksiInterval) {
+                     durasiProduksiInterval = setInterval(window.updateDurasiProduksiDisplay, 1000);
+                } else if (!isDurasiAuto) {
+                    window.stopDurasiProduksi();
+                }
+            });
+        }
+        
+        const btnResetDurasi = document.getElementById('btn-reset-durasi');
+        if(btnResetDurasi) btnResetDurasi.addEventListener('click', window.resetDurasiProduksi);
+
+        // Submit Logic (Single Source)
+        const btnSubmit = document.getElementById('btn-submit-produksi');
+        if (btnSubmit) {
+            btnSubmit.addEventListener('click', async function(e) {
+                e.preventDefault();
+                
+                if (!validateProductionForm()) return;
+                
+                const originalText = btnSubmit.innerHTML;
+                btnSubmit.disabled = true;
+                btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Menyimpan...';
+
+                try {
+                    const formData = {
+                        machineId: '@Model.MachineId',
+                        nomorLot: document.getElementById('input-nomor-lot')?.value?.trim(),
+                        lotBo: document.getElementById('input-lot-bo')?.value?.trim(),
+                        namaCompound: document.getElementById('input-nama-compound')?.value?.trim(),
+                        beratAct: parseFloat(document.getElementById('input-berat-act')?.value || '0'),
+                        penipisan: document.querySelector('#penipisan-group input[name="penipisan"]:checked')?.value,
+                        keterangan: document.getElementById('select-keterangan')?.value,
+                        manPowerId: parseInt(document.getElementById('select-man-power')?.value || '0'),
+                        injection: document.querySelector('#injection-group input[name="injection"]:checked')?.value,
+                        komponenId: document.getElementById('select-komponen')?.value, // Use select value directly
+                        durasiProduksiSeconds: durasiProduksiSeconds || 0,
+                        qty: 1
+                    };
+
+                    const response = await fetch('/Operator/SubmitProductionData', {
+                        method: 'POST',
+                         headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-Requested-With': 'XMLHttpRequest',
+                             'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                        },
+                        body: new URLSearchParams(formData)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        if(typeof showToast==='function') showToast('✅ Data produksi berhasil disimpan!', 'success');
+                        
+                        saveManPowerAndGroup();
+                        saveProductionData(formData);
+                        resetProductionForm();
+                        
+                        if (isDurasiAuto) {
+                             // Reset timer for next item
+                             window.resetDurasiProduksi();
+                             window.startDurasiProduksi();
+                        }
+                    } else {
+                        if(typeof showToast==='function') showToast('❌ Error: ' + (result.message), 'error');
+                         else alert('❌ Error: ' + (result.message));
+                    }
+
+                } catch (error) {
+                    console.error(error);
+                     if(typeof showToast==='function') showToast('❌ System Error', 'error');
+                } finally {
+                    btnSubmit.disabled = false;
+                    btnSubmit.innerHTML = originalText;
+                }
+            });
+        }
+        
+        // Restore timer if it was running (Persistence)
+        if (localStorage.getItem('durasiProduksiStartTime')) {
+             const toggleAuto = document.getElementById('toggle-auto-durasi');
+             isDurasiAuto = toggleAuto ? toggleAuto.checked : true; // default true if not found
+             window.startDurasiProduksi();
+        }
+    });
+</script>

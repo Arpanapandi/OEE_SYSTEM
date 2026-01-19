@@ -118,47 +118,52 @@ public class ScannerController : ControllerBase
             lotBo = lotBo.Trim();
             nomorLot = nomorLot.Trim();
 
-            // 1) Validasi Lot BO (Part Number) & Komponen di DB_HOSS
+            // 1) VALIDASI: Part Number (lotBo) HARUS terdaftar di Products
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.MaterialCode == lotBo);
+            if (product == null)
+            {
+                return Ok(new { success = false, message = $"Part Number '{lotBo}' tidak terdaftar di master Product." });
+            }
+
+            // 1a) VALIDASI: Komponen di DB_HOSS
             var komponen = await _context.Komponens
                 .FirstOrDefaultAsync(k => k.Id == komponenId && k.PartNumber == lotBo);
 
             if (komponen == null)
             {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "Komponen tidak ditemukan atau tidak sesuai dengan Part Number di DB_HOSS."
-                });
+                return Ok(new { success = false, message = "Komponen tidak ditemukan atau tidak sesuai dengan Part Number di database HOSS." });
+            }
+
+            // 2) VALIDASI: Cari WorkOrder aktif
+            var activeWorkOrder = await _context.WorkOrders
+                .Include(w => w.Product)
+                .FirstOrDefaultAsync(w => w.Status == WorkOrderStatus.InProgress);
+
+            if (activeWorkOrder == null)
+            {
+                return Ok(new { success = false, message = "Tidak ada Work Order (InProgress) aktif." });
+            }
+
+            // 3) VALIDASI: Product harus sesuai dengan WorkOrder aktif
+            if (activeWorkOrder.ProductId != product.Id)
+            {
+                return Ok(new { success = false, message = $"Part Number '{lotBo}' tidak sesuai dengan Work Order aktif ({activeWorkOrder.Product?.MaterialCode})." });
             }
 
             var now = DateTime.Now;
 
-            // 2) Cari JobRun aktif untuk mesin ini
+            // 4) Cari JobRun aktif untuk mesin ini
             var activeJob = await _context.JobRuns
                 .Where(j => j.MachineId == machineId && j.EndTime == null)
                 .OrderByDescending(j => j.StartTime)
                 .FirstOrDefaultAsync();
 
-            // 2a) Jika belum ada, buat JobRun baru dari WorkOrder aktif
+            var operatorUser = await _context.Users
+                .Where(u => u.Role == UserRole.Operator)
+                .FirstOrDefaultAsync();
+
             if (activeJob == null)
             {
-                var activeWorkOrder = await _context.WorkOrders
-                    .Include(w => w.Product)
-                    .FirstOrDefaultAsync(w => w.Status == WorkOrderStatus.InProgress);
-
-                if (activeWorkOrder == null)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Tidak ada Work Order aktif. Silakan buat Work Order dan mulai job terlebih dahulu."
-                    });
-                }
-
-                var operatorUser = await _context.Users
-                    .Where(u => u.Role == UserRole.Operator)
-                    .FirstOrDefaultAsync();
-
                 activeJob = new JobRun
                 {
                     MachineId = machineId,
@@ -166,29 +171,25 @@ public class ScannerController : ControllerBase
                     OperatorId = operatorUser?.Id ?? 0,
                     StartTime = now,
                     EndTime = null,
-                    // 3) Simpan hasil scan
+                    LastStatusChangeTime = now,
+                    // Simpan hasil scan
                     ScannedPartNumber = lotBo,
                     ScannedLotNumber = nomorLot,
                     ScannedKomponenId = komponenId,
                     ScannedJmlKomponen = komponen.JmlKomponen,
-                    // ✅ TAMBAHKAN: Simpan Man Power
-                    ManPowerId = manPowerId
+                    ManPowerId = manPowerId,
+                    InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToUpper()
                 };
-
                 _context.JobRuns.Add(activeJob);
             }
             else
             {
-                // 2b) Update JobRun aktif dengan hasil scan terbaru
                 activeJob.ScannedPartNumber = lotBo;
                 activeJob.ScannedLotNumber = nomorLot;
                 activeJob.ScannedKomponenId = komponenId;
                 activeJob.ScannedJmlKomponen = komponen.JmlKomponen;
-                // ✅ TAMBAHKAN: Update Man Power jika ada
-                if (manPowerId.HasValue)
-                {
-                    activeJob.ManPowerId = manPowerId;
-                }
+                activeJob.InjectionGroup = string.IsNullOrWhiteSpace(injection) ? null : injection.Trim().ToUpper();
+                if (manPowerId.HasValue) activeJob.ManPowerId = manPowerId;
             }
 
             await _context.SaveChangesAsync();

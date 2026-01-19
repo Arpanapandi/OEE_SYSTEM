@@ -1,0 +1,61 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="glass-card" id="filter-card">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
+                <i class="fa-solid fa-clock me-2"></i>Waktu Kerja Operator
+            </div>
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
+                <div class="row g-3 align-items-center">
+                    <!-- Jam Proses (Left) -->
+                    <div class="col-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-glass text-secondary">
+                                <i class="bi bi-clock text-accent-blue"></i>
+                            </span>
+                            <div class="form-control-glass d-flex align-items-center justify-content-center fw-bold font-monospace" style="letter-spacing: 1px; min-height: 38px;">
+                                <span id="realtimeClock">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="text-center mt-1">
+                            <small class="text-secondary"><i class="fa-solid fa-hourglass-half me-1"></i>Jam Proses</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Date Input (Right) -->
+                    <div class="col-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-glass text-secondary">
+                                <i class="fa-solid fa-calendar-day"></i>
+                            </span>
+                            <input type="date" 
+                                   class="form-control-glass text-center fw-bold" 
+                                   id="filter-date" 
+                                   name="filterDate"
+                                   style="letter-spacing: 1px;"
+                                   value="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                        </div>
+                        <div class="text-center mt-1">
+                            <small class="text-secondary"><i class="fa-solid fa-calendar-check me-1"></i>Tanggal</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Isolated script for Realtime Clock
+    document.addEventListener('DOMContentLoaded', () => {
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const clockEl = document.getElementById('realtimeClock');
+            if (clockEl) clockEl.textContent = timeString;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    });
+</script>

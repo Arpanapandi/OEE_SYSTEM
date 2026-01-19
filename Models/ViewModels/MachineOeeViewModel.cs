@@ -54,8 +54,16 @@ public class MachineOeeViewModel
     public bool HasActiveJob { get; set; }
     public bool HasActiveDowntime { get; set; }
     public bool HasActiveRestBreak { get; set; } // ✅ Status Rest Break aktif
+    public bool IsNoLoading { get; set; } // ✅ Status No Loading aktif
     public string? ActiveDowntimeDescription { get; set; }
     public MachineStatus MachineStatus { get; set; } // Status dari Admin (Aktif/TidakAktif)
+
+    // Forms Data
+    public List<ManPower> ManPowerList { get; set; } = new();
+    public int? ActiveManPowerId { get; set; }
+    public string ActiveInjection { get; set; } = "MERAH"; // Default
+
+    public string LastStatusChangeTimeIso => ActiveJob?.LastStatusChangeTime.ToString("o") ?? DateTime.Now.ToString("o");
 }
 
 public class ChartDataViewModel
@@ -65,11 +73,11 @@ public class ChartDataViewModel
     public double IdleTimeMinutes { get; set; }
     public double OffTimeMinutes { get; set; }
 
-    // Bar Chart: OEE Analysis
-    public double OeeValue { get; set; }
-    public double AvailabilityValue { get; set; }
-    public double PerformanceValue { get; set; }
-    public double QualityValue { get; set; }
+    // Bar Chart: OEE Analysis (Renamed to match View)
+    public double Oee { get; set; }
+    public double Availability { get; set; }
+    public double Performance { get; set; }
+    public double Quality { get; set; }
 
     // Stacked Bar Chart: Weekly Trend
     public List<WeeklyTrendData> WeeklyTrend { get; set; } = new();

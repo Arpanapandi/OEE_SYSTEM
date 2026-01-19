@@ -1,0 +1,48 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Modal Tambah Qty -->
+<div class="modal fade" id="addQtyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tambah Output</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-controller="Operator" asp-action="AddQuantity" method="post" id="add-qty-form" onsubmit="return validateGroupInjection()">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="machineId" value="@Model.MachineId" />
+                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                <input type="hidden" name="injection" id="hidden-injection" required />
+                <input type="hidden" name="manPowerId" id="hidden-qtymodal-manpower" />
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Good Qty</label>
+                        <input type="number" class="form-control-glass" name="goodQty" value="0" min="0" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reject Qty</label>
+                        <input type="number" class="form-control-glass" name="rejectQty" value="0" min="0" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Jenis NG (jika ada reject)</label>
+                        <select class="form-control-glass" name="ngTypeId">
+                            <option value="">-- Pilih Jenis NG --</option>
+                            @foreach (var ng in Model.NgTypes)
+                            {
+                                <option value="@ng.Id">@ng.Code - @ng.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Alasan Reject (optional)</label>
+                        <input type="text" class="form-control-glass" name="rejectReason" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

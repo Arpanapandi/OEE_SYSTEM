@@ -1,0 +1,381 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<script>
+    // Machine Action Scripts (Running, Rest, Line Stop, No Loading)
+
+    // 1. Handle Running Click (Direct)
+    window.handleRunningClickDirect = async function(button) {
+        console.log('🖱️ Running button clicked! (via partial)');
+        
+        // Ensure updateMachineStatusUI is available
+        if (typeof window.updateMachineStatusUI !== 'function') {
+             // Fallback definition if slightly delayed
+             window.updateMachineStatusUI = function(status, downtimeDescription) {
+                const statusBadgeEl = document.getElementById('machine-status-badge');
+                if (statusBadgeEl) {
+                    const isAktif = status === 'Aktif';
+                    statusBadgeEl.textContent = isAktif ? 'AKTIF' : 'TIDAK AKTIF';
+                    statusBadgeEl.className = `badge ${isAktif ? 'bg-success' : 'bg-warning'}`;
+                }
+                const downtimeDescEl = document.getElementById('downtime-description');
+                if (downtimeDescEl) {
+                    if (downtimeDescription && downtimeDescription.trim() !== '') {
+                        downtimeDescEl.textContent = downtimeDescription;
+                        downtimeDescEl.style.display = 'inline';
+                    } else {
+                        downtimeDescEl.style.display = 'none';
+                    }
+                }
+             };
+        }
+
+        if (button.disabled) return false;
+
+        const machineId = '@Html.Raw(Model.MachineId)';
+        const originalText = button.innerHTML;
+        const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+
+        // Disable button
+        button.disabled = true;
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
+
+        try {
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+            const formData = new FormData();
+            formData.append('machineId', machineId);
+            if (token) formData.append('__RequestVerificationToken', token);
+
+            const response = await fetch('/Operator/Start', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'RequestVerificationToken': token || '',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (!result.success) {
+                    alert('❌ Error: ' + (result.message || 'Gagal start RUNNING'));
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                    return false;
+                }
+
+                // Success Logic
+                // 1. Reset timer vars
+                let nowAdjusted = (typeof window.getAdjustedServerTime === 'function') 
+                                ? window.getAdjustedServerTime() 
+                                : new Date();
+                
+                // Update globals if they exist
+                if(typeof window.runningStartTimeUtc !== 'undefined') window.runningStartTimeUtc = nowAdjusted;
+                if(typeof window.lastChangeTimestamp !== 'undefined') window.lastChangeTimestamp = nowAdjusted;
+
+                // 2. Clear intervals
+                if (window.runningTimerInterval) { clearInterval(window.runningTimerInterval); window.runningTimerInterval = null;}
+                if (window.sinceLastChangeInterval) { clearInterval(window.sinceLastChangeInterval); window.sinceLastChangeInterval = null;}
+
+                // 3. Update Status UI
+                window.updateMachineStatusUI('Aktif', '');
+
+                // 4. Reset Timer Display
+                const sinceLastStatusEl = document.getElementById('since-last-status');
+                if (sinceLastStatusEl) sinceLastStatusEl.textContent = '00:00:00';
+
+                // 5. Start Timer Interval
+                if (typeof window.updateRunningDisplay === 'function') {
+                     window.updateRunningDisplay(); // Immediate update
+                     window.runningTimerInterval = setInterval(() => {
+                        window.updateRunningDisplay();
+                     }, 1000);
+                }
+
+                // 6. Refresh Data
+                if (typeof window.fetchTimeMetrics === 'function') setTimeout(window.fetchTimeMetrics, 500);
+
+                button.disabled = false;
+                button.innerHTML = originalText;
+                
+                // Restore scroll
+                 requestAnimationFrame(() => {
+                    window.scrollTo({ top: scrollPosition, behavior: 'instant' });
+                });
+
+            } else {
+                const errorText = await response.text();
+                alert('❌ Error: ' + errorText);
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        } catch (error) {
+            console.error('❌ Error handling Running click:', error);
+            alert('❌ Error: ' + error.message);
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    };
+
+    // Helper: Reset Timer when Action starts (Rest, LineStop, NoLoading)
+    function resetTimerOnAction() {
+        const nowAdjusted = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
+        window.lastChangeTimestamp = nowAdjusted;
+
+        // Clear Running Timer
+        if (window.runningTimerInterval) { clearInterval(window.runningTimerInterval); window.runningTimerInterval = null;}
+        if (window.runningStartTimeUtc) window.runningStartTimeUtc = null;
+
+        // Clear existing interval
+        if (window.sinceLastChangeInterval) { clearInterval(window.sinceLastChangeInterval); window.sinceLastChangeInterval = null;}
+        
+        // Reset Display
+        const sinceLastStatusEl = document.getElementById('since-last-status');
+        if (sinceLastStatusEl) sinceLastStatusEl.textContent = '00:00:00';
+
+        // Start new interval
+        if (typeof window.updateTimerDisplay === 'function') {
+            window.sinceLastChangeInterval = setInterval(() => {
+                window.updateTimerDisplay();
+            }, 1000);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        // 2. REST BREAK - AJAX Handler
+        const btnRest = document.getElementById('btn-rest');
+        if (btnRest) {
+            btnRest.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (btnRest.disabled) return false;
+                
+                const form = document.getElementById('rest-form');
+                if (!form) return false;
+                
+                const formData = new FormData(form);
+                const reasonId = formData.get('reasonId');
+                
+                if (!reasonId) {
+                    alert('❌ Silakan pilih alasan REST BREAK');
+                    return false;
+                }
+                
+                const originalText = btnRest.innerHTML;
+                btnRest.disabled = true;
+                btnRest.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
+                
+                try {
+                    const response = await fetch('/Operator/Rest', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'RequestVerificationToken': formData.get('__RequestVerificationToken') || '',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        resetTimerOnAction();
+                        
+                        window.isNoLoading = false;
+                        window.hasActiveRestBreak = true;
+                        
+                        if(typeof window.updateMachineStatusUI === 'function') {
+                            window.updateMachineStatusUI('Aktif', 'Rest Break');
+                        }
+                        
+                        btnRest.disabled = false;
+                        btnRest.innerHTML = '<i class="fa-solid fa-pause-circle me-1"></i>Rest Break'; // Restore logic needs to match
+                        
+                        setTimeout(() => {
+                            if(typeof window.fetchOperatorDataForOee === 'function') window.fetchOperatorDataForOee();
+                            if(typeof window.fetchTimeMetrics === 'function') window.fetchTimeMetrics();
+                        }, 500);
+                        
+                    } else {
+                        alert('❌ Error: ' + (result.message || 'Gagal start REST BREAK'));
+                        btnRest.disabled = false;
+                        btnRest.innerHTML = originalText;
+                    }
+                } catch (error) {
+                    console.error('❌ Error:', error);
+                    alert('❌ Terjadi error saat start REST BREAK.');
+                    btnRest.disabled = false;
+                    btnRest.innerHTML = originalText;
+                }
+                return false;
+            });
+        }
+
+        // 3. LINE STOP Submit Handler
+        const lineStopForm = document.getElementById('line-stop-start-form');
+         const btnLineStop = document.getElementById('btn-line-stop');
+        if (lineStopForm) {
+            lineStopForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const formData = new FormData(this);
+                if (!formData.get('reasonId')) {
+                    alert('❌ Silakan pilih alasan LINE STOP');
+                    return;
+                }
+                
+                const submitButton = this.querySelector('button[type="submit"]');
+                const originalText = submitButton ? submitButton.innerHTML : '';
+                
+                if (btnLineStop) {
+                    btnLineStop.disabled = true;
+                    btnLineStop.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
+                }
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
+                }
+                
+                try {
+                     const response = await fetch('/Operator/LineStop', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'RequestVerificationToken': formData.get('__RequestVerificationToken') || '',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        resetTimerOnAction();
+                        
+                        window.isNoLoading = false;
+                        window.hasActiveRestBreak = false;
+                        
+                        const reasonSelect = this.querySelector('select[name="reasonId"]');
+                        const reasonText = reasonSelect?.selectedOptions[0]?.text || 'Line Stop';
+                        
+                        if(typeof window.updateMachineStatusUI === 'function') {
+                            window.updateMachineStatusUI('Aktif', reasonText);
+                        }
+                        
+                        if (btnLineStop) {
+                            btnLineStop.disabled = false;
+                            btnLineStop.innerHTML = '<i class="fa-solid fa-stop-circle me-1"></i>Line Stop';
+                        }
+                        
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('lineStopModal'));
+                        if (modal) modal.hide();
+                        
+                        setTimeout(() => {
+                            if(typeof window.fetchOperatorDataForOee === 'function') window.fetchOperatorDataForOee();
+                            if(typeof window.fetchTimeMetrics === 'function') window.fetchTimeMetrics();
+                        }, 500);
+                        
+                    } else {
+                        alert('❌ Error: ' + (result.message || 'Gagal start LINE STOP'));
+                        if (btnLineStop) {
+                            btnLineStop.disabled = false;
+                            btnLineStop.innerHTML = '<i class="fa-solid fa-stop-circle me-1"></i>Line Stop';
+                        }
+                        if (submitButton) submitButton.innerHTML = originalText;
+                    }
+                } catch (error) {
+                    console.error('❌ Error:', error);
+                    alert('❌ Terjadi error saat start LINE STOP.');
+                    if (btnLineStop) {
+                         btnLineStop.disabled = false;
+                         btnLineStop.innerHTML = '<i class="fa-solid fa-stop-circle me-1"></i>Line Stop';
+                     }
+                     if (submitButton) submitButton.innerHTML = originalText;
+                } finally {
+                    if (submitButton) submitButton.disabled = false;
+                }
+            });
+        }
+        
+        // 4. NO LOADING Submit Handler
+        const noLoadingForm = document.getElementById('no-loading-form');
+        const btnNoLoading = document.getElementById('btn-no-loading');
+        if (noLoadingForm) {
+            noLoadingForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const formData = new FormData(this);
+               
+                const submitButton = this.querySelector('button[type="submit"]');
+                const originalText = submitButton ? submitButton.innerHTML : '';
+                
+                 if (btnNoLoading) {
+                    btnNoLoading.disabled = true;
+                    btnNoLoading.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
+                }
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Processing...';
+                }
+                
+                try {
+                     const response = await fetch('/Operator/NoLoading', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'RequestVerificationToken': formData.get('__RequestVerificationToken') || '',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                     if (result.success) {
+                        resetTimerOnAction();
+                        
+                        window.isNoLoading = true;
+                        window.hasActiveRestBreak = false;
+                        
+                        if(typeof window.updateMachineStatusUI === 'function') {
+                            window.updateMachineStatusUI('Aktif', 'No Loading');
+                        }
+                        
+                         if (btnNoLoading) {
+                            btnNoLoading.disabled = false;
+                            btnNoLoading.innerHTML = '<i class="fa-regular fa-hourglass-half me-1"></i>NoLoading';
+                        }
+                        
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('noLoadingModal'));
+                        if (modal) modal.hide();
+                        
+                         setTimeout(() => {
+                            if(typeof window.fetchOperatorDataForOee === 'function') window.fetchOperatorDataForOee();
+                            if(typeof window.fetchTimeMetrics === 'function') window.fetchTimeMetrics();
+                        }, 500);
+
+                    } else {
+                         alert('❌ Error: ' + (result.message || 'Gagal set NO LOADING'));
+                         if (btnNoLoading) {
+                            btnNoLoading.disabled = false;
+                            btnNoLoading.innerHTML = '<i class="fa-regular fa-hourglass-half me-1"></i>NoLoading';
+                        }
+                        if (submitButton) submitButton.innerHTML = originalText;
+                    }
+                } catch (error) {
+                     console.error('❌ Error:', error);
+                    alert('❌ Terjadi error saat set NO LOADING.');
+                     if (btnNoLoading) {
+                        btnNoLoading.disabled = false;
+                        btnNoLoading.innerHTML = '<i class="fa-regular fa-hourglass-half me-1"></i>NoLoading';
+                    }
+                    if (submitButton) submitButton.innerHTML = originalText;
+                } finally {
+                    if (submitButton) submitButton.disabled = false;
+                }
+            });
+        }
+        
+    });
+</script>

@@ -36,6 +36,11 @@ public interface IOeeService
     /// Memperhitungkan event yang sedang berjalan (ongoing) dengan menggunakan DateTime.Now.
     /// </summary>
     Task<TimeMetricsResult> GetTimeMetricsAsync(string machineId, int? shiftId = null, DateTime? shiftDate = null, string? shiftCode = null);
+
+    /// <summary>
+    /// Menutup otomatis JobRun dan DowntimeEvent yang melewati batas shift.
+    /// </summary>
+    Task AutoCloseShiftJobsAsync();
 }
 
 public class TimeMetricsResult
