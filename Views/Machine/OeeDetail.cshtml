@@ -14,17 +14,16 @@
 
 <partial name="Partials/_Styles" />
 
-<div class="row">
-    <div class="col-12">
-        <partial name="Partials/_Header" model="Model" />
-    </div>
-</div>
+
 
 <!-- 1. Waktu Kerja Operator -->
 <partial name="Partials/_OperatorWorkTime" model="Model" />
 
 <!-- 2. Machine Actions -->
 <partial name="Partials/_MachineActions" model="Model" />
+
+<!-- 2.1 SCW (Stop Call Waiting) -->
+<partial name="Partials/_ScwSection" model="Model" />
 
 <!-- 3. Man Power & Injections -->
 <partial name="Partials/_ManPowerInput" model="Model" />
@@ -92,6 +91,7 @@
     <script src="~/js/pages/machine/oee-logic.js"></script>
     <script src="~/js/pages/machine/machine-actions.js"></script>
     <script src="~/js/pages/machine/oee-scanner.js"></script>
+    <script src="~/js/pages/machine/scw-handler.js"></script>
     
     <!-- Charts Initialization (Keep partial for Data Attributes) -->
     <partial name="Partials/_Script_Charts" model="Model" />

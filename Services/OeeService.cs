@@ -268,16 +268,22 @@ public class OeeService : IOeeService
 
         if (activeJob != null)
         {
-            if (activeDowntime != null)
+            // ✅ GUNAKAN CENTRALIZED LOGIC dengan WINDOW
+            var durationMetrics = CalculateJobDuration(activeJob, now, shiftStart, shiftEnd);
+            
+            if (!durationMetrics.IsRunning)
             {
-                lastStatusChangeTime = activeDowntime.StartTime;
-                sinceLastChangeSeconds = (int)(now - activeDowntime.StartTime).TotalSeconds;
+                // Downtime Mode: Timer menghitung durasi downtime (Sync dengan CurrentDowntime)
+                // Kita mundur dari Now sebasar CurrentDowntime
+                lastStatusChangeTime = now.Subtract(durationMetrics.CurrentDowntime);
+                sinceLastChangeSeconds = (int)durationMetrics.CurrentDowntime.TotalSeconds;
             }
             else
             {
-                // Running: display current operating duration
-                lastStatusChangeTime = activeJob.LastStatusChangeTime ?? activeJob.StartTime;
-                sinceLastChangeSeconds = Math.Max(0, (int)(now - lastStatusChangeTime.Value).TotalSeconds);
+                 // Running Mode: Timer menghitung Operating Time bersih (Sync dengan OperatingTime)
+                 // Kita mundur dari Now sebesar OperatingTime
+                 lastStatusChangeTime = now.Subtract(durationMetrics.OperatingTime);
+                 sinceLastChangeSeconds = (int)durationMetrics.OperatingTime.TotalSeconds;
             }
         }
 
@@ -457,6 +463,128 @@ public class OeeService : IOeeService
             await _context.SaveChangesAsync();
             // Optional: Broadcast SignalR ShiftEnded
         }
+    }
+
+    public async Task<(DateTime Start, DateTime End, Shift Shift)> GetCurrentShiftWindowAsync()
+    {
+        var now = DateTime.Now;
+        var today = now.Date;
+        var shifts = await _context.Shifts.AsNoTracking().ToListAsync();
+
+        foreach (var s in shifts)
+        {
+            DateTime sStart, sEnd;
+            if (s.EndTime < s.StartTime) // Shift malam
+            {
+                if (now.TimeOfDay < s.EndTime)
+                {
+                    sStart = today.AddDays(-1) + s.StartTime;
+                    sEnd = today + s.EndTime;
+                }
+                else
+                {
+                    sStart = today + s.StartTime;
+                    sEnd = today.AddDays(1) + s.EndTime;
+                }
+            }
+            else
+            {
+                sStart = today + s.StartTime;
+                sEnd = today + s.EndTime;
+            }
+
+            if (now >= sStart && now <= sEnd)
+            {
+                return (sStart, sEnd, s);
+            }
+        }
+
+        // Fallback default (Shift A or similar) if no match
+        var defaultShift = shifts.FirstOrDefault() ?? new Shift { Name = "A", StartTime = new TimeSpan(6, 0, 0), EndTime = new TimeSpan(14, 0, 0) };
+        return (today + defaultShift.StartTime, today + defaultShift.EndTime, defaultShift);
+    }
+
+    public JobDurationMetrics CalculateJobDuration(JobRun job, DateTime now, DateTime? windowStart = null, DateTime? windowEnd = null)
+    {
+        if (job == null) return new JobDurationMetrics(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, false);
+
+        // Define effective window
+        var effectiveNow = now;
+        if (windowEnd.HasValue && effectiveNow > windowEnd.Value) effectiveNow = windowEnd.Value;
+
+        var effectiveJobStart = job.StartTime;
+        if (windowStart.HasValue && effectiveJobStart < windowStart.Value) effectiveJobStart = windowStart.Value;
+
+        // If job hasn't started in this window yet
+        if (effectiveJobStart > effectiveNow) 
+            return new JobDurationMetrics(TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero, false);
+
+        var endTime = job.EndTime ?? now;
+        if (windowEnd.HasValue && endTime > windowEnd.Value) endTime = windowEnd.Value;
+        if (endTime > effectiveNow) endTime = effectiveNow; // Cap at 'now' (or shift end if passed as now)
+
+        var totalDuration = endTime - effectiveJobStart;
+        if (totalDuration.TotalSeconds < 0) totalDuration = TimeSpan.Zero;
+
+        TimeSpan totalNonRunningTime = TimeSpan.Zero;
+        TimeSpan totalDowntime = TimeSpan.Zero; // HANYA LINE STOP
+        TimeSpan currentDowntime = TimeSpan.Zero;
+        bool isRunning = true;
+
+        if (job.DowntimeEvents != null)
+        {
+            foreach (var d in job.DowntimeEvents)
+            {
+                // Determine downtime overlap with the effective window
+                var dStart = d.StartTime;
+                if (dStart < effectiveJobStart) dStart = effectiveJobStart; // Cliff to window/job start
+
+                var dEnd = d.EndTime ?? now;
+                if (windowEnd.HasValue && dEnd > windowEnd.Value) dEnd = windowEnd.Value;
+                if (dEnd > effectiveNow) dEnd = effectiveNow;
+                
+                // Jika downtime start setelah end (di luar window), skip
+                if (dStart >= dEnd) 
+                {
+                    // Check logic for 'isRunning': if we are currently in an open downtime, even if it started before window?
+                    // Actually if d.EndTime is null, it means it is ONGOING.
+                    if (d.EndTime == null && d.StartTime <= effectiveNow)
+                    {
+                        isRunning = false;
+                        // Calculate CurrentDowntime duration (uncapped or capped? Usually uncapped for display, but here we want metrics)
+                        // User wants timer to show real-time duration of THIS downtime event. 
+                        // CurrentDowntime usually starts from d.StartTime (absolute), not window start.
+                        currentDowntime = now - d.StartTime;
+                    }
+                    continue;
+                }
+
+                var dDuration = dEnd - dStart;
+                
+                // Akumulasi ke Total Non-Running (Semua tipe stop mengurangi Operating Time)
+                totalNonRunningTime += dDuration;
+
+                // Akumulasi spesifik Downtime (Hanya Line Stop / Unplanned)
+                if (d.IsLineStop || d.Reason?.Category == "Unplanned")
+                {
+                    totalDowntime += dDuration;
+                }
+
+                if (d.EndTime == null)
+                {
+                    // Update isRunning status only if this downtime actually covers 'now'
+                    // With effectiveNow logic, we handled overlaps.
+                    isRunning = false;
+                    currentDowntime = now - d.StartTime; // Absolute duration for timer display
+                }
+            }
+        }
+
+        // Operating Time = Total - Semua Stop (Termasuk Rest & NoLoading)
+        var operatingTime = totalDuration - totalNonRunningTime;
+        if (operatingTime.TotalSeconds < 0) operatingTime = TimeSpan.Zero;
+
+        return new JobDurationMetrics(totalDuration, totalNonRunningTime, totalDowntime, operatingTime, currentDowntime, isRunning);
     }
 }
 

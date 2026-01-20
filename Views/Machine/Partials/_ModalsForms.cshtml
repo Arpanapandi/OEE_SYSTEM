@@ -46,3 +46,63 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Standalone Qty (New) -->
+<div class="modal fade" id="standaloneQtyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0 shadow-lg" style="background: rgba(30, 35, 45, 0.95); backdrop-filter: blur(20px);">
+            <div class="modal-header border-secondary border-opacity-25 py-3">
+                <h5 class="modal-title fw-bold text-info">
+                    <i class="fa-solid fa-calculator me-2"></i>Input Produksi
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-4">
+                    <!-- Good Qty -->
+                    <div class="col-12">
+                        <label class="form-label fw-bold text-success mb-2 text-uppercase small" style="letter-spacing: 1px;">GOOD QUANTITY</label>
+                        <div class="input-group input-group-lg">
+                            <button class="btn btn-outline-success border-secondary border-opacity-25" type="button" onclick="const e=document.getElementById('modal-good-qty'); e.value = Math.max(0, parseInt(e.value||0)-1);">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <input type="number" class="form-control form-control-glass text-center fw-bold text-success bg-transparent border-secondary border-opacity-25" 
+                                   id="modal-good-qty" value="1" min="0" style="font-size: 2rem;">
+                            <button class="btn btn-outline-success border-secondary border-opacity-25" type="button" onclick="const e=document.getElementById('modal-good-qty'); e.value = parseInt(e.value||0)+1;">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- NG Qty -->
+                    <div class="col-12">
+                        <label class="form-label fw-bold text-danger mb-2 text-uppercase small" style="letter-spacing: 1px;">NG QUANTITY (REJECT)</label>
+                        <div class="input-group input-group-lg">
+                            <button class="btn btn-outline-danger border-secondary border-opacity-25" type="button" onclick="const e=document.getElementById('modal-reject-qty'); e.value = Math.max(0, parseInt(e.value||0)-1);">
+                                <i class="fa-solid fa-minus"></i>
+                            </button>
+                            <input type="number" class="form-control form-control-glass text-center fw-bold text-danger bg-transparent border-secondary border-opacity-25" 
+                                   id="modal-reject-qty" value="0" min="0" style="font-size: 2rem;">
+                            <button class="btn btn-outline-danger border-secondary border-opacity-25" type="button" onclick="const e=document.getElementById('modal-reject-qty'); e.value = parseInt(e.value||0)+1;">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Keterangan -->
+                    <div class="col-12">
+                        <label class="form-label fw-bold text-secondary mb-2 text-uppercase small" style="letter-spacing: 1px;">Keterangan (Opsional)</label>
+                        <textarea class="form-control form-control-glass text-white bg-transparent border-secondary border-opacity-25" 
+                                  id="modal-qty-keterangan" rows="2" placeholder="Masukan keterangan jika diperlukan..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25 p-3">
+                <button type="button" class="btn btn-link text-secondary text-decoration-none me-auto" data-bs-dismiss="modal">BATAL</button>
+                <button type="button" class="btn btn-info px-4 py-2 fw-bold shadow-sm" id="btn-modal-submit-qty">
+                    <i class="fa-solid fa-paper-plane me-2"></i>SIMPAN DATA
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

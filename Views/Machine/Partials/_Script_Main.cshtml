@@ -6,19 +6,25 @@
     // Global State
     window.machineId = '@Html.Raw(Model.MachineId)';
     window.shiftKey = '@Html.Raw(Model.ShiftKey)';
-    // Use ISO string for robustness or ensure format
     window.serverTimeOffset = 0;
     
     // Timer Globals
     window.runningTimerInterval = null;
     window.sinceLastChangeInterval = null;
     window.timeMetricsInterval = null;
+    window.realTimeMetricsInterval = null; // ✅ NEW: Interval for ticking metrics
+    
     window.runningStartTimeUtc = null; // Date object
     window.lastChangeTimestamp = null; // Date object
+    
+    // Metrics Snapshot for Real-Time Calculation
+    window.metricsSnapshot = null;
+    window.snapshotTimestamp = null;
     
     // Status Globals
     window.isNoLoading = @(Model.IsNoLoading.ToString().ToLower());
     window.hasActiveRestBreak = @(Model.HasActiveRestBreak.ToString().ToLower());
+    window.hasActiveDowntime = @(Model.HasActiveDowntime.ToString().ToLower()); // ✅ NEW
     window.machineStatus = '@Html.Raw(Model.MachineStatus)';
     
     // SignalR Connection
@@ -32,7 +38,7 @@
     }
     
     function initializeServerTime() {
-        const rawServerTime = '@ViewData["ServerTime"]'; // Format: yyyy-MM-ddTHH:mm:ss...
+        const rawServerTime = '@ViewData["ServerTime"]'; 
         if (rawServerTime) {
             const serverTime = new Date(rawServerTime);
             if (!isNaN(serverTime.getTime())) {
@@ -42,90 +48,166 @@
         }
     }
     
-    window.showToast = function(message, type = 'info') {
-        const toastContainer = document.querySelector('.toast-container');
-        if (!toastContainer) return;
+    function formatTime(seconds) {
+        if (seconds < 0) seconds = 0;
+        const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+        const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+        const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
+    }
+    
+    // ✅ Helper: Parse Time String to Seconds (Robust)
+    function parseTime(timeStr) {
+        if (!timeStr || timeStr === '-' || timeStr === '') return 0;
+        const parts = timeStr.toString().split(':'); 
+        if (parts.length < 3) return 0;
+        let s = parseInt(parts[2]);
+        let m = parseInt(parts[1]);
+        let h = parseInt(parts[0]);
+        if (parts[0].includes('.')) {
+             const dayParts = parts[0].split('.');
+             const days = parseInt(dayParts[0]);
+             h = parseInt(dayParts[1]) + (days * 24);
+        }
+        return (h * 3600) + (m * 60) + s;
+    }
+
+    // ✅ REAL-TIME TICKING LOGIC (DIRECT ACCUMULATOR MODEL)
+    // Prevents "Negative Timers" by growing values directly instead of subtracting from Shift
+    window.updateRealTimeMetrics = function() {
+        if (!window.metricsSnapshot || !window.snapshotTimestamp) return;
+
+        const now = Date.now();
+        const elapsedSeconds = Math.max(0, Math.floor((now - window.snapshotTimestamp) / 1000));
         
-        const colorClass = type === 'success' ? 'bg-success' : 
-                          type === 'error' ? 'bg-danger' : 
-                          type === 'warning' ? 'bg-warning' : 'bg-primary';
-                          
-        const toastHtml = `
-            <div class="toast align-items-center text-white ${colorClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
-                    </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                </div>
-            </div>
-        `;
+        const snapshot = window.metricsSnapshot;
         
-        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
-        const toastEl = toastContainer.lastElementChild;
-        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
-        toast.show();
+        // 1. BASE VALUES from Snapshot (Force valid numbers)
+        // These are the "Checpoints" from the last server fetch.
+        const baseNoLoading = Number(snapshot.NoLoadingTimeSeconds) || parseTime(snapshot.NoLoadingTime) || 0;
+        const baseRestBreak = Number(snapshot.RestBreakTimeSeconds) || parseTime(snapshot.RestBreakTime) || 0;
+        const baseUnplannedDT = Number(snapshot.DowntimeTotalSeconds) || parseTime(snapshot.DowntimeTotal) || 0;
+        const baseLoadingTime = Number(snapshot.PlannedProductionTimeSeconds) || parseTime(snapshot.PlannedProductionTime) || 0;
+        const baseOperatingTime = Number(snapshot.OperatingTimeSeconds) || parseTime(snapshot.OperatingTime) || 0;
+
+        // 2. DELTAS (Which counters are growing RIGHT NOW?)
+        let deltaNoLoading = 0;
+        let deltaRestBreak = 0;
+        let deltaUnplannedDT = 0;
+        let deltaLoadingTime = 0;
+        let deltaOperatingTime = 0;
         
-        toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+        if (window.isNoLoading) {
+            deltaNoLoading = elapsedSeconds;
+            // Planned (Loading) STOPS. Operating STOPS.
+        } 
+        else if (window.hasActiveRestBreak) {
+            deltaRestBreak = elapsedSeconds;
+             // Planned (Loading) STOPS. Operating STOPS.
+        } 
+        else if (window.hasActiveDowntime) {
+            deltaUnplannedDT = elapsedSeconds;
+            // Planned (Loading) GROWS (It's still scheduled production time). 
+            deltaLoadingTime = elapsedSeconds;
+            // Operating STOPS (Machine is down).
+        } 
+        else if (window.machineStatus === 'Aktif') {
+            // Running normally
+            // Planned (Loading) GROWS.
+            deltaLoadingTime = elapsedSeconds;
+            // Operating GROWS.
+            deltaOperatingTime = elapsedSeconds;
+        }
+        
+        // 3. CALCULATION (Simple Addition)
+        const currentNoLoading = baseNoLoading + deltaNoLoading;
+        const currentRestBreak = baseRestBreak + deltaRestBreak;
+        const currentUnplannedDT = baseUnplannedDT + deltaUnplannedDT;
+        // Calculation for Loading/Operating is now purely additive, ensuring no negatives.
+        let currentLoadingTime = baseLoadingTime + deltaLoadingTime;
+        // Correction: If backend logic for 'Operating Time' is 'Loading - Downtime', 
+        // we should ensure our local 'Operating' matches that derivation visually, 
+        // OR we can trust our 'deltaOperatingTime' if the snapshot was correct.
+        // Let's stick to the additive Delta to be safe against negatives.
+        let currentOperatingTime = baseOperatingTime + deltaOperatingTime;
+
+        // 4. UPDATE DOM (Safe Formatting)
+        const safeFormat = (val) => formatTime(Math.max(0, val));
+        
+        if(document.getElementById('operating-time')) 
+            document.getElementById('operating-time').textContent = safeFormat(currentOperatingTime);
+        
+        if(document.getElementById('downtime-total')) 
+            document.getElementById('downtime-total').textContent = safeFormat(currentUnplannedDT);
+            
+        if(document.getElementById('rest-break-time')) 
+            document.getElementById('rest-break-time').textContent = safeFormat(currentRestBreak);
+            
+        if(document.getElementById('no-loading-time')) 
+            document.getElementById('no-loading-time').textContent = safeFormat(currentNoLoading);
+            
+        if(document.getElementById('planned-production-time'))
+            document.getElementById('planned-production-time').textContent = safeFormat(currentLoadingTime);
+
+        // Update Bars
+        if (currentLoadingTime > 0) {
+            const opPercent = Math.min(100, (currentOperatingTime / currentLoadingTime) * 100);
+            const dtPercent = Math.min(100, (currentUnplannedDT / currentLoadingTime) * 100);
+            const opBar = document.getElementById('operating-progress-bar');
+            const dtBar = document.getElementById('downtime-progress-bar');
+            if(opBar) opBar.style.width = opPercent.toFixed(1) + '%';
+            if(dtBar) dtBar.style.width = dtPercent.toFixed(1) + '%';
+        }
     };
     
-    // Defined globally for use by other scripts
-    window.updateMachineStatusUI = function(status, downtimeDescription) {
-        console.log('🔄 updateMachineStatusUI:', status, downtimeDescription);
-        const statusBadgeEl = document.getElementById('machine-status-badge');
-        const downtimeDescEl = document.getElementById('downtime-description');
-        const machineStatusInfoEl = document.getElementById('machine-status-info');
-        
-        const isAktif = status === 'Aktif';
-        
-        if (statusBadgeEl) {
-            statusBadgeEl.textContent = isAktif ? 'AKTIF' : 'TIDAK AKTIF';
-            statusBadgeEl.className = `badge ${isAktif ? 'bg-success' : 'bg-warning'}`;
-        }
-        
-        if (downtimeDescEl) {
-            if (downtimeDescription && downtimeDescription.trim()) {
-                downtimeDescEl.textContent = downtimeDescription;
-                downtimeDescEl.style.display = 'inline';
-            } else {
-                downtimeDescEl.style.display = 'none';
-            }
-        }
-        
-        if (machineStatusInfoEl) {
-            machineStatusInfoEl.style.display = isAktif ? 'none' : 'inline';
-        }
+    // ✅ Helper: Finalize Snapshot
+    // Commits elapsed ticks to the snapshot so transitions are seamless
+    window.finalizeSnapshot = function() {
+        if (!window.metricsSnapshot || !window.snapshotTimestamp) return;
 
-        // Navbar Sync (Optional)
-        const navbarStatusDot = document.getElementById('navbar-status-dot');
-        const navbarStatusText = document.getElementById('navbar-status-text');
-        if (navbarStatusDot && navbarStatusText) {
-            navbarStatusText.textContent = isAktif ? 'AKTIF' : status.toUpperCase();
-            navbarStatusDot.style.background = isAktif ? '#28a745' : '#ffc107';
+        const now = Date.now();
+        const elapsedSeconds = Math.max(0, Math.floor((now - window.snapshotTimestamp) / 1000));
+        if (elapsedSeconds <= 0) return;
+
+        console.log('🔄 Finalizing Snapshot. Elapsed:', elapsedSeconds, 's');
+
+        // Init optional counters
+        if(window.metricsSnapshot.PlannedProductionTimeSeconds === undefined) 
+             window.metricsSnapshot.PlannedProductionTimeSeconds = parseTime(window.metricsSnapshot.PlannedProductionTime);
+        if(window.metricsSnapshot.OperatingTimeSeconds === undefined) 
+             window.metricsSnapshot.OperatingTimeSeconds = parseTime(window.metricsSnapshot.OperatingTime);
+        if(window.metricsSnapshot.NoLoadingTimeSeconds === undefined) 
+             window.metricsSnapshot.NoLoadingTimeSeconds = parseTime(window.metricsSnapshot.NoLoadingTime);
+        if(window.metricsSnapshot.RestBreakTimeSeconds === undefined) 
+             window.metricsSnapshot.RestBreakTimeSeconds = parseTime(window.metricsSnapshot.RestBreakTime);
+        if(window.metricsSnapshot.DowntimeTotalSeconds === undefined) 
+             window.metricsSnapshot.DowntimeTotalSeconds = parseTime(window.metricsSnapshot.DowntimeTotal);
+
+        // Commit elapsed based on OLD state (before the click changed it)
+        if (window.metricsSnapshot.hasActiveRestBreak) {
+            window.metricsSnapshot.RestBreakTimeSeconds += elapsedSeconds;
+        } 
+        else if (window.metricsSnapshot.isNoLoading) {
+            window.metricsSnapshot.NoLoadingTimeSeconds += elapsedSeconds;
         }
-    };
-
-    // 2. TIMERS
-    
-    window.updateTimerDisplay = function() {
-        const displayEl = document.getElementById('since-last-status');
-        if (!displayEl || !window.lastChangeTimestamp) return;
+        else if (window.metricsSnapshot.hasActiveDowntime) {
+             window.metricsSnapshot.DowntimeTotalSeconds += elapsedSeconds;
+             // Line Stop (Unplanned) happens DURING Planned Production
+             window.metricsSnapshot.PlannedProductionTimeSeconds += elapsedSeconds;
+        }
+        else if (window.machineStatus === 'Aktif') {
+             // Running
+             if (!window.metricsSnapshot.hasActiveRestBreak && 
+                 !window.metricsSnapshot.isNoLoading && 
+                 !window.metricsSnapshot.hasActiveDowntime) {
+                 
+                 window.metricsSnapshot.OperatingTimeSeconds += elapsedSeconds;
+                 window.metricsSnapshot.PlannedProductionTimeSeconds += elapsedSeconds;
+             }
+        }
         
-        const now = getAdjustedServerTime();
-        const diff = Math.max(0, Math.floor((now - window.lastChangeTimestamp) / 1000));
-        
-        const h = Math.floor(diff / 3600).toString().padStart(2, '0');
-        const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
-        const s = (diff % 60).toString().padStart(2, '0');
-        
-        displayEl.textContent = `${h}:${m}:${s}`;
-    };
-
-    window.updateRunningDisplay = function() {
-        const displayEl = document.getElementById('running-duration-display'); // Assuming this ID exists in Header? Or Action Card?
-        // Actually, looking at _MachineActions.cshtml, the timer might be different.
-        // Let's assume there is a running timer somewhere or just use sinceLastStatus for everything.
-        // Re-checking _MachineActions.cshtml...
+        window.snapshotTimestamp = now;
+        console.log('✅ Snapshot Finalized.');
     };
     
     // 3. DATA FETCHING
@@ -147,22 +229,39 @@
     function applyTimeMetrics(data) {
         if (!data) return;
         
-        // Update Time Cards
-        if(document.getElementById('planned-production-time')) 
-            document.getElementById('planned-production-time').textContent = data.PlannedProductionTime || '-';
-        if(document.getElementById('operating-time')) 
-            document.getElementById('operating-time').textContent = data.OperatingTime || '-';
-        if(document.getElementById('downtime-time')) 
-            document.getElementById('downtime-time').textContent = data.Downtime || '-';
+        // ✅ SNAPSHOT for Ticking
+        window.metricsSnapshot = data;
+        window.snapshotTimestamp = Date.now();
+        
+        // ✅ SYNC INTERNAL STATE FROM SERVER
+        // This is crucial if another user changed state
+        if (data.HasActiveRestBreak !== undefined) window.hasActiveRestBreak = data.HasActiveRestBreak;
+        if (data.IsNoLoading !== undefined) window.isNoLoading = data.IsNoLoading; // Assuming this property exists in response
+        if (data.HasActiveDowntime !== undefined) window.hasActiveDowntime = data.HasActiveDowntime;
+        if (data.MachineStatus) window.machineStatus = data.MachineStatus;
+
+        // Apply static/initial values immediately
+        window.updateRealTimeMetrics();
             
-        // Update OEE Cards
-        if(document.getElementById('oee-value')) document.getElementById('oee-value').textContent = (data.OEE || 0).toFixed(1) + '%';
+        // Update OEE Cards (percentages are static until next fetch)
+        if(document.getElementById('oee-value')) document.getElementById('oee-value').textContent = (data.Oee || 0).toFixed(1) + '%';
         if(document.getElementById('availability-value')) document.getElementById('availability-value').textContent = (data.Availability || 0).toFixed(1) + '%';
         if(document.getElementById('performance-value')) document.getElementById('performance-value').textContent = (data.Performance || 0).toFixed(1) + '%';
         if(document.getElementById('quality-value')) document.getElementById('quality-value').textContent = (data.Quality || 0).toFixed(1) + '%';
         
-        // Update History Lists if present in data
-        // ...
+        // Update Bars
+        if(document.getElementById('planned-production-time'))
+             document.getElementById('planned-production-time').textContent = data.PlannedProductionTime || '-';
+             
+        // Percentages for bars
+        if (data.OperatingPercent !== undefined) {
+             const bar = document.getElementById('operating-progress-bar');
+             if(bar) bar.style.width = data.OperatingPercent + '%';
+        }
+         if (data.DowntimePercent !== undefined) {
+             const bar = document.getElementById('downtime-progress-bar');
+             if(bar) bar.style.width = data.DowntimePercent + '%';
+        }
     }
 
     // 4. SIGNALR
@@ -186,9 +285,6 @@
                 if (data.MachineStatus) {
                     window.machineStatus = data.MachineStatus;
                     updateMachineStatusUI(data.MachineStatus, data.ActiveDowntimeDescription);
-                    
-                    // Sync Timer Reference if changed drastically? 
-                    // Usually we trust local calculation unless page reload.
                 }
             }
         });
@@ -207,8 +303,6 @@
 
     // 5. CHART.JS
     function initCharts() {
-        // Placeholder for Chart initialization logic
-        // Checks if Canvas elements exist and renders charts
         const ctxRun = document.getElementById('machineRuntimeChart');
         if (ctxRun && typeof Chart !== 'undefined') {
              // ... Render logic
@@ -221,8 +315,6 @@
         initSignalR();
         
         // Initial Timer Setup
-        // We need to know WHEN the current status started.
-        // This is usually passed in Model.LastStatusChange or similar.
         const lastChangeStr = '@Html.Raw(Model.LastStatusChangeTimeIso)'; 
         if (lastChangeStr) {
             window.lastChangeTimestamp = new Date(lastChangeStr);
@@ -232,9 +324,17 @@
             window.sinceLastChangeInterval = setInterval(window.updateTimerDisplay, 1000);
             window.updateTimerDisplay(); // Immediate
         }
+
         
-        // Start Global Metrics Polling (Backup to SignalR)
-        window.timeMetricsInterval = setInterval(window.fetchTimeMetrics, 30000); // Every 30s
+        // ✅ Start Real-Time Metric Ticking
+        if (window.realTimeMetricsInterval) clearInterval(window.realTimeMetricsInterval);
+        window.realTimeMetricsInterval = setInterval(window.updateRealTimeMetrics, 1000);
+        
+        // Start Global Metrics Polling (Backup/Re-Sync)
+        window.timeMetricsInterval = setInterval(window.fetchTimeMetrics, 10000); // More frequent: 10s
+        
+        // Initial Fetch
+        fetchTimeMetrics();
     });
 
 </script>

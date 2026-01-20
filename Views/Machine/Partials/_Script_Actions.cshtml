@@ -73,6 +73,15 @@
                 if(typeof window.runningStartTimeUtc !== 'undefined') window.runningStartTimeUtc = nowAdjusted;
                 if(typeof window.lastChangeTimestamp !== 'undefined') window.lastChangeTimestamp = nowAdjusted;
 
+                // ✅ Finalize previous state duration to prevent timer jumps
+                if (typeof window.finalizeSnapshot === 'function') window.finalizeSnapshot();
+
+                // ✅ UPDATE GLOBAL STATE IMMEDIATELY (Fix Resume Bug)
+                window.machineStatus = 'Aktif';
+                window.hasActiveRestBreak = false;
+                window.isNoLoading = false;
+                window.hasActiveDowntime = false;
+
                 // 2. Clear intervals
                 if (window.runningTimerInterval) { clearInterval(window.runningTimerInterval); window.runningTimerInterval = null;}
                 if (window.sinceLastChangeInterval) { clearInterval(window.sinceLastChangeInterval); window.sinceLastChangeInterval = null;}
@@ -182,15 +191,20 @@
                     if (result.success) {
                         resetTimerOnAction();
                         
+                        // ✅ Finalize previous state
+                        if (typeof window.finalizeSnapshot === 'function') window.finalizeSnapshot();
+                        
+                        // ✅ UPDATE STATE IMMEDIATELY
                         window.isNoLoading = false;
                         window.hasActiveRestBreak = true;
+                        window.hasActiveDowntime = false;
                         
                         if(typeof window.updateMachineStatusUI === 'function') {
                             window.updateMachineStatusUI('Aktif', 'Rest Break');
                         }
                         
                         btnRest.disabled = false;
-                        btnRest.innerHTML = '<i class="fa-solid fa-pause-circle me-1"></i>Rest Break'; // Restore logic needs to match
+                        btnRest.innerHTML = '<i class="fa-solid fa-pause-circle me-1"></i>Rest Break';
                         
                         setTimeout(() => {
                             if(typeof window.fetchOperatorDataForOee === 'function') window.fetchOperatorDataForOee();
@@ -214,7 +228,7 @@
 
         // 3. LINE STOP Submit Handler
         const lineStopForm = document.getElementById('line-stop-start-form');
-         const btnLineStop = document.getElementById('btn-line-stop');
+        const btnLineStop = document.getElementById('btn-line-stop');
         if (lineStopForm) {
             lineStopForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
@@ -253,8 +267,13 @@
                     if (result.success) {
                         resetTimerOnAction();
                         
+                        // ✅ Finalize previous state
+                        if (typeof window.finalizeSnapshot === 'function') window.finalizeSnapshot();
+                        
+                        // ✅ UPDATE STATE IMMEDIATELY
                         window.isNoLoading = false;
                         window.hasActiveRestBreak = false;
+                        window.hasActiveDowntime = true;
                         
                         const reasonSelect = this.querySelector('select[name="reasonId"]');
                         const reasonText = reasonSelect?.selectedOptions[0]?.text || 'Line Stop';
@@ -307,7 +326,7 @@
                 e.stopPropagation();
                 
                 const formData = new FormData(this);
-               
+                
                 const submitButton = this.querySelector('button[type="submit"]');
                 const originalText = submitButton ? submitButton.innerHTML : '';
                 
@@ -335,8 +354,13 @@
                      if (result.success) {
                         resetTimerOnAction();
                         
+                        // ✅ Finalize previous state
+                        if (typeof window.finalizeSnapshot === 'function') window.finalizeSnapshot();
+                        
+                        // ✅ UPDATE STATE IMMEDIATELY
                         window.isNoLoading = true;
                         window.hasActiveRestBreak = false;
+                        window.hasActiveDowntime = false;
                         
                         if(typeof window.updateMachineStatusUI === 'function') {
                             window.updateMachineStatusUI('Aktif', 'No Loading');
@@ -376,6 +400,5 @@
                 }
             });
         }
-        
     });
 </script>

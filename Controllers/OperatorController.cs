@@ -12,11 +12,15 @@ public class OperatorController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly IHubContext<OeeHub> _hubContext;
+    private readonly Services.IOeeService _oeeService;
+    private readonly Services.ProductionReporterService _reporterService;
 
-    public OperatorController(ApplicationDbContext context, IHubContext<OeeHub> hubContext)
+    public OperatorController(ApplicationDbContext context, IHubContext<OeeHub> hubContext, Services.IOeeService oeeService, Services.ProductionReporterService reporterService)
     {
         _context = context;
         _hubContext = hubContext;
+        _oeeService = oeeService;
+        _reporterService = reporterService;
     }
 
     public async Task<IActionResult> Index(string machineId)
@@ -53,14 +57,29 @@ public class OperatorController : Controller
             .OrderByDescending(d => d.StartTime)
             .FirstOrDefault(d => d.EndTime == null);
 
-        DateTime lastChangeTime = activeJob?.StartTime ?? machine.JobRuns
-            .OrderByDescending(j => j.StartTime)
-            .FirstOrDefault()?.StartTime ?? now;
-
-        if (openDowntime != null)
+        // ✅ PERBAIKAN: Gunakan logic terpusat dari OeeService dengan WINDOW SHIFT
+        // Ini memastikan tampilan awal operator view sinkron dengan dashboard dan behavior tombol Start/Resume
+        var shiftWindow = await _oeeService.GetCurrentShiftWindowAsync();
+        
+        TimeSpan sinceLastChange = TimeSpan.Zero;
+        if (activeJob != null)
         {
-            lastChangeTime = openDowntime.StartTime;
+            var durationMetrics = _oeeService.CalculateJobDuration(activeJob, now, shiftWindow.Start, shiftWindow.End);
+            if (durationMetrics.IsRunning)
+            {
+                sinceLastChange = durationMetrics.OperatingTime;
+            }
+            else
+            {
+                sinceLastChange = durationMetrics.CurrentDowntime;
+            }
         }
+        else if (openDowntime != null)
+        {
+             // Fallback logic if activeJob is null but somehow we have openDowntime (unlikely given logic above)
+             sinceLastChange = now - openDowntime.StartTime;
+        }
+
 
         var plannedRests = await _context.DowntimeReasons
             .Where(r => r.Category == "Planned")
@@ -93,7 +112,7 @@ public class OperatorController : Controller
             HasActiveJob = activeJob != null,
             HasActiveDowntime = openDowntime != null,
             ActiveDowntimeDescription = openDowntime?.Reason?.Description,
-            SinceLastChange = now - lastChangeTime,
+            SinceLastChange = sinceLastChange,
             MachineStatus = machine.Status, // Status dari Admin (Aktif/Tidak Aktif)
             LineStopReasons = lineStops,
             RestReason = restReason,
@@ -187,12 +206,19 @@ public class OperatorController : Controller
                     DowntimeDescription = ""
                 });
                 
+                // ✅ RE-CALCULATE TIMER SYNC with SHIFT WINDOW
+                var shiftWindow = await _oeeService.GetCurrentShiftWindowAsync();
+                var durationMetrics = _oeeService.CalculateJobDuration(existingJob, nowLocal, shiftWindow.Start, shiftWindow.End);
+                
+                // Jika Running, timer frontend menghitung Operating Time Bersih (Clipped), jadi kita mundur dari now
+                var syncTime = nowLocal.Subtract(durationMetrics.OperatingTime);
+
                 if (isAjax)
                 {
                     return Json(new { 
                         success = true, 
                         message = "Machine running",
-                        lastStatusChangeTime = nowLocal.ToString("O"),
+                        lastStatusChangeTime = syncTime.ToString("O"), // ✅ SYNCED TIME
                         machineStatus = "Aktif"
                     });
                 }
@@ -214,12 +240,17 @@ public class OperatorController : Controller
                 
                 await _context.SaveChangesAsync();
                 
+                // ✅ RE-CALCULATE TIMER SYNC with SHIFT WINDOW
+                var shiftWindow = await _oeeService.GetCurrentShiftWindowAsync();
+                var durationMetrics = _oeeService.CalculateJobDuration(existingJob, nowLocal, shiftWindow.Start, shiftWindow.End);
+                var syncTime = nowLocal.Subtract(durationMetrics.OperatingTime);
+
                 if (isAjax)
                 {
                     return Json(new { 
                         success = true, 
                         message = "Machine sudah running",
-                        lastStatusChangeTime = nowLocal.ToString("O"),
+                        lastStatusChangeTime = syncTime.ToString("O"), // ✅ SYNCED TIME
                         machineStatus = "Aktif"
                     });
                 }
@@ -447,12 +478,17 @@ public class OperatorController : Controller
             DowntimeDescription = reason.Description
         });
 
+        // ✅ RE-CALCULATE TIMER SYNC
+        // Saat Downtime Start, timer harus mulai dari 0.
+        // Jadi kita kirim start time dari downtime yang baru dibuat.
+        var syncTime = newDowntime.StartTime;
+
         if (isAjax)
         {
             return Json(new { 
                 success = true, 
                 message = $"Downtime: {reason.Description} dimulai",
-                lastStatusChangeTime = now.ToString("O"),
+                lastStatusChangeTime = syncTime.ToString("O"), // ✅ SYNCED TIME (Start of Downtime)
                 downtimeDescription = reason.Description
             });
         }
@@ -547,7 +583,7 @@ public class OperatorController : Controller
             return Json(new { 
                 success = true, 
                 message = "NO LOADING dimulai",
-                lastStatusChangeTime = now.ToString("O"),
+                lastStatusChangeTime = now.ToString("O"), // ✅ Start of NoLoading
                 downtimeDescription = "No Loading"
             });
         }
@@ -622,6 +658,12 @@ public class OperatorController : Controller
             _context.ProductionCounts.Add(count);
             await _context.SaveChangesAsync();
 
+            // ✅ EVENT-DRIVEN: Lapor ke Laptop Server Monitoring
+            if (goodQty > 0)
+            {
+                await _reporterService.LaporServer(goodQty);
+            }
+
             // Broadcast SignalR update
             await _hubContext.Clients.All.SendAsync("OeeUpdated", new
             {
@@ -660,7 +702,9 @@ public class OperatorController : Controller
         string? injection,
         int? komponenId,
         int? durasiProduksiSeconds,
-        int qty = 1)
+        int goodQty = 0,
+        int rejectQty = 0,
+        string? rejectReason = null)
     {
         bool isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest" || Request.Query["ajax"] == "1";
         var now = DateTime.Now;
@@ -687,8 +731,9 @@ public class OperatorController : Controller
             {
                 JobRunId = job.Id,
                 Timestamp = now,
-                GoodCount = qty, // Default 1 for item submission
-                RejectCount = 0,
+                GoodCount = goodQty, 
+                RejectCount = rejectQty,
+                RejectReason = rejectReason,
                 NomorLot = nomorLot,
                 LotBo = lotBo, // ✅ MAP to lotBo parameter
                 NamaCompound = namaCompound,
@@ -708,6 +753,12 @@ public class OperatorController : Controller
             _context.ProductionCounts.Add(count);
             await _context.SaveChangesAsync();
 
+            // ✅ EVENT-DRIVEN: Lapor ke Laptop Server Monitoring
+            if (goodQty > 0)
+            {
+                await _reporterService.LaporServer(goodQty);
+            }
+
             // Broadcast SignalR update
             await _hubContext.Clients.All.SendAsync("OeeUpdated", new
             {
@@ -715,8 +766,9 @@ public class OperatorController : Controller
                 MachineId = machineId,
                 MachineName = job.Machine?.Name,
                 ProductName = job.WorkOrder?.Product?.Name,
-                GoodCount = qty,
-                Message = $"Data Produksi tersimpan: {nomorLot} ({lotBo})",
+                GoodCount = goodQty,
+                RejectCount = rejectQty,
+                Message = $"Data Produksi: {nomorLot} ({goodQty} Good, {rejectQty} NG)",
                 Timestamp = now
             });
 

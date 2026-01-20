@@ -1,0 +1,50 @@
+@using OeeSystem.Models
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- SCW (Stop Call Waiting) Section -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="glass-card" id="scw-input-card">
+            <div class="glass-card-header" style="background: rgba(220, 53, 69, 0.1); border-bottom: 1px solid rgba(220, 53, 69, 0.2); padding: 0.75rem 1rem;">
+                <h6 class="mb-0 text-danger fw-bold">
+                    <i class="fa-solid fa-exclamation-triangle me-2"></i>SCW (Stop Call Waiting)
+                </h6>
+            </div>
+            <div class="glass-card-body p-3">
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold small text-uppercase">Kategori 4M</label>
+                        <select class="form-control-glass" id="scw-4m-type" name="scw4MTypeId" required>
+                            <option value="">-- Pilih Kategori --</option>
+                            @if (ViewBag.Scw4MTypes != null)
+                            {
+                                foreach (var type in ((List<Scw4MType>)ViewBag.Scw4MTypes))
+                                {
+                                    <option value="@type.Id">@type.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold small text-uppercase">Alasan / Remark</label>
+                        <select class="form-control-glass" id="scw-remark" name="scwRemarkId" required>
+                            <option value="">-- Pilih Alasan --</option>
+                            @if (ViewBag.ScwRemarks != null)
+                            {
+                                foreach (var remark in (List<ScwRemark>)ViewBag.ScwRemarks)
+                                {
+                                    <option value="@remark.Id" data-parent-id="@remark.Scw4MTypeId" class="scw-remark-option" style="display:none;">@remark.Description</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-danger w-100 fw-bold" id="btn-scw-submit" style="height: 42px;">
+                            <i class="fa-solid fa-save me-1"></i>SIMPAN
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

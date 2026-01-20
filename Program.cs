@@ -34,6 +34,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // OEE Logic Services
 builder.Services.AddScoped<IOeeService, OeeService>();
+// Production Reporter Service (Typed Client automatically registers the service and injects HttpClient)
+builder.Services.AddHttpClient<ProductionReporterService>();
 
 // Real-Time Background Service
 // builder.Services.AddHostedService<OeeRealTimeService>(); // Disabled temporary due to EventLog permission issue

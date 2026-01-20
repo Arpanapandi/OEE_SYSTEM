@@ -68,3 +68,57 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Input Produksi Qty (Good/NG) -->
+<div class="modal fade" id="modal-input-produksi-qty" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content glass-card border-0" style="background: rgba(30, 30, 45, 0.95); backdrop-filter: blur(10px);">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title text-white"><i class="fa-solid fa-boxes-stacked me-2"></i>Input Hasil Produksi</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-white">
+                <div class="row g-3">
+                    <!-- Good Quantity -->
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Quantity Good</label>
+                        <div class="input-group">
+                             <button class="btn btn-outline-success" type="button" onclick="const e=document.getElementById('input-modal-good'); e.value=Math.max(0, parseInt(e.value||0)-1); e.dispatchEvent(new Event('change'));"><i class="fa-solid fa-minus"></i></button>
+                             <input type="number" class="form-control form-control-glass text-center text-success fw-bold fs-3" id="input-modal-good" value="1" min="0">
+                             <button class="btn btn-outline-success" type="button" onclick="const e=document.getElementById('input-modal-good'); e.value=parseInt(e.value||0)+1; e.dispatchEvent(new Event('change'));"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <!-- NG Quantity -->
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Quantity NG</label>
+                        <div class="input-group">
+                             <button class="btn btn-outline-danger" type="button" onclick="const e=document.getElementById('input-modal-ng'); e.value=Math.max(0, parseInt(e.value||0)-1); e.dispatchEvent(new Event('change'));"><i class="fa-solid fa-minus"></i></button>
+                             <input type="number" class="form-control form-control-glass text-center text-danger fw-bold fs-3" id="input-modal-ng" value="0" min="0">
+                             <button class="btn btn-outline-danger" type="button" onclick="const e=document.getElementById('input-modal-ng'); e.value=parseInt(e.value||0)+1; e.dispatchEvent(new Event('change'));"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <!-- Total Display -->
+                    <div class="col-12 text-center mb-2">
+                         <div class="p-3 rounded-3 bg-white bg-opacity-10">
+                            <div class="text-secondary small mb-1">Total Quantity</div>
+                            <div id="total-qty-display" class="fs-4 fw-bold">1</div>
+                         </div>
+                    </div>
+
+                    <!-- Keterangan -->
+                    <div class="col-12">
+                        <label class="form-label fw-bold text-secondary mb-2 text-uppercase small" style="letter-spacing: 1px;">Keterangan (Opsional)</label>
+                        <textarea class="form-control form-control-glass text-white bg-transparent border-secondary border-opacity-25" 
+                                  id="input-modal-keterangan" rows="2" placeholder="Masukan keterangan jika diperlukan..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-primary px-4 py-2 fw-bold" id="btn-confirm-submit-produksi">
+                    <i class="fa-solid fa-cloud-upload me-2"></i>SUBMIT DATA
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

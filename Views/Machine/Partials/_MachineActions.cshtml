@@ -26,83 +26,78 @@
                     }
                 </div>
             </div>
-            <div class="glass-card-body" style="padding: 1.5rem;">
+            <div class="glass-card-body py-4 position-relative">
                 
-                <!-- Action Buttons: Horizontal Symmetric Layout (1 Row, 4 Columns) -->
-                <div class="row g-3 justify-content-center mb-4">
-                    <!-- Running Button -->
-                    <div class="col-md-3 col-12">
-                        @Html.AntiForgeryToken()
-                        <button type="button" 
-                                id="btn-running" 
-                                class="btn w-100 btn-outline-success machine-action-btn py-3"
-                                data-machine-id="@Model.MachineId"
-                                style="pointer-events: auto !important; cursor: pointer !important; height: 100%;"
-                                onclick="if(typeof handleRunningClickDirect === 'function') { handleRunningClickDirect(this); } else { console.error('❌ handleRunningClickDirect not found'); } return false;">
-                            <i class="fa-solid fa-play me-2"></i>RUNNING
-                        </button>
+                <!-- 1. Action Buttons (2x2 Grid for Tablet/Desktop) -->
+                <div class="row g-3">
+                    <!-- Left Column (2 Buttons) -->
+                    <div class="col-6">
+                        <div class="d-flex flex-column gap-3 h-100">
+                             <!-- Running Button -->
+                            @Html.AntiForgeryToken()
+                            <button type="button" 
+                                    id="btn-running" 
+                                    class="btn w-100 btn-success machine-action-btn py-2 d-flex align-items-center justify-content-center shadow-sm"
+                                    data-machine-id="@Model.MachineId"
+                                    style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;"
+                                    onclick="if(typeof handleRunningClickDirect === 'function') { handleRunningClickDirect(this); } return false;">
+                                <i class="fa-solid fa-play me-2 fs-5"></i>RUNNING
+                            </button>
+
+                             <!-- Line Stop Button -->
+                            <button type="button" 
+                                    id="btn-line-stop" 
+                                    class="btn w-100 btn-danger machine-action-btn py-2 d-flex align-items-center justify-content-center shadow-sm"
+                                    style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;"
+                                    onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('lineStopModal')); m.show(); }">
+                                <i class="fa-solid fa-octagon-minus me-2 fs-5"></i>LINE STOP
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Rest Break Button -->
-                    <div class="col-md-3 col-12">
-                         @if (Model.RestReason != null)
-                        {
-                            <form asp-controller="Operator" asp-action="Rest" method="post" id="rest-form" style="margin: 0; height: 100%;" onsubmit="return false;">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="machineId" value="@Model.MachineId" />
-                                <input type="hidden" name="reasonId" value="@Model.RestReason.Id" />
-                                <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
-                                <button type="button" 
-                                        id="btn-rest" 
-                                        class="btn w-100 btn-outline-warning machine-action-btn py-3"
-                                        style="pointer-events: auto !important; cursor: pointer !important; height: 100%;">
-                                    <i class="fa-solid fa-mug-hot me-2"></i>REST BREAK
-                                </button>
-                            </form>
-                        }
-                    </div>
+                    <!-- Right Column (2 Buttons) -->
+                    <div class="col-6">
+                        <div class="d-flex flex-column gap-3 h-100">
+                            <!-- Rest Break Button -->
+                             @if (Model.RestReason != null)
+                            {
+                                <form asp-controller="Operator" asp-action="Rest" method="post" id="rest-form" class="h-50 m-0" onsubmit="return false;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                                    <input type="hidden" name="reasonId" value="@Model.RestReason.Id" />
+                                    <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
+                                    <button type="button" 
+                                            id="btn-rest" 
+                                            class="btn w-100 btn-warning machine-action-btn py-2 d-flex align-items-center justify-content-center text-dark shadow-sm"
+                                            style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;" >
+                                        <i class="fa-solid fa-mug-hot me-2 fs-5"></i>REST BREAK
+                                    </button>
+                                </form>
+                            }
 
-                    <!-- Line Stop Button -->
-                    <div class="col-md-3 col-12">
-                        <button type="button" 
-                                id="btn-line-stop" 
-                                class="btn w-100 btn-outline-danger machine-action-btn py-3"
-                                style="pointer-events: auto !important; cursor: pointer !important; height: 100%;"
-                                onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('lineStopModal')); m.show(); } else { alert('Bootstrap load failed'); }">
-                            <i class="fa-solid fa-octagon-minus me-2"></i>LINE STOP
-                        </button>
-                    </div>
-
-                    <!-- No Loading Button -->
-                    <div class="col-md-3 col-12">
-                        <button type="button" 
-                                id="btn-no-loading" 
-                                class="btn w-100 btn-outline-secondary machine-action-btn py-3"
-                                style="pointer-events: auto !important; cursor: pointer !important; height: 100%; color: #adb5bd; border-color: #6c757d;"
-                                onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('noLoadingModal')); m.show(); } else { alert('Bootstrap load failed'); }">
-                            <i class="fa-solid fa-door-closed me-2"></i>NO LOADING
-                        </button>
+                             <!-- No Loading Button -->
+                            <button type="button" 
+                                    id="btn-no-loading" 
+                                    class="btn w-100 btn-secondary machine-action-btn py-2 d-flex align-items-center justify-content-center shadow-sm"
+                                    style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;"
+                                    onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('noLoadingModal')); m.show(); }">
+                                <i class="fa-solid fa-door-closed me-2 fs-5"></i>NO LOADING
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <hr class="border-secondary opacity-25 my-4" style="border-style: dashed;">
-
-                <!-- Timer Section (Bottom) -->
-                <div class="text-center position-relative">
-                    <div class="small text-secondary mb-2 text-uppercase fw-bold" style="letter-spacing: 2px;">TOTAL RUNNING TIME</div>
+                <!-- 2. Timer Section (Bottom) -->
+                <div class="text-center mt-3 position-relative">
+                    <!-- Plain Text Timer (No Container) -->
+                    <div class="small text-secondary mb-0 text-uppercase fw-bold opacity-75" style="letter-spacing: 3px; font-size: 0.7rem;">TOTAL RUNNING TIME</div>
                     <input type="text" 
                            class="form-control border-0 text-center fw-bold bg-transparent p-0" 
                            id="durasi-produksi-display" 
                            value="00:00:00"
                            readonly
-                           style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 4rem; color: #0dcaf0; font-weight: 700; background: transparent; letter-spacing: 4px;">
-                    
-                     <!-- Running Indicator -->
-                    <div id="timer-status-text" class="text-info mt-2 fw-bold small d-none">
-                         <i class="fa-solid fa-circle-notch fa-spin me-1"></i>Recording...
-                    </div>
+                           style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 3.5rem; color: #0dcaf0; font-weight: 700; background: transparent; letter-spacing: 2px; line-height: 1; text-shadow: 0 0 30px rgba(13, 202, 240, 0.4);">
                 </div>
-
             </div>
         </div>
     </div>

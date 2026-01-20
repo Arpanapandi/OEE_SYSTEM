@@ -41,7 +41,27 @@ public interface IOeeService
     /// Menutup otomatis JobRun dan DowntimeEvent yang melewati batas shift.
     /// </summary>
     Task AutoCloseShiftJobsAsync();
+
+    /// <summary>
+    /// Menghitung durasi detail sebuah JobRun (Running, Downtime, NetOperating) secara real-time.
+    /// Opsional: Batasi perhitungan dalam window waktu tertentu (misal: Shift saat ini).
+    /// </summary>
+    JobDurationMetrics CalculateJobDuration(JobRun job, DateTime now, DateTime? windowStart = null, DateTime? windowEnd = null);
+
+    /// <summary>
+    /// Helper untuk mendapatkan window shift saat ini berdasarkan waktu server.
+    /// </summary>
+    Task<(DateTime Start, DateTime End, Shift Shift)> GetCurrentShiftWindowAsync();
 }
+
+public record JobDurationMetrics(
+    TimeSpan TotalDuration,       // Sejak job start sampai now (clipped by window)
+    TimeSpan TotalNonRunningTime, // Akumulasi semua stops (Rest + LineStop + NoLoading)
+    TimeSpan TotalDowntime,       // HANYA Line Stop (Unplanned)
+    TimeSpan OperatingTime,       // TotalDuration - TotalNonRunningTime
+    TimeSpan CurrentDowntime,     // Durasi downtime yang sedang aktif (jika ada)
+    bool IsRunning                // True jika tidak ada downtime aktif
+);
 
 public class TimeMetricsResult
 {

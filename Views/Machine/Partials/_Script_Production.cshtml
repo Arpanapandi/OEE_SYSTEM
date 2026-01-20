@@ -130,12 +130,11 @@
         
         const btnSubmit = document.getElementById('btn-submit-produksi');
         if (btnSubmit) {
+            btnSubmit.disabled = false; // Always enabled to allow validation clicks
             if (allComplete) {
-                btnSubmit.disabled = false;
                 btnSubmit.classList.remove('btn-secondary');
                 btnSubmit.classList.add('btn-primary');
             } else {
-                btnSubmit.disabled = true;
                 btnSubmit.classList.remove('btn-primary');
                 btnSubmit.classList.add('btn-secondary');
             }
@@ -205,7 +204,9 @@
         if (!document.getElementById('input-nama-compound')?.value) errors.push('Nama Compound harus diisi');
         if (!document.getElementById('input-berat-act')?.value) errors.push('Berat Act harus diisi');
         if (!document.querySelector('#penipisan-group input[name="penipisan"]:checked')) errors.push('Penipisan harus dipilih');
+        // Keterangan restored
         if (!document.getElementById('select-keterangan')?.value) errors.push('Keterangan harus dipilih');
+        if (parseInt(document.getElementById('input-qty')?.value || '0') <= 0) errors.push('Quantity harus lebih dari 0');
         
         if (errors.length > 0) {
             const msg = `❌ Form belum lengkap:\n\n${errors.map((e,i)=>`${i+1}. ${e}`).join('\n')}`;
@@ -221,6 +222,7 @@
         document.getElementById('input-nama-compound').value = '';
         document.getElementById('input-berat-act').value = '';
         document.getElementById('select-keterangan').value = '';
+        document.getElementById('input-qty').value = '1';
         
         document.querySelectorAll('#penipisan-group input').forEach(r => r.checked = false);
         
@@ -246,7 +248,7 @@
         loadManPowerAndGroup();
         
         // Watch inputs
-        const inputs = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'input-berat-act', 'select-man-power', 'select-komponen', 'select-keterangan'];
+        const inputs = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'input-berat-act', 'select-man-power', 'select-komponen', 'select-keterangan', 'input-qty'];
         inputs.forEach(id => {
             const el = document.getElementById(id);
             if(el) {
@@ -257,21 +259,15 @@
         
         document.querySelectorAll('input[type=radio]').forEach(r => r.addEventListener('change', window.checkAllInputsComplete));
 
-        // Logic toggle Keterangan for Penipisan NG
+        // Logic toggle Keterangan for Penipisan NG - Removed
+        /*
         const penipisanGroup = document.getElementById('penipisan-group');
         if (penipisanGroup) {
             penipisanGroup.addEventListener('change', function(e) {
-                if (e.target && e.target.name === 'penipisan') {
-                     const isNg = e.target.value === 'NG';
-                     const ketContainer = document.getElementById('keterangan-container');
-                     if (ketContainer) {
-                         ketContainer.style.display = isNg ? 'block' : 'none';
-                         const selectKet = document.getElementById('select-keterangan');
-                         if (!isNg && selectKet) selectKet.value = ''; // Reset if OK
-                     }
-                }
+               // ... logic removed
             });
         }
+        */
 
 
         // Part Number debounce for component loading
@@ -304,14 +300,38 @@
         // Submit Logic (Single Source)
         const btnSubmit = document.getElementById('btn-submit-produksi');
         if (btnSubmit) {
-            btnSubmit.addEventListener('click', async function(e) {
+            btnSubmit.addEventListener('click', function(e) {
                 e.preventDefault();
-                
                 if (!validateProductionForm()) return;
                 
-                const originalText = btnSubmit.innerHTML;
-                btnSubmit.disabled = true;
-                btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Menyimpan...';
+                // Open the Quantity Modal
+                const modal = new bootstrap.Modal(document.getElementById('modal-input-produksi-qty'));
+                
+                // Reset modal inputs with value from main form
+                const mainQty = parseInt(document.getElementById('input-qty')?.value || 1);
+                document.getElementById('input-modal-good').value = mainQty;
+                document.getElementById('input-modal-ng').value = 0;
+                document.getElementById('total-qty-display').textContent = mainQty;
+                
+                modal.show();
+            });
+        }
+
+        // Handle Modal Confirm Button
+        const btnConfirm = document.getElementById('btn-confirm-submit-produksi');
+        if (btnConfirm) {
+            btnConfirm.addEventListener('click', async function() {
+                const goodQty = parseInt(document.getElementById('input-modal-good').value || 0);
+                const ngQty = parseInt(document.getElementById('input-modal-ng').value || 0);
+                
+                if (goodQty === 0 && ngQty === 0) {
+                     alert("Minimal salah satu quantity (Good/NG) harus diisi!");
+                     return;
+                }
+
+                const originalText = btnConfirm.innerHTML;
+                btnConfirm.disabled = true;
+                btnConfirm.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Submitting...';
 
                 try {
                     const formData = {
@@ -321,17 +341,18 @@
                         namaCompound: document.getElementById('input-nama-compound')?.value?.trim(),
                         beratAct: parseFloat(document.getElementById('input-berat-act')?.value || '0'),
                         penipisan: document.querySelector('#penipisan-group input[name="penipisan"]:checked')?.value,
-                        keterangan: document.getElementById('select-keterangan')?.value,
+                        keterangan: document.getElementById('select-keterangan')?.value, 
                         manPowerId: parseInt(document.getElementById('select-man-power')?.value || '0'),
                         injection: document.querySelector('#injection-group input[name="injection"]:checked')?.value,
-                        komponenId: document.getElementById('select-komponen')?.value, // Use select value directly
+                        komponenId: document.getElementById('select-komponen')?.value,
                         durasiProduksiSeconds: durasiProduksiSeconds || 0,
-                        qty: 1
+                        goodQty: goodQty,
+                        rejectQty: ngQty
                     };
 
                     const response = await fetch('/Operator/SubmitProductionData', {
                         method: 'POST',
-                         headers: {
+                        headers: {
                             'Content-Type': 'application/x-www-form-urlencoded',
                             'X-Requested-With': 'XMLHttpRequest',
                              'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
@@ -344,29 +365,48 @@
                     if (result.success) {
                         if(typeof showToast==='function') showToast('✅ Data produksi berhasil disimpan!', 'success');
                         
+                        // Close modal
+                        const modalEl = document.getElementById('modal-input-produksi-qty');
+                        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                        if(modalInstance) modalInstance.hide();
+
                         saveManPowerAndGroup();
                         saveProductionData(formData);
                         resetProductionForm();
                         
+                        // Reload to update all counters and history
+                        setTimeout(() => {
+                            location.reload();
+                        }, 1500);
+                        
                         if (isDurasiAuto) {
-                             // Reset timer for next item
                              window.resetDurasiProduksi();
                              window.startDurasiProduksi();
                         }
                     } else {
                         if(typeof showToast==='function') showToast('❌ Error: ' + (result.message), 'error');
-                         else alert('❌ Error: ' + (result.message));
+                        else alert('❌ Error: ' + (result.message));
                     }
-
                 } catch (error) {
                     console.error(error);
-                     if(typeof showToast==='function') showToast('❌ System Error', 'error');
+                    if(typeof showToast==='function') showToast('❌ System Error', 'error');
                 } finally {
-                    btnSubmit.disabled = false;
-                    btnSubmit.innerHTML = originalText;
+                    btnConfirm.disabled = false;
+                    btnConfirm.innerHTML = originalText;
                 }
             });
         }
+
+        // Total Qty auto-update in modal
+        const updateModalTotal = () => {
+             const g = parseInt(document.getElementById('input-modal-good').value || 0);
+             const n = parseInt(document.getElementById('input-modal-ng').value || 0);
+             document.getElementById('total-qty-display').textContent = g + n;
+        };
+        document.getElementById('input-modal-good')?.addEventListener('input', updateModalTotal);
+        document.getElementById('input-modal-ng')?.addEventListener('input', updateModalTotal);
+        document.getElementById('input-modal-good')?.addEventListener('change', updateModalTotal);
+        document.getElementById('input-modal-ng')?.addEventListener('change', updateModalTotal);
         
         // Restore timer if it was running (Persistence)
         if (localStorage.getItem('durasiProduksiStartTime')) {

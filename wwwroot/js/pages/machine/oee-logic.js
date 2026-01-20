@@ -219,6 +219,41 @@ window.OeeLogic = (function () {
             // Reset Timer Btn
             const btnReset = document.getElementById('btn-reset-durasi');
             if (btnReset) btnReset.addEventListener('click', this.resetTimer.bind(this));
+
+            // Standalone Quantity Modal Submit
+            const btnSubmitModalQty = document.getElementById('btn-modal-submit-qty');
+            if (btnSubmitModalQty) btnSubmitModalQty.addEventListener('click', this.handleStandaloneQtySubmit.bind(this));
+
+            // Direct Qty Buttons
+            const btnIncQty = document.getElementById('btn-increment-qty');
+            const btnDecQty = document.getElementById('btn-decrement-qty');
+            if (btnIncQty) btnIncQty.addEventListener('click', () => {
+                const el = document.getElementById('input-qty');
+                if (el) el.value = parseInt(el.value || 0) + 1;
+                this.checkCompleteness();
+            });
+            if (btnDecQty) btnDecQty.addEventListener('click', () => {
+                const el = document.getElementById('input-qty');
+                if (el) el.value = Math.max(1, parseInt(el.value || 1) - 1);
+                this.checkCompleteness();
+            });
+
+            // Modal Confirm Submit (Main Form)
+            const btnConfirmMain = document.getElementById('btn-confirm-submit-produksi');
+            if (btnConfirmMain) btnConfirmMain.addEventListener('click', this.handleConfirmedSubmit.bind(this));
+
+            // Modal Input Change (Sync Total)
+            const modalGood = document.getElementById('input-modal-good');
+            const modalNg = document.getElementById('input-modal-ng');
+            const updateModalTotal = () => {
+                const total = (parseInt(modalGood?.value) || 0) + (parseInt(modalNg?.value) || 0);
+                const display = document.getElementById('total-qty-display');
+                if (display) display.textContent = total;
+            };
+            if (modalGood) modalGood.addEventListener('input', updateModalTotal);
+            if (modalNg) modalNg.addEventListener('input', updateModalTotal);
+            if (modalGood) modalGood.addEventListener('change', updateModalTotal);
+            if (modalNg) modalNg.addEventListener('change', updateModalTotal);
         },
 
         savePrefs: function () {
@@ -244,8 +279,8 @@ window.OeeLogic = (function () {
         },
 
         checkCompleteness: function () {
-            const ids = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'input-berat-act', 'select-man-power'];
-            let complete = ids.every(id => document.getElementById(id)?.value?.trim());
+            const ids = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'input-berat-act', 'select-man-power', 'input-qty'];
+            let complete = ids.every(id => document.getElementById(id)?.value?.trim() && document.getElementById(id)?.value != '0');
 
             // Radios
             if (!document.querySelector('input[name="injection"]:checked')) complete = false;
@@ -312,16 +347,38 @@ window.OeeLogic = (function () {
             */
         },
 
-        handleSubmit: async function (e) {
+        handleSubmit: function (e) {
             e.preventDefault();
             if (!this.checkCompleteness()) return;
 
-            const btn = document.getElementById('btn-submit-produksi');
+            // Instead of immediate submit, show modal
+            const mainQty = document.getElementById('input-qty')?.value || 1;
+            const modalGood = document.getElementById('input-modal-good');
+            const modalNg = document.getElementById('input-modal-ng');
+
+            if (modalGood) modalGood.value = mainQty;
+            if (modalNg) modalNg.value = 0;
+
+            const display = document.getElementById('total-qty-display');
+            if (display) display.textContent = mainQty;
+
+            if (window.bootstrap) {
+                const modal = new bootstrap.Modal(document.getElementById('modal-input-produksi-qty'));
+                modal.show();
+            }
+        },
+
+        handleConfirmedSubmit: async function (e) {
+            const btn = document.getElementById('btn-confirm-submit-produksi');
             const original = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
 
             try {
+                const goodQty = parseInt(document.getElementById('input-modal-good').value) || 0;
+                const rejectQty = parseInt(document.getElementById('input-modal-ng').value) || 0;
+                const remark = document.getElementById('input-modal-keterangan')?.value || '';
+
                 const formData = new FormData();
                 formData.append('machineId', config.machineId);
                 formData.append('nomorLot', document.getElementById('input-nomor-lot').value);
@@ -333,6 +390,9 @@ window.OeeLogic = (function () {
                 formData.append('penipisan', document.querySelector('input[name="penipisan"]:checked').value);
                 formData.append('keterangan', document.getElementById('select-keterangan').value);
                 formData.append('durasiProduksiSeconds', state.durasiProduksiSeconds);
+                formData.append('goodQty', goodQty);
+                formData.append('rejectQty', rejectQty);
+                formData.append('rejectReason', remark);
                 formData.append('__RequestVerificationToken', document.querySelector('input[name="__RequestVerificationToken"]').value);
 
                 const res = await fetch('/Operator/SubmitProductionData', {
@@ -343,9 +403,20 @@ window.OeeLogic = (function () {
                 if (result.success) {
                     showToast('✅ Data Saved', 'success');
                     this.clearForm();
+
+                    // Close Modal
+                    const modalEl = document.getElementById('modal-input-produksi-qty');
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+
                     // Reset Logic
                     this.resetTimer();
                     this.startTimer(); // Start new timer for new item
+
+                    // Trigger refresh
+                    if (typeof window.OeeLogic.fetchTimeMetrics === 'function') {
+                        window.OeeLogic.fetchTimeMetrics();
+                    }
                 } else {
                     showToast('❌ ' + result.message, 'error');
                 }
@@ -355,7 +426,77 @@ window.OeeLogic = (function () {
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = original;
-                this.checkCompleteness(); // re-eval
+            }
+        },
+
+        handleStandaloneQtySubmit: async function (e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-modal-submit-qty');
+            const goodInput = document.getElementById('modal-good-qty');
+            const rejectInput = document.getElementById('modal-reject-qty');
+            const remarkInput = document.getElementById('modal-qty-keterangan');
+
+            const goodQty = parseInt(goodInput.value) || 0;
+            const rejectQty = parseInt(rejectInput.value) || 0;
+            const remark = remarkInput.value || '';
+
+            if (goodQty === 0 && rejectQty === 0) {
+                showToast('❌ Masukan jumlah Good atau NG', 'warning');
+                return;
+            }
+
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                const formData = new FormData();
+                formData.append('machineId', config.machineId);
+                formData.append('goodQty', goodQty);
+                formData.append('rejectQty', rejectQty);
+                formData.append('rejectReason', remark);
+
+                // Get ManPower and Injection if available
+                const mp = document.getElementById('select-man-power')?.value;
+                const inj = document.querySelector('input[name="injection"]:checked')?.value;
+                if (mp) formData.append('manPowerId', mp);
+                if (inj) formData.append('injection', inj);
+
+                formData.append('__RequestVerificationToken', document.querySelector('input[name="__RequestVerificationToken"]').value);
+
+                const res = await fetch('/Operator/AddQuantity', {
+                    method: 'POST', body: formData
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    showToast(`✅ Berhasil: ${goodQty} Good, ${rejectQty} NG`, 'success');
+
+                    // Reset fields
+                    goodInput.value = 1;
+                    rejectInput.value = 0;
+                    remarkInput.value = '';
+
+                    // Close Modal
+                    const modalEl = document.getElementById('standaloneQtyModal');
+                    if (window.bootstrap) {
+                        const modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) modal.hide();
+                    }
+
+                    // Trigger refresh
+                    if (typeof window.OeeLogic.fetchTimeMetrics === 'function') {
+                        window.OeeLogic.fetchTimeMetrics();
+                    }
+                } else {
+                    showToast('❌ ' + result.message, 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('❌ Error submitting data', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
             }
         },
 
@@ -366,6 +507,9 @@ window.OeeLogic = (function () {
             document.getElementById('input-nama-compound').value = '';
             document.getElementById('input-berat-act').value = '';
             document.getElementById('select-keterangan').value = '';
+            document.getElementById('input-qty').value = '1';
+            const modalKet = document.getElementById('input-modal-keterangan');
+            if (modalKet) modalKet.value = '';
 
             // Reset Penipisan to OK
             const okRadio = document.querySelector('input[name="penipisan"][value="OK"]');
@@ -374,6 +518,8 @@ window.OeeLogic = (function () {
             // Hide Keterangan
             const cont = document.getElementById('keterangan-container');
             if (cont) cont.style.display = 'none';
+
+            this.checkCompleteness();
         }
     };
 

@@ -55,10 +55,15 @@
         <div class="mb-3">
             <div class="d-flex justify-content-between mb-1">
                 <span class="text-secondary">Rest Break</span>
-                <span class="fw-semibold text-warning" id="rest-break-time">00:00:00</span>
+                <span class="fw-semibold text-warning" id="rest-break-time">@Model.RestBreakTime.ToString(@"hh\:mm\:ss")</span>
             </div>
             <div class="progress" style="height: 6px; background-color: #e9ecef;">
-                <div class="progress-bar" id="rest-break-progress-bar" style="width: 0%; background-color: #ffc107 !important; min-width: 2px;"></div>
+                @{
+                    var restPercent = Model.PlannedProductionTime.TotalSeconds > 0 
+                        ? (Model.RestBreakTime.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
+                        : 0;
+                }
+                <div class="progress-bar" id="rest-break-progress-bar" style="width: @restPercent.ToString("F1")%; background-color: #ffc107 !important; min-width: 2px;"></div>
             </div>
         </div>
 
@@ -66,10 +71,15 @@
         <div class="mt-auto">
             <div class="d-flex justify-content-between mb-1">
                 <span class="text-secondary">No Loading</span>
-                <span class="fw-semibold text-info" id="no-loading-time">00:00:00</span>
+                <span class="fw-semibold text-info" id="no-loading-time">@Model.NoLoadingTime.ToString(@"hh\:mm\:ss")</span>
             </div>
             <div class="progress" style="height: 6px; background-color: #e9ecef;">
-                <div class="progress-bar" id="no-loading-progress-bar" style="width: 0%; background-color: #0dcaf0 !important; min-width: 2px;"></div>
+                @{
+                    var noLoadingPercent = Model.PlannedProductionTime.TotalSeconds > 0 
+                        ? (Model.NoLoadingTime.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
+                        : 0;
+                }
+                <div class="progress-bar" id="no-loading-progress-bar" style="width: @noLoadingPercent.ToString("F1")%; background-color: #0dcaf0 !important; min-width: 2px;"></div>
             </div>
         </div>
     </div>

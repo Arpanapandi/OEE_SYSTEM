@@ -169,4 +169,47 @@
         background: rgba(255,255,255,0.1) !important;
         color: #fff !important;
     }
+
+    /* Force White Text for Inputs and Labels for Contrast */
+    .glass-card label, 
+    .glass-card .form-label,
+    .glass-card .form-control,
+    .glass-card .form-select,
+    .glass-card .input-group-text,
+    .glass-card .input-group span,
+    .glass-card h1, .glass-card h2, .glass-card h3, 
+    .glass-card h4, .glass-card h5, .glass-card h6,
+    .glass-card p, .glass-card span {
+        color: #ffffff !important;
+    }
+
+    /* Placeholder color to be lighter grey */
+    .glass-card .form-control::placeholder {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+    
+    /* Ensure readonly inputs are also white but slightly dimmer/transparent background */
+    .glass-card .form-control:disabled, .glass-card .form-control[readonly] {
+        color: #e0e0e0 !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+    }
+    /* SCW (Stop Call Waiting) Styling */
+    #scw-input-card {
+        border-left: 4px solid #dc3545;
+    }
+
+    #btn-scw-submit {
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2);
+    }
+
+    #btn-scw-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+        background-color: #bb2d3b;
+    }
+
+    #scw-4m-type, #scw-remark {
+        font-weight: 500;
+    }
 </style>

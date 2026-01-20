@@ -112,6 +112,11 @@
             </div>
             
             <div class="d-flex align-items-center gap-2 gap-md-3">
+                <!-- Fullscreen Toggle (All Pages) -->
+                <div class="glass-card py-1 px-2 mb-0 d-flex align-items-center justify-content-center" id="fullscreenToggle" style="cursor: pointer;" title="Toggle Fullscreen">
+                    <i class="bi bi-arrows-fullscreen" id="fullscreenIcon"></i>
+                </div>
+
                 @if (isOeeDetailPage)
                 {
                     <!-- Machine Status in Navbar -->
@@ -182,6 +187,35 @@
                     wrapper.classList.toggle('mobile-nav-active');
                 } else {
                     wrapper.classList.toggle('collapsed');
+                }
+            });
+        }
+
+        // Fullscreen Toggle Logic
+        const fsToggle = document.getElementById('fullscreenToggle');
+        const fsIcon = document.getElementById('fullscreenIcon');
+        if (fsToggle && fsIcon) {
+            fsToggle.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                    });
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            });
+
+            document.addEventListener('fullscreenchange', () => {
+                if (document.fullscreenElement) {
+                    fsIcon.classList.remove('bi-arrows-fullscreen');
+                    fsIcon.classList.add('bi-fullscreen-exit');
+                    fsToggle.title = "Exit Fullscreen";
+                } else {
+                    fsIcon.classList.remove('bi-fullscreen-exit');
+                    fsIcon.classList.add('bi-arrows-fullscreen');
+                    fsToggle.title = "Toggle Fullscreen";
                 }
             });
         }
