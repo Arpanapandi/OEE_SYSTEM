@@ -1,0 +1,138 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Input Data Produksi Section -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="glass-card" id="production-input-card">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
+                <i class="fa-solid fa-qrcode me-2"></i>Input Data Produksi
+            </div>
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
+                
+                <!-- Part Number Row -->
+                <div class="row g-2 mb-2">
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Nomor Lot (Part Number)</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-glass" id="input-nomor-lot" placeholder="Scan Part Number..." readonly>
+                            <button class="btn btn-outline-primary" type="button" id="btn-scan-nomor-lot">
+                                <i class="fa-solid fa-camera"></i> Scan
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" id="btn-edit-nomor-lot">
+                                <i class="fa-solid fa-pencil"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lot Bo & Compound Row -->
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Lot BO</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-glass" id="input-lot-bo" placeholder="Scan Lot BO..." readonly>
+                            <button class="btn btn-outline-primary" type="button" id="btn-scan-lot-bo">
+                                <i class="fa-solid fa-camera"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" id="btn-edit-lot-bo">
+                                <i class="fa-solid fa-pencil"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Compound</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-glass" id="input-nama-compound" placeholder="Scan Compound..." readonly>
+                            <button class="btn btn-outline-primary" type="button" id="btn-scan-nama-compound">
+                                <i class="fa-solid fa-camera"></i>
+                            </button>
+                             <button class="btn btn-outline-secondary" type="button" id="btn-edit-nama-compound">
+                                <i class="fa-solid fa-pencil"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Berat Act & Penipisan -->
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Berat Act (Kg)</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" class="form-control form-control-glass text-end" id="input-berat-act" placeholder="0.00">
+                             <button class="btn btn-outline-secondary" type="button" id="btn-decrement-berat-act"><i class="fa-solid fa-minus"></i></button>
+                            <button class="btn btn-outline-secondary" type="button" id="btn-increment-berat-act"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                         <label class="form-label fw-bold">Penipisan</label>
+                         <div class="btn-group w-100" role="group" id="penipisan-group">
+                            <input type="radio" class="btn-check" name="penipisan" id="penipisan-ok" value="OK" checked>
+                            <label class="btn btn-outline-success" for="penipisan-ok">OK</label>
+                            
+                            <input type="radio" class="btn-check" name="penipisan" id="penipisan-ng" value="NG">
+                            <label class="btn btn-outline-danger" for="penipisan-ng">NG</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Keterangan -->
+                 <div class="mb-3" id="keterangan-container" style="display: none;">
+                    <label class="form-label fw-bold text-danger">Keterangan NG <span class="text-danger">*</span></label>
+                    <select class="form-control-glass border-danger" id="select-keterangan">
+                        <option value="">-- Pilih Jenis NG --</option>
+                        <option value="NG Berat">NG Berat</option>
+                        <option value="NG Kontaminasi">NG Kontaminasi</option>
+                        <option value="NG Scorch">NG Scorch</option>
+                        <option value="NG Warna">NG Warna</option>
+                        <option value="Giling Ulang">Giling Ulang</option>
+                    </select>
+                </div>
+
+                <!-- Hidden Form -->
+                <form id="form-scan-produksi" style="display: none;">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="machineId" value="@Model.MachineId" />
+                    <input type="hidden" id="hidden-lot-bo" name="lotBo" />
+                    <input type="hidden" id="hidden-nomor-lot" name="nomorLot" />
+                    <input type="hidden" id="hidden-nama-compound" name="namaCompound" />
+                    <input type="hidden" id="hidden-berat-act" name="beratAct" />
+                    <input type="hidden" id="hidden-penipisan" name="penipisan" />
+                    <input type="hidden" id="hidden-keterangan" name="keterangan" />
+                    <input type="hidden" id="hidden-man-power" name="manPowerId" />
+                    <input type="hidden" id="hidden-injection" name="injection" />
+                    <input type="hidden" id="hidden-komponen-id" name="komponenId" />
+                    <input type="hidden" id="hidden-durasi-seconds" name="durasiSeconds" value="0" />
+                </form>
+
+                <!-- Action Buttons -->
+                <div class="d-flex justify-content-end mb-3 gap-2" id="submit-container">
+                     <!-- Reset Button added here per recent changes -->
+                     <button type="button" class="btn btn-outline-danger" id="btn-reset-durasi">
+                        <i class="fa-solid fa-stop-circle me-1"></i>Reset
+                    </button>
+                    <button type="button" class="btn btn-primary flex-grow-1" id="btn-submit-produksi">
+                        <i class="fa-solid fa-paper-plane me-2"></i>Submit Data
+                    </button>
+                </div>
+
+                <!-- Quantity Button -->
+                <button type="button" class="btn btn-primary w-100 mb-3" data-bs-toggle="modal" data-bs-target="#addQtyModal">
+                    <i class="fa-solid fa-plus-circle me-1"></i> QUANTITY
+                </button>
+                
+                 <!-- Dropdown Komponen (muncul setelah Part Number dan Nomor Lot Produksi diisi) -->
+                <div class="mb-2" id="komponen-container" style="display: none;">
+                    <label class="form-label fw-bold">
+                        Komponen <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-control-glass" id="select-komponen" required>
+                        <option value="">-- Pilih Komponen --</option>
+                    </select>
+                    <div class="text-danger small mt-1" id="komponen-error" style="display: none;"></div>
+                    <div class="text-success small mt-1" id="komponen-success" style="display: none;"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

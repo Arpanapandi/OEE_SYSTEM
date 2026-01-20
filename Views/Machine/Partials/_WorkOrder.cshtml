@@ -1,0 +1,72 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Work Order Card -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="glass-card" style="background: linear-gradient(145deg, #2b3035 0%, #212529 100%);">
+            <div class="glass-card-body p-4">
+                @if (Model.ActiveJob != null)
+                {
+                    <div class="row align-items-center">
+                        <!-- Product Image (Left) -->
+                        <div class="col-md-4 text-center">
+                            <div class="bg-white rounded p-3 d-inline-block shadow-sm" style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
+                                <img src="@(string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl) ? "/images/placeholder-product.png" : Model.ActiveJob.ProductImageUrl)" 
+                                     alt="@Model.ActiveJob.ProductName" 
+                                     class="img-fluid" 
+                                     style="max-height: 100%; max-width: 100%; object-fit: contain;"
+                                     onerror="this.onerror=null;this.src='/images/placeholder-product.png';">
+                            </div>
+                        </div>
+                        
+                        <!-- WO Details & Counters (Right) -->
+                        <div class="col-md-8">
+                            <h2 class="fw-bold mb-1">@Model.ActiveJob.ProductName</h2>
+                            <div class="text-secondary mb-3" style="font-size: 1.1rem;">@Model.ActiveJob.WorkOrderNumber</div>
+                            
+                            <!-- Large Counter -->
+                            <div class="d-flex align-items-baseline mb-3">
+                                <span class="fw-bold text-white display-3 me-3">@Model.ActiveJob.CurrentQuantity</span>
+                                <span class="text-secondary h2">/ @Model.ActiveJob.TargetQuantity</span>
+                            </div>
+                            
+                            <!-- Est Completion Badge -->
+                            <div class="mb-4">
+                                <span class="badge bg-dark border border-secondary text-secondary rounded-pill px-3 py-2" style="font-size: 0.9rem;">
+                                    Est. Completion: -
+                                </span>
+                            </div>
+
+                            <!-- Target Status -->
+                            <div class="text-center text-secondary mb-3 small">
+                                On Target (Sets 0 Target)
+                            </div>
+
+                            <!-- Big Action Buttons (Good/Reject Stats) -->
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="btn w-100 p-3 rounded shadow-sm" style="background-color: #76ff03; color: #1a1a1a; cursor: default;">
+                                        <div class="text-uppercase fw-bold mb-1" style="font-size: 1.2rem;">GOOD: @Model.GoodCount</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="btn w-100 p-3 rounded shadow-sm" style="background-color: #ff1744; color: white; cursor: default;">
+                                        <div class="text-uppercase fw-bold mb-1" style="font-size: 1.2rem;">REJECT: @Model.RejectCount</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center text-secondary py-5">
+                        <i class="fa-solid fa-clipboard-question fa-3x mb-3 opacity-50"></i>
+                        <h3>No Active Work Order</h3>
+                        <p>Silakan mulai Job baru untuk menampilkan detail WO.</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

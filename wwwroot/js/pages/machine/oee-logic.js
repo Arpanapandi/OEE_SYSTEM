@@ -20,7 +20,7 @@ window.OeeLogic = (function () {
         durasiProduksiInterval: null,
         durasiProduksiStartTime: null,
         durasiProduksiSeconds: 0,
-        isDurasiAuto: true
+        isDurasiAuto: true // Will be toggled by machine status events
     };
 
     // Public Methods
@@ -94,8 +94,13 @@ window.OeeLogic = (function () {
     }
 
     function updateTimerDisplay() {
-        const el = document.getElementById('since-last-status');
-        if (!el || !state.lastChangeTimestamp) return;
+        // Target 1: Legacy Text Element
+        const elStats = document.getElementById('since-last-status');
+
+        // Target 2: New Main Timer Input (Moved to Machine Actions)
+        const elMain = document.getElementById('durasi-produksi-display');
+
+        if ((!elStats && !elMain) || !state.lastChangeTimestamp) return;
 
         const now = getAdjustedServerTime();
         const diff = Math.max(0, Math.floor((now - state.lastChangeTimestamp) / 1000));
@@ -103,7 +108,10 @@ window.OeeLogic = (function () {
         const h = Math.floor(diff / 3600).toString().padStart(2, '0');
         const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
         const s = (diff % 60).toString().padStart(2, '0');
-        el.textContent = `${h}:${m}:${s}`;
+        const timeStr = `${h}:${m}:${s}`;
+
+        if (elStats) elStats.textContent = timeStr;
+        if (elMain) elMain.value = timeStr; // Input element uses .value
     }
 
     // --- Data Handlers ---
@@ -280,6 +288,12 @@ window.OeeLogic = (function () {
         },
 
         updateTimerUI: function () {
+            // CONFLICT RESOLUTION: 
+            // The ID 'durasi-produksi-display' is now used for the Machine Status Timer (Running Duration).
+            // We disable the Production Module's item-level timer from hijacking this display.
+
+            // If we need an item-level timer later, create a new element ID (e.g., 'item-production-timer').
+            /*
             const display = document.getElementById('durasi-produksi-display');
             if (!display) return;
 
@@ -295,6 +309,7 @@ window.OeeLogic = (function () {
             const mm = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
             const ss = (s % 60).toString().padStart(2, '0');
             display.value = `${hh}:${mm}:${ss}`;
+            */
         },
 
         handleSubmit: async function (e) {

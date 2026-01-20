@@ -1,0 +1,45 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Production Metrics aka Planned Productions -->
+<div class="card h-100 mb-0">
+    <div class="glass-card-header" style="padding: 1rem 1.25rem;">
+        <i class="fa-solid fa-boxes me-2"></i>Production Metrics
+    </div>
+    <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
+        <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-primary"><i class="fa-solid fa-box me-1"></i>Total Produced</span>
+                <span class="fw-semibold text-primary">@Model.TotalCount</span>
+            </div>
+            <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-primary" style="width: 100%"></div>
+            </div>
+        </div>
+        <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="fw-semibold" style="color: #28a745 !important;"><i class="fa-solid fa-check-circle me-1"></i>Good</span>
+                <span class="fw-bold" style="color: #28a745 !important;">@Model.GoodCount</span>
+            </div>
+            <div class="progress" style="height: 8px; background-color: #e9ecef;">
+                @{
+                    var goodPercent = Model.TotalCount > 0 ? (Model.GoodCount * 100.0 / Model.TotalCount) : 0;
+                    var goodColor = goodPercent >= 95 ? "#28a745" : (goodPercent >= 80 ? "#ffc107" : "#dc3545");
+                }
+                <div class="progress-bar" id="good-progress-bar" style="width: @goodPercent.ToString("F1")%; background-color: @goodColor !important; min-width: 2px;"></div>
+            </div>
+        </div>
+        <div class="mt-auto">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="fw-semibold" style="color: #dc3545 !important;"><i class="fa-solid fa-times-circle me-1"></i>Reject</span>
+                <span class="fw-bold" style="color: #dc3545 !important;">@Model.RejectCount</span>
+            </div>
+            <div class="progress" style="height: 8px; background-color: #e9ecef;">
+                @{
+                    var rejectPercent = Model.TotalCount > 0 ? (Model.RejectCount * 100.0 / Model.TotalCount) : 0;
+                    var rejectColor = rejectPercent > 5 ? "#dc3545" : (rejectPercent > 2 ? "#ffc107" : "#28a745");
+                }
+                <div class="progress-bar" id="reject-progress-bar" style="width: @rejectPercent.ToString("F1")%; background-color: @rejectColor !important; min-width: 2px;"></div>
+            </div>
+        </div>
+    </div>
+</div>

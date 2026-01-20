@@ -1,0 +1,36 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+<!-- Man Power & Injection Section -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="glass-card" id="manpower-section">
+            <div class="glass-card-header" style="padding: 0.75rem 1rem;">
+                <i class="fa-solid fa-users-gear me-2"></i>Man Power & Injection
+            </div>
+            <div class="glass-card-body" style="padding: 0.75rem 1rem;">
+                <div class="row g-3">
+                    <div class="col-md-6 border-end border-secondary border-opacity-25">
+                        <label class="form-label text-muted small text-uppercase fw-bold mb-2">Man Power</label>
+                        <select class="form-control-glass mb-2" id="select-man-power">
+                            <option value="">-- Pilih Operator --</option>
+                            @foreach (var mp in Model.ManPowerList)
+                            {
+                                var isSelected = Model.ActiveManPowerId == mp.Id ? "selected" : "";
+                                <option value="@mp.Id" selected="@(Model.ActiveManPowerId == mp.Id)">@mp.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label text-muted small text-uppercase fw-bold mb-2">Group Injection</label>
+                        <div class="d-flex gap-2" id="injection-group">
+                            <input type="radio" class="btn-check" name="injection" id="injection-red" value="MERAH" @(Model.ActiveInjection == "MERAH" ? "checked" : "")>
+                            <label class="btn btn-outline-danger w-50" for="injection-red">MERAH</label>
+
+                            <input type="radio" class="btn-check" name="injection" id="injection-blue" value="BIRU" @(Model.ActiveInjection == "BIRU" ? "checked" : "")>
+                            <label class="btn btn-outline-primary w-50" for="injection-blue">BIRU</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

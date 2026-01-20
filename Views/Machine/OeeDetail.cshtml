@@ -20,26 +20,43 @@
     </div>
 </div>
 
+<!-- 1. Waktu Kerja Operator -->
+<partial name="Partials/_OperatorWorkTime" model="Model" />
+
+<!-- 2. Machine Actions -->
+<partial name="Partials/_MachineActions" model="Model" />
+
+<!-- 3. Man Power & Injections -->
+<partial name="Partials/_ManPowerInput" model="Model" />
+
+<!-- 4. Input Data Produksi -->
+<partial name="Partials/_ProductionInput" model="Model" />
+
+<!-- 5. Work Order -->
+<partial name="Partials/_WorkOrder" model="Model" />
+
+<!-- 6. OEE Kalkulasi -->
+<partial name="Partials/_KpiCards" model="Model" />
+
+<!-- 7 & 8. Time Metrics & Planned Productions (50% split) -->
 <div class="row mb-3">
-    <div class="col-12">
-        <partial name="Partials/_Filter" model="Model" />
+    <div class="col-md-6">
+        <partial name="Partials/_TimeMetrics" model="Model" />
+    </div>
+    <div class="col-md-6">
+        <partial name="Partials/_PlannedProductions" model="Model" />
     </div>
 </div>
 
-<div class="row mt-3">
-    <!-- Left Column: Actions & Metrics -->
-    <div class="col-md-3">
-        <partial name="Partials/_MachineActions" model="Model" />
-        <partial name="Partials/_MetricsAndHistory" model="Model" />
-    </div>
-    
-    <!-- Right Column: KPI, Forms, Charts -->
-    <div class="col-md-9">
-        <partial name="Partials/_KpiCards" model="Model" />
-        <partial name="Partials/_InputForms" model="Model" />
-        <partial name="Partials/_Charts" model="Model" />
-    </div>
-</div>
+<!-- 9. Recent Downtime -->
+<partial name="Partials/_RecentDowntimes" model="Model" />
+
+<!-- 10. Recent Productions Count -->
+<partial name="Partials/_RecentProductionCounts" model="Model" />
+
+<!-- 11. Charts -->
+<partial name="Partials/_Charts" model="Model" />
+
 
 <!-- Modals -->
 <partial name="Partials/_ModalsActions" model="Model" />

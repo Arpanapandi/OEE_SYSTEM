@@ -1,0 +1,76 @@
+@model OeeSystem.Models.ViewModels.MachineOeeViewModel
+
+<!-- Time Metrics -->
+<div class="card h-100 mb-0">
+    <div class="glass-card-header" style="padding: 1rem 1.25rem;">
+        <i class="fa-solid fa-clock me-2"></i>Time Metrics
+    </div>
+    <div class="card-body d-flex flex-column" style="padding: 1.25rem;">
+        <!-- Planned Production -->
+        <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-secondary">Planned Production</span>
+                <span class="fw-semibold" id="planned-production-time">@Model.PlannedProductionTime.ToString(@"hh\:mm\:ss")</span>
+            </div>
+            <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-primary" style="width: 100%"></div>
+            </div>
+        </div>
+        
+        <!-- Operating Time -->
+        <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-secondary">Operating Time</span>
+                <span class="fw-semibold text-success" id="operating-time">@Model.OperatingTime.ToString(@"hh\:mm\:ss")</span>
+            </div>
+            <div class="progress" style="height: 6px; background-color: #e9ecef;">
+                @{
+                    var operatingPercent = Model.PlannedProductionTime.TotalSeconds > 0 
+                        ? (Model.OperatingTime.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
+                        : 0;
+                    var operatingColor = operatingPercent >= 80 ? "#28a745" : (operatingPercent >= 50 ? "#ffc107" : "#dc3545");
+                }
+                <div class="progress-bar" id="operating-progress-bar" style="width: @operatingPercent.ToString("F1")%; background-color: @operatingColor !important; min-width: 2px;"></div>
+            </div>
+        </div>
+
+        <!-- Downtime -->
+        <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-secondary">Downtime</span>
+                <span class="fw-semibold text-danger" id="downtime-total">@Model.DowntimeTotal.ToString(@"hh\:mm\:ss")</span>
+            </div>
+            <div class="progress" style="height: 6px; background-color: #e9ecef;">
+                    @{
+                    var downtimePercent = Model.PlannedProductionTime.TotalSeconds > 0 
+                        ? (Model.DowntimeTotal.TotalSeconds / Model.PlannedProductionTime.TotalSeconds * 100) 
+                        : 0;
+                    var downtimeColor = downtimePercent > 20 ? "#dc3545" : (downtimePercent > 10 ? "#ffc107" : "#28a745");
+                }
+                <div class="progress-bar" id="downtime-progress-bar" style="width: @downtimePercent.ToString("F1")%; background-color: @downtimeColor !important; min-width: 2px;"></div>
+            </div>
+        </div>
+
+        <!-- Rest Break -->
+        <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-secondary">Rest Break</span>
+                <span class="fw-semibold text-warning" id="rest-break-time">00:00:00</span>
+            </div>
+            <div class="progress" style="height: 6px; background-color: #e9ecef;">
+                <div class="progress-bar" id="rest-break-progress-bar" style="width: 0%; background-color: #ffc107 !important; min-width: 2px;"></div>
+            </div>
+        </div>
+
+        <!-- No Loading -->
+        <div class="mt-auto">
+            <div class="d-flex justify-content-between mb-1">
+                <span class="text-secondary">No Loading</span>
+                <span class="fw-semibold text-info" id="no-loading-time">00:00:00</span>
+            </div>
+            <div class="progress" style="height: 6px; background-color: #e9ecef;">
+                <div class="progress-bar" id="no-loading-progress-bar" style="width: 0%; background-color: #0dcaf0 !important; min-width: 2px;"></div>
+            </div>
+        </div>
+    </div>
+</div>

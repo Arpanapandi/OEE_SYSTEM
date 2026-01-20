@@ -554,11 +554,8 @@ public class MachineController : Controller
             
             // ✅ PERBAIKAN: Tambahkan fallback ke machine image jika Product.ImageUrl null
             string? productImageUrl = activeJob.WorkOrder?.Product?.ImageUrl;
-            if (string.IsNullOrEmpty(productImageUrl))
-            {
-                // Fallback ke machine image
-                productImageUrl = machine.ImageUrl;
-            }
+            // Fallback Removed: Strictly use Product Image per user request
+            // if (string.IsNullOrEmpty(productImageUrl)) { productImageUrl = machine.ImageUrl; }
             
             vm.ActiveJob = new JobRunViewModel
             {
