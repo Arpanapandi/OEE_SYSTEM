@@ -10,6 +10,18 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+// ✅ CORS: Allow requests from Flutter App (Web/Mobile)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder.AllowAnyOrigin()
+                   .AllowAnyMethod()
+                   .AllowAnyHeader();
+        });
+});
+
 // SignalR Service
 builder.Services.AddSignalR();
 
@@ -591,6 +603,9 @@ app.Use(async (context, next) =>
 app.UseStaticFiles();
 
 app.UseRouting();
+
+// ✅ Use CORS (Must be between UseRouting and UseAuthorization)
+app.UseCors("AllowAll");
 
 app.UseAuthorization();
 

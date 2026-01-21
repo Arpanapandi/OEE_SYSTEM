@@ -5,9 +5,9 @@ namespace OeeSystem.Services
     // Model data kecil (boleh ditaruh disini biar praktis)
     public class ProductionPayload 
     {
-        public string apiKey { get; set; } // huruf kecil biar cocok dgn JSON
+        public string? apiKey { get; set; } // huruf kecil biar cocok dgn JSON
         public int count { get; set; }
-        public string status { get; set; }
+        public string? status { get; set; }
     }
 
     public class ProductionReporterService

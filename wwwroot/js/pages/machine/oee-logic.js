@@ -97,10 +97,7 @@ window.OeeLogic = (function () {
         // Target 1: Legacy Text Element
         const elStats = document.getElementById('since-last-status');
 
-        // Target 2: New Main Timer Input (Moved to Machine Actions)
-        const elMain = document.getElementById('durasi-produksi-display');
-
-        if ((!elStats && !elMain) || !state.lastChangeTimestamp) return;
+        if (!elStats || !state.lastChangeTimestamp) return;
 
         const now = getAdjustedServerTime();
         const diff = Math.max(0, Math.floor((now - state.lastChangeTimestamp) / 1000));
@@ -111,7 +108,6 @@ window.OeeLogic = (function () {
         const timeStr = `${h}:${m}:${s}`;
 
         if (elStats) elStats.textContent = timeStr;
-        if (elMain) elMain.value = timeStr; // Input element uses .value
     }
 
     // --- Data Handlers ---
@@ -210,11 +206,14 @@ window.OeeLogic = (function () {
             // Auto Timer Persistence
             if (localStorage.getItem('durasiProduksiStartTime')) {
                 this.startTimer(true);
+            } else {
+                // Start timer untuk item pertama
+                this.startTimer();
             }
 
-            // Submit
-            const btnSubmit = document.getElementById('btn-submit-produksi');
-            if (btnSubmit) btnSubmit.addEventListener('click', this.handleSubmit.bind(this));
+            // Submit - DISABLED: menggunakan onclick handler di HTML
+            // const btnSubmit = document.getElementById('btn-submit-produksi');
+            // if (btnSubmit) btnSubmit.addEventListener('click', this.handleSubmit.bind(this));
 
             // Reset Timer Btn
             const btnReset = document.getElementById('btn-reset-durasi');
@@ -254,6 +253,26 @@ window.OeeLogic = (function () {
             if (modalNg) modalNg.addEventListener('input', updateModalTotal);
             if (modalGood) modalGood.addEventListener('change', updateModalTotal);
             if (modalNg) modalNg.addEventListener('change', updateModalTotal);
+
+            // Berat Act Increment/Decrement Buttons
+            const btnIncBerat = document.getElementById('btn-increment-berat-act');
+            const btnDecBerat = document.getElementById('btn-decrement-berat-act');
+            if (btnIncBerat) btnIncBerat.addEventListener('click', () => {
+                const el = document.getElementById('input-berat-act');
+                if (el) {
+                    el.value = (parseFloat(el.value) || 0) + 0.5;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    this.checkCompleteness();
+                }
+            });
+            if (btnDecBerat) btnDecBerat.addEventListener('click', () => {
+                const el = document.getElementById('input-berat-act');
+                if (el) {
+                    el.value = Math.max(0, (parseFloat(el.value) || 0) - 0.5);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    this.checkCompleteness();
+                }
+            });
         },
 
         savePrefs: function () {
@@ -279,8 +298,12 @@ window.OeeLogic = (function () {
         },
 
         checkCompleteness: function () {
-            const ids = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'input-berat-act', 'select-man-power', 'input-qty'];
-            let complete = ids.every(id => document.getElementById(id)?.value?.trim() && document.getElementById(id)?.value != '0');
+            const textIds = ['input-nomor-lot', 'input-lot-bo', 'input-nama-compound', 'select-man-power'];
+            let complete = textIds.every(id => document.getElementById(id)?.value?.trim() && document.getElementById(id)?.value != '0');
+
+            // Validasi Berat Act (harus > 0)
+            const beratAct = parseFloat(document.getElementById('input-berat-act')?.value);
+            if (!beratAct || beratAct <= 0) complete = false;
 
             // Radios
             if (!document.querySelector('input[name="injection"]:checked')) complete = false;
@@ -300,18 +323,22 @@ window.OeeLogic = (function () {
         },
 
         startTimer: function (restore = false) {
+            console.log('⏱️ startTimer called, restore:', restore);
             if (state.durasiProduksiInterval) clearInterval(state.durasiProduksiInterval);
 
             if (!restore) {
                 state.durasiProduksiStartTime = getAdjustedServerTime();
                 localStorage.setItem('durasiProduksiStartTime', state.durasiProduksiStartTime.toISOString());
+                console.log('  - New timer started at:', state.durasiProduksiStartTime);
             } else {
                 const stored = localStorage.getItem('durasiProduksiStartTime');
                 state.durasiProduksiStartTime = stored ? new Date(stored) : getAdjustedServerTime();
+                console.log('  - Timer restored from:', state.durasiProduksiStartTime);
             }
 
             this.updateTimerUI();
             state.durasiProduksiInterval = setInterval(this.updateTimerUI.bind(this), 1000);
+            console.log('  - Interval ID:', state.durasiProduksiInterval);
         },
 
         resetTimer: function () {
@@ -323,14 +350,12 @@ window.OeeLogic = (function () {
         },
 
         updateTimerUI: function () {
-            // CONFLICT RESOLUTION: 
-            // The ID 'durasi-produksi-display' is now used for the Machine Status Timer (Running Duration).
-            // We disable the Production Module's item-level timer from hijacking this display.
-
-            // If we need an item-level timer later, create a new element ID (e.g., 'item-production-timer').
-            /*
+            // Updated: Re-enabled Item Production Timer functionality
             const display = document.getElementById('durasi-produksi-display');
-            if (!display) return;
+            if (!display) {
+                console.warn('⚠️ durasi-produksi-display element not found!');
+                return;
+            }
 
             if (state.durasiProduksiStartTime) {
                 const now = getAdjustedServerTime();
@@ -343,8 +368,15 @@ window.OeeLogic = (function () {
             const hh = Math.floor(s / 3600).toString().padStart(2, '0');
             const mm = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
             const ss = (s % 60).toString().padStart(2, '0');
-            display.value = `${hh}:${mm}:${ss}`;
-            */
+            const timeString = `${hh}:${mm}:${ss}`;
+
+            // ✅ UPDATE: Gunakan textContent untuk span element
+            display.textContent = timeString;
+
+            // Log setiap 10 detik untuk debugging (tidak terlalu spam)
+            if (s % 10 === 0) {
+                console.log(`⏱️ Timer update: ${timeString} (${s}s) - Display.textContent: ${display.textContent}`);
+            }
         },
 
         handleSubmit: function (e) {
@@ -507,7 +539,10 @@ window.OeeLogic = (function () {
             document.getElementById('input-nama-compound').value = '';
             document.getElementById('input-berat-act').value = '';
             document.getElementById('select-keterangan').value = '';
-            document.getElementById('input-qty').value = '1';
+
+            const qtyInput = document.getElementById('input-qty');
+            if (qtyInput) qtyInput.value = '1';
+
             const modalKet = document.getElementById('input-modal-keterangan');
             if (modalKet) modalKet.value = '';
 
@@ -536,6 +571,117 @@ window.OeeLogic = (function () {
 
     window.checkAllInputsComplete = function () {
         return ProductionModule.checkCompleteness();
+    }
+
+    // Global submit handler untuk onclick
+    window.handleProductionSubmit = async function () {
+        console.log('🔵 handleProductionSubmit called');
+
+        // Check completeness
+        if (!ProductionModule.checkCompleteness()) {
+            showToast('⚠️ Lengkapi semua data terlebih dahulu', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btn-submit-produksi');
+        if (!btn) return;
+
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+
+        try {
+            const formData = new FormData();
+            formData.append('machineId', config.machineId);
+            formData.append('nomorLot', document.getElementById('input-nomor-lot').value);
+            formData.append('lotBo', document.getElementById('input-lot-bo').value);
+            formData.append('namaCompound', document.getElementById('input-nama-compound').value);
+            formData.append('beratAct', document.getElementById('input-berat-act').value);
+            formData.append('manPowerId', document.getElementById('select-man-power').value);
+            formData.append('injection', document.querySelector('input[name="injection"]:checked').value);
+            formData.append('penipisan', document.querySelector('input[name="penipisan"]:checked').value);
+            formData.append('keterangan', document.getElementById('select-keterangan').value);
+            formData.append('durasiProduksiSeconds', state.durasiProduksiSeconds);
+            formData.append('goodQty', 0); // Tidak ada quantity
+            formData.append('rejectQty', 0);
+            formData.append('rejectReason', '');
+            formData.append('__RequestVerificationToken', document.querySelector('input[name="__RequestVerificationToken"]').value);
+
+            console.log('📤 Sending request to /Operator/SubmitProductionData');
+            console.log('FormData contents:');
+            for (let [key, value] of formData.entries()) {
+                console.log(`  ${key}: ${value}`);
+            }
+
+            const res = await fetch('/Operator/SubmitProductionData', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'  // ✅ PENTING: Agar server return JSON, bukan redirect HTML
+                }
+            });
+
+            console.log('📥 Response status:', res.status, res.statusText);
+            console.log('📥 Response headers:', Object.fromEntries(res.headers.entries()));
+
+            // Check if response is OK
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error('Server error:', errorText);
+                showToast(`❌ Server error: ${res.status} ${res.statusText}`, 'error');
+                btn.disabled = false;
+                btn.innerHTML = original;
+                return;
+            }
+
+            // Check if response is JSON
+            const contentType = res.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const htmlResponse = await res.text();
+                console.error('Expected JSON but got:', htmlResponse.substring(0, 200));
+                showToast('❌ Server mengembalikan response yang tidak valid', 'error');
+                btn.disabled = false;
+                btn.innerHTML = original;
+                return;
+            }
+
+            const result = await res.json();
+
+            if (result.success) {
+                // ✅ ALERT: Konfirmasi submit sukses
+                alert('✅ Data produksi berhasil disimpan!\n\nTimer durasi produksi tetap berjalan.');
+
+                showToast('✅ Data berhasil disimpan!', 'success');
+                ProductionModule.clearForm();
+
+                // PASTIKAN timer tetap berjalan
+                console.log('🔍 Checking timer status after submit...');
+                console.log('  - durasiProduksiStartTime:', state.durasiProduksiStartTime);
+                console.log('  - durasiProduksiInterval:', state.durasiProduksiInterval);
+                console.log('  - durasiProduksiSeconds:', state.durasiProduksiSeconds);
+
+                // Jika interval hilang, restart timer
+                if (!state.durasiProduksiInterval) {
+                    console.log('⚠️ Timer interval hilang! Restarting timer...');
+                    ProductionModule.startTimer(true); // Restore dari localStorage
+                } else {
+                    console.log('✅ Timer masih berjalan');
+                }
+
+                // Trigger refresh
+                if (typeof window.OeeLogic.fetchTimeMetrics === 'function') {
+                    window.OeeLogic.fetchTimeMetrics();
+                }
+            } else {
+                showToast('❌ ' + (result.message || 'Gagal menyimpan data'), 'error');
+            }
+        } catch (e) {
+            console.error('Error detail:', e);
+            showToast('❌ Error: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = original;
+        }
     }
 
     return {

@@ -11,11 +11,13 @@
             <div class="modal-body">
                 <div id="scanner-container" style="width: 100%; min-height: 300px; position: relative;">
                     <!-- Quagga2/HTML5-QRCode scanner area -->
-                    <div id="scanner-reader" style="width: 100%; position: relative; background-color: #000;">
+                    <div id="scanner-reader">
                         <canvas id="scanner-canvas" style="display: none;"></canvas>
-                        <video id="scanner-video" style="width: 100%; height: auto; display: block;"></video>
-                        <!-- Bounding box overlay -->
-                        <div id="scanner-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></div>
+                        <video id="scanner-video"></video>
+                        
+                        <!-- Custom Viewfinder Overlay -->
+                        <div class="scanner-viewfinder"></div>
+                        <div class="scanner-line"></div>
                     </div>
                     <!-- Switch Camera Button -->
                     <div class="text-center mt-2">
@@ -39,54 +41,93 @@
 </script>
 
 <style>
-    /* Scanner styles moved from main file */
+    /* Scanner styles */
     #scanner-reader {
         display: flex;
         justify-content: center;
         align-items: center;
         position: relative;
-    }
-    #scanner-reader video {
+        overflow: hidden;
+        background: #000;
+        min-height: 300px;
         border-radius: 8px;
-        max-width: 100%;
-        height: auto;
     }
-    /* Bounding box */
-    #scanner-reader #qr-shaded-region {
-        border: 3px solid #00ff00 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 0 0 4px rgba(0, 255, 0, 0.3),
-                    0 0 20px rgba(0, 255, 0, 0.5),
-                    inset 0 0 20px rgba(0, 255, 0, 0.1) !important;
-        background-color: rgba(0, 255, 0, 0.05) !important;
+    
+    #scanner-reader video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
-    #scanner-reader #qr-shaded-region::before,
-    #scanner-reader #qr-shaded-region::after {
+
+    /* Custom Viewfinder Overlay */
+    .scanner-viewfinder {
+        position: absolute;
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 100%; 
+        pointer-events: none;
+        z-index: 10;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .scanner-viewfinder::before {
+        content: '';
+        display: block;
+        width: 250px;
+        height: 250px;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); /* Darkens area outside box */
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 12px;
+        position: relative;
+    }
+
+    /* Corner Borders for Targeting */
+    .scanner-viewfinder::after {
         content: '';
         position: absolute;
-        width: 30px;
-        height: 30px;
-        border: 3px solid #00ff00;
+        width: 260px;
+        height: 260px;
+        border: 4px solid transparent;
+        /* Corner gradients */
+        background: 
+            linear-gradient(to right, #00ff00 40px, transparent 40px) top left,
+            linear-gradient(to bottom, #00ff00 40px, transparent 40px) top left,
+            linear-gradient(to left, #00ff00 40px, transparent 40px) top right,
+            linear-gradient(to bottom, #00ff00 40px, transparent 40px) top right,
+            linear-gradient(to right, #00ff00 40px, transparent 40px) bottom left,
+            linear-gradient(to top, #00ff00 40px, transparent 40px) bottom left,
+            linear-gradient(to left, #00ff00 40px, transparent 40px) bottom right,
+            linear-gradient(to top, #00ff00 40px, transparent 40px) bottom right;
+        background-repeat: no-repeat;
     }
-    @@keyframes scanPulse {
-        0%, 100% {
-            box-shadow: 0 0 0 4px rgba(0, 255, 0, 0.3),
-                        0 0 20px rgba(0, 255, 0, 0.5),
-                        inset 0 0 20px rgba(0, 255, 0, 0.1);
-        }
-        50% {
-            box-shadow: 0 0 0 6px rgba(0, 255, 0, 0.5),
-                        0 0 30px rgba(0, 255, 0, 0.7),
-                        inset 0 0 30px rgba(0, 255, 0, 0.2);
-        }
-    }
-    #scanner-reader #qr-shaded-region {
-        animation: scanPulse 2s ease-in-out infinite;
-    }
-    @@keyframes scanAnim {
-        0% { top: 10%; opacity: 0; }
+
+    /* Scanning Line Animation */
+    @@keyframes scanLineAnim {
+        0% { transform: translateY(-120px); opacity: 0; }
         10% { opacity: 1; }
         90% { opacity: 1; }
-        100% { top: 90%; opacity: 0; }
+        100% { transform: translateY(120px); opacity: 0; }
+    }
+
+    .scanner-line {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 240px;
+        height: 2px;
+        background: #00ff00;
+        box-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00;
+        margin-left: -120px;
+        z-index: 12;
+        animation: scanLineAnim 2s linear infinite;
+        pointer-events: none;
+    }
+
+    /* Hide library internals */
+    #html5-qrcode-anchor-scan-type-change {
+        display: none !important;
     }
 </style>

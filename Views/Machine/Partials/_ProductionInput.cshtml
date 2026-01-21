@@ -13,7 +13,7 @@
                 <div class="mb-3">
                     <label class="form-label fw-bold">Nomor Lot (Part Number)</label>
                     <div class="input-group">
-                        <input type="text" class="form-control form-control-glass" id="input-nomor-lot" placeholder="Scan Part Number..." readonly>
+                        <input type="text" class="form-control form-control-glass prod-input" id="input-nomor-lot" placeholder="Scan Part Number..." maxlength="12">
                         <button class="btn btn-outline-primary" type="button" id="btn-scan-nomor-lot">
                              <i class="fa-solid fa-camera"></i> Scan
                         </button>
@@ -27,7 +27,7 @@
                 <div class="mb-3">
                     <label class="form-label fw-bold">Lot BO</label>
                     <div class="input-group">
-                         <input type="text" class="form-control form-control-glass" id="input-lot-bo" placeholder="Scan Lot BO..." readonly>
+                         <input type="text" class="form-control form-control-glass prod-input" id="input-lot-bo" placeholder="Scan Lot BO..." maxlength="12">
                          <button class="btn btn-outline-primary" type="button" id="btn-scan-lot-bo">
                             <i class="fa-solid fa-camera"></i>
                         </button>
@@ -41,7 +41,7 @@
                 <div class="mb-3">
                      <label class="form-label fw-bold">Nama Compound</label>
                     <div class="input-group">
-                        <input type="text" class="form-control form-control-glass" id="input-nama-compound" placeholder="Scan Compound..." readonly>
+                        <input type="text" class="form-control form-control-glass prod-input" id="input-nama-compound" placeholder="Scan Compound...">
                         <button class="btn btn-outline-primary" type="button" id="btn-scan-nama-compound">
                              <i class="fa-solid fa-camera"></i>
                         </button>
@@ -55,7 +55,7 @@
                 <div class="mb-3">
                      <label class="form-label fw-bold">Berat Act (Kg)</label>
                     <div class="input-group">
-                        <input type="number" step="0.01" class="form-control form-control-glass text-end" id="input-berat-act" placeholder="0.00">
+                        <input type="number" step="0.01" class="form-control form-control-glass prod-input text-end" id="input-berat-act" placeholder="0.00">
                          <button class="btn btn-outline-secondary" type="button" id="btn-decrement-berat-act"><i class="fa-solid fa-minus"></i></button>
                         <button class="btn btn-outline-secondary" type="button" id="btn-increment-berat-act"><i class="fa-solid fa-plus"></i></button>
                     </div>
@@ -99,7 +99,7 @@
                 </div>
 
                 <!-- 7. Submit Button -->
-                 <button type="button" class="btn btn-primary w-100 py-3 mb-4 fw-bold shadow-sm" id="btn-submit-produksi" style="font-size: 1.1rem;">
+                 <button type="button" class="btn btn-primary w-100 py-3 mb-4 fw-bold shadow-sm" id="btn-submit-produksi" onclick="window.handleProductionSubmit()" style="font-size: 1.1rem;">
                     <i class="fa-solid fa-paper-plane me-2"></i>SUBMIT DATA
                 </button>
 
@@ -116,36 +116,27 @@
                          <span class="input-group-text bg-transparent border-secondary border-opacity-25 text-white">
                             <i class="fa-regular fa-clock"></i>
                         </span>
-                        <input type="text" class="form-control form-control-glass text-center fw-bold" id="durasi-produksi-display" value="00:00:00" readonly style="font-family: 'Consolas', monospace; font-size: 1.5rem; letter-spacing: 2px;">
+                        <div class="form-control form-control-glass text-center fw-bold d-flex align-items-center justify-content-center" style="font-family: 'Consolas', monospace; font-size: 1.5rem; letter-spacing: 2px;">
+                            <span id="durasi-produksi-display">00:00:00</span>
+                        </div>
                         <button class="btn btn-outline-danger" type="button" id="btn-reset-durasi" title="Reset Timer">
                              <i class="fa-solid fa-rotate-left"></i> Reset
                         </button>
                     </div>
                 </div>
 
-                <!-- 8.1 Quantity Input (Direct) -->
-                <div class="mb-4">
-                    <label class="form-label fw-bold">Quantity</label>
-                    <div class="input-group">
-                        <button class="btn btn-outline-success" type="button" id="btn-decrement-qty">
-                            <i class="fa-solid fa-minus"></i>
-                        </button>
-                        <input type="number" class="form-control form-control-glass text-center fw-bold text-success fs-4" id="input-qty" value="1" min="1">
-                        <button class="btn btn-outline-success" type="button" id="btn-increment-qty">
-                            <i class="fa-solid fa-plus"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 9. Quantity Section (Standalone Modal Method) -->
+                <!-- 9. Quantity Section (Standalone - untuk input hasil produksi) -->
                 <div class="pt-3 border-top border-secondary border-opacity-25 mb-2" id="quantity-container">
-                    <button type="button" class="btn btn-info w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center" 
+                    <button type="button" class="btn btn-success w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center" 
                             id="btn-open-qty-modal"
                             onclick="if(window.bootstrap) { const m = new bootstrap.Modal(document.getElementById('standaloneQtyModal')); m.show(); }"
-                            style="font-size: 1.1rem; letter-spacing: 1px; border: none; background: linear-gradient(135deg, #0dcaf0 0%, #0aa2c0 100%);">
-                        <i class="fa-solid fa-plus-circle me-2 fs-5"></i>INPUT QUANTITY
+                            style="font-size: 1.1rem; letter-spacing: 1px;">
+                        <i class="fa-solid fa-box-open me-2 fs-5"></i>INPUT QUANTITY (Hasil Produksi)
                     </button>
                 </div>
+
+
+
 
             </div>
         </div>
