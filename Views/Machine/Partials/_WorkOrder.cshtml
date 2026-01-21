@@ -1,72 +1,187 @@
 @model OeeSystem.Models.ViewModels.MachineOeeViewModel
 
+<style>
+    .wo-card-custom {
+        background: #2b2e35; /* Dark charcoal from image */
+        border-radius: 16px;
+        padding: 24px;
+        color: white;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        border: 1px solid rgba(255,255,255,0.05);
+        margin-bottom: 2rem;
+    }
+
+    .wo-product-row {
+        display: flex;
+        align-items: center;
+        gap: 40px; 
+        margin-bottom: 2rem;
+    }
+
+    .wo-image-box {
+        border-radius: 20px;
+        width: 240px; 
+        height: 240px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+    }
+
+    .wo-image-box img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.3s ease;
+    }
+
+    .wo-image-box:hover img {
+        transform: scale(1.05); /* Subtle hover effect */
+    }
+
+    .wo-info-main {
+        flex-grow: 1;
+    }
+
+    .wo-product-name {
+        font-size: 2rem;
+        font-weight: 500;
+        margin-bottom: 2px;
+        line-height: 1.2;
+    }
+
+    .wo-number-display {
+        color: #7a7e85;
+        font-size: 1.2rem;
+        margin-bottom: 15px;
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    .wo-progress-value {
+        font-size: 3rem;
+        font-weight: 400;
+        margin-bottom: 15px;
+        letter-spacing: -1px;
+    }
+
+    .wo-est-badge {
+        background: #393e46;
+        padding: 8px 18px;
+        border-radius: 30px;
+        font-size: 1rem;
+        color: #83888e;
+        display: inline-block;
+        box-shadow: inset 2px 2px 5px rgba(0,0,0,0.3);
+    }
+
+    .wo-target-status {
+        text-align: center;
+        color: #8c9096;
+        font-size: 1.1rem;
+        margin: 25px 0 15px 0;
+    }
+
+    .wo-action-row {
+        display: flex;
+        gap: 15px;
+    }
+
+    .wo-stat-btn {
+        flex: 1;
+        border: none;
+        border-radius: 10px;
+        padding: 18px;
+        font-weight: 600;
+        font-size: 1.4rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-transform: uppercase;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .wo-btn-good {
+        background-color: #c4fb3d; /* Green lime */
+        color: #1a1e23;
+    }
+
+    .wo-btn-reject {
+        background-color: #ef1d26; /* Bright red */
+        color: #ffffff;
+    }
+
+    /* Keep layout consistent on all screens as requested */
+    @@media (max-width: 768px) {
+        .wo-card-custom { padding: 18px; }
+        .wo-image-box { width: 140px; height: 140px; }
+        .wo-product-name { font-size: 1.4rem; }
+        .wo-progress-value { font-size: 2.2rem; }
+        .wo-stat-btn { font-size: 1.1rem; padding: 14px; }
+        .wo-product-row { gap: 30px; }
+    }
+
+    @@media (max-width: 480px) {
+        .wo-image-box { width: 100px; height: 100px; padding: 8px; }
+        .wo-product-name { font-size: 1.2rem; }
+        .wo-number-display { font-size: 1rem; }
+        .wo-progress-value { font-size: 1.8rem; }
+        .wo-stat-btn { font-size: 0.9rem; padding: 12px; }
+    }
+</style>
+
 <!-- Work Order Card -->
-<div class="row mb-3">
+<div class="row">
     <div class="col-12">
-        <div class="glass-card" style="background: linear-gradient(145deg, #2b3035 0%, #212529 100%);">
-            <div class="glass-card-body p-4">
-                @if (Model.ActiveJob != null)
-                {
-                    <div class="row align-items-center">
-                        <!-- Product Image (Left) -->
-                        <div class="col-md-4 text-center">
-                            <div class="bg-white rounded p-3 d-inline-block shadow-sm" style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;">
-                                <img src="@(string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl) ? "/images/placeholder-product.png" : Model.ActiveJob.ProductImageUrl)" 
-                                     alt="@Model.ActiveJob.ProductName" 
-                                     class="img-fluid" 
-                                     style="max-height: 100%; max-width: 100%; object-fit: contain;"
-                                     onerror="this.onerror=null;this.src='/images/placeholder-product.png';">
-                            </div>
+        <div class="wo-card-custom">
+            @if (Model.ActiveJob != null)
+            {
+                <div class="wo-product-row">
+                    <!-- Product Image -->
+                    <div class="wo-image-box">
+                        <img src="@(string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl) ? "/images/placeholder-product.png" : Model.ActiveJob.ProductImageUrl)" 
+                             alt="@Model.ActiveJob.ProductName" 
+                             onerror="this.onerror=null;this.src='/images/placeholder-product.png';">
+                    </div>
+                    
+                    <!-- WO Details -->
+                    <div class="wo-info-main">
+                        <div class="wo-product-name">@Model.ActiveJob.ProductName</div>
+                        <div class="wo-number-display" id="wo-number-display">@Model.ActiveJob.WorkOrderNumber</div>
+                        
+                        <div class="wo-progress-value">
+                            <span id="current-qty">@Model.ActiveJob.CurrentQuantity</span> / <span id="target-qty">@Model.ActiveJob.TargetQuantity</span>
                         </div>
                         
-                        <!-- WO Details & Counters (Right) -->
-                        <div class="col-md-8">
-                            <h2 class="fw-bold mb-1">@Model.ActiveJob.ProductName</h2>
-                            <div class="text-secondary mb-3" style="font-size: 1.1rem;">@Model.ActiveJob.WorkOrderNumber</div>
-                            
-                            <!-- Large Counter -->
-                            <div class="d-flex align-items-baseline mb-3">
-                                <span class="fw-bold text-white display-3 me-3">@Model.ActiveJob.CurrentQuantity</span>
-                                <span class="text-secondary h2">/ @Model.ActiveJob.TargetQuantity</span>
-                            </div>
-                            
-                            <!-- Est Completion Badge -->
-                            <div class="mb-4">
-                                <span class="badge bg-dark border border-secondary text-secondary rounded-pill px-3 py-2" style="font-size: 0.9rem;">
-                                    Est. Completion: -
-                                </span>
-                            </div>
-
-                            <!-- Target Status -->
-                            <div class="text-center text-secondary mb-3 small">
-                                On Target (Sets 0 Target)
-                            </div>
-
-                            <!-- Big Action Buttons (Good/Reject Stats) -->
-                            <div class="row g-3">
-                                <div class="col-6">
-                                    <div class="btn w-100 p-3 rounded shadow-sm" style="background-color: #76ff03; color: #1a1a1a; cursor: default;">
-                                        <div class="text-uppercase fw-bold mb-1" style="font-size: 1.2rem;">GOOD: @Model.GoodCount</div>
-                                    </div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="btn w-100 p-3 rounded shadow-sm" style="background-color: #ff1744; color: white; cursor: default;">
-                                        <div class="text-uppercase fw-bold mb-1" style="font-size: 1.2rem;">REJECT: @Model.RejectCount</div>
-                                    </div>
-                                </div>
-                            </div>
+                        <div class="wo-est-badge">
+                            Est. Completion: <span id="est-completion-wo">-</span>
                         </div>
                     </div>
-                }
-                else
-                {
-                    <div class="text-center text-secondary py-5">
-                        <i class="fa-solid fa-clipboard-question fa-3x mb-3 opacity-50"></i>
-                        <h3>No Active Work Order</h3>
-                        <p>Silakan mulai Job baru untuk menampilkan detail WO.</p>
+                </div>
+
+                <div class="wo-target-status">
+                    On Target (Sets 0 Target)
+                </div>
+
+                <!-- Action Button Counters -->
+                <div class="wo-action-row">
+                    <div class="wo-stat-btn wo-btn-good">
+                        GOOD: <span class="ms-1" id="total-good-wo">@Model.GoodCount</span>
                     </div>
-                }
-            </div>
+                    <div class="wo-stat-btn wo-btn-reject">
+                        REJECT: <span class="ms-1" id="total-reject-wo">@Model.RejectCount</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="text-center text-secondary py-5">
+                    <i class="fa-solid fa-clipboard-question fa-3x mb-3 opacity-50"></i>
+                    <h3>No Active Work Order</h3>
+                    <p>Silakan mulai Job baru untuk menampilkan detail WO.</p>
+                </div>
+            }
         </div>
     </div>
 </div>

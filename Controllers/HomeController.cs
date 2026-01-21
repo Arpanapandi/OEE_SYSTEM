@@ -454,7 +454,9 @@ public class HomeController : Controller
                 .ToList();
 
             var activeJob = shiftJobRuns
+                .Where(j => j.StartTime <= now)
                 .OrderByDescending(j => j.StartTime)
+                .ThenByDescending(j => j.Id)
                 .FirstOrDefault(j => j.EndTime == null);
 
             bool hasOpenDowntime = activeJob != null &&

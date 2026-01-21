@@ -49,6 +49,7 @@
                         <th>Tanggal</th>
                         <th>Shift</th>
                         <th>Order Number</th>
+                        <th>Mesin</th>
                         <th>Product</th>
                         <th>Target Quantity</th>
                         <th>Status</th>
@@ -66,6 +67,7 @@
                             <td>@(wo.PlannedDate?.ToString("dd/MM/yyyy") ?? "-")</td>
                             <td>@(wo.Shift?.Name ?? "-")</td>
                             <td>@wo.OrderNumber</td>
+                            <td>@(wo.Machine?.Name ?? "-")</td>
                             <td>@(wo.Product?.Name ?? "N/A")</td>
                             <td>@wo.TargetQuantity</td>
                             <td>

@@ -12,15 +12,29 @@ window.OeeLogic = (function () {
     const state = {
         serverTimeOffset: 0,
         runningTimerInterval: null,
+        // Machine Status Timer (TOTAL RUNNING TIME)
         sinceLastChangeInterval: null,
-        timeMetricsInterval: null,
         lastChangeTimestamp: null,
 
-        // Production Timer
+        // Item Production Timer (Manual/Auto per production item)
         durasiProduksiInterval: null,
         durasiProduksiStartTime: null,
         durasiProduksiSeconds: 0,
-        isDurasiAuto: true // Will be toggled by machine status events
+        isDurasiAuto: true, // Will be toggled by machine status events
+
+        // Time Metrics State (Real-time Accumulation)
+        metrics: {
+            plannedSeconds: 43200, // Default 12h
+            operatingSeconds: 0,
+            downtimeSeconds: 0,
+            restSeconds: 0,
+            noLoadingSeconds: 0,
+            shiftEnd: null,
+            isRunning: false,
+            hasActiveDowntime: false,
+            hasActiveRest: false,
+            hasActiveNoLoading: false
+        }
     };
 
     // Public Methods
@@ -41,10 +55,13 @@ window.OeeLogic = (function () {
         }
 
         // 4. Polling
-        state.timeMetricsInterval = setInterval(fetchTimeMetrics, 30000);
+        state.timeMetricsInterval = setInterval(fetchTimeMetrics, 10000); // 10s for better responsiveness
 
         // 5. Init Production Logic
         initProductionLogic();
+
+        // 6. Init Machine Action Timer
+        MachineTimer.init();
     }
 
     // --- Utilities ---
@@ -87,27 +104,69 @@ window.OeeLogic = (function () {
 
         updateTimerDisplay(); // immediate
         state.sinceLastChangeInterval = setInterval(updateTimerDisplay, 1000);
-
-        // Reset Status Display text
-        const el = document.getElementById('since-last-status');
-        if (el) el.textContent = '00:00:00';
     }
 
     function updateTimerDisplay() {
-        // Target 1: Legacy Text Element
-        const elStats = document.getElementById('since-last-status');
-
-        if (!elStats || !state.lastChangeTimestamp) return;
-
         const now = getAdjustedServerTime();
+
+        // --- 1. Main Machine Status Timer ---
         const diff = Math.max(0, Math.floor((now - state.lastChangeTimestamp) / 1000));
+        const format = (s) => {
+            const h = Math.floor(s / 3600).toString().padStart(2, '0');
+            const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+            const sec = (s % 60).toString().padStart(2, '0');
+            return `${h}:${m}:${sec}`;
+        };
+        const timeStr = format(diff);
 
-        const h = Math.floor(diff / 3600).toString().padStart(2, '0');
-        const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
-        const s = (diff % 60).toString().padStart(2, '0');
-        const timeStr = `${h}:${m}:${s}`;
+        // Target 1: Machine Action Timer (TOTAL RUNNING TIME)
+        const elActions = document.getElementById('durasi-produksi-display');
+        if (elActions) {
+            if (elActions.tagName === 'INPUT') {
+                if (elActions.value !== timeStr) elActions.value = timeStr;
+            } else {
+                if (elActions.textContent !== timeStr) elActions.textContent = timeStr;
+            }
+        }
+        const elStats = document.getElementById('since-last-status');
+        if (elStats && elStats.textContent !== timeStr) elStats.textContent = timeStr;
 
-        if (elStats) elStats.textContent = timeStr;
+        // --- 2. Real-time Time Metrics (Tick Up) ---
+        const m = state.metrics;
+        // Hanya tick jika belum melewati ShiftEnd
+        if (m.shiftEnd && now < m.shiftEnd) {
+            // Logika: Operating Time hanya berhenti saat Line Stop (Downtime)
+            if (m.isRunning || m.hasActiveRest || m.hasActiveNoLoading) {
+                m.operatingSeconds++;
+            }
+
+            if (m.hasActiveDowntime) m.downtimeSeconds++;
+            if (m.hasActiveRest) m.restSeconds++;
+            if (m.hasActiveNoLoading) m.noLoadingSeconds++;
+
+            // Update UI
+            const setVal = (id, s) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = format(Math.floor(s));
+            };
+
+            setVal('operating-time', m.operatingSeconds);
+            setVal('downtime-total', m.downtimeSeconds);
+            setVal('rest-break-time', m.restSeconds);
+            setVal('no-loading-time', m.noLoadingSeconds);
+
+            // Update Progress Bars (occasional)
+            if (m.plannedSeconds > 0) {
+                const updateBar = (id, s) => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.width = (s / m.plannedSeconds * 100).toFixed(1) + '%';
+                };
+                updateBar('operating-progress-bar', m.operatingSeconds);
+                updateBar('downtime-progress-bar', m.downtimeSeconds);
+                updateBar('rest-break-progress-bar', m.restSeconds);
+                updateBar('no-loading-progress-bar', m.noLoadingSeconds);
+            }
+        }
     }
 
     // --- Data Handlers ---
@@ -122,17 +181,86 @@ window.OeeLogic = (function () {
     function applyMetrics(data) {
         if (!data) return;
 
-        // Time Cards
-        const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-        setTxt('planned-production-time', data.PlannedProductionTime || '-');
-        setTxt('operating-time', data.OperatingTime || '-');
-        setTxt('downtime-time', data.Downtime || '-');
+        // 1. Time Cards - Try both PascalCase and camelCase
+        const setTxt = (id, val) => {
+            const el = document.getElementById(id);
+            if (el && val !== undefined && val !== null && el.textContent !== val.toString()) {
+                el.textContent = val;
+            }
+        };
 
-        // OEE
-        setTxt('oee-value', (data.OEE || 0).toFixed(1) + '%');
-        setTxt('availability-value', (data.Availability || 0).toFixed(1) + '%');
-        setTxt('performance-value', (data.Performance || 0).toFixed(1) + '%');
-        setTxt('quality-value', (data.Quality || 0).toFixed(1) + '%');
+        // Update Planned Production (static value)
+        setTxt('planned-production-time', data.PlannedProductionTime || data.plannedProductionTime || '-');
+
+        // Update State for Real-time Ticking (DO NOT update UI directly - let updateTimerDisplay handle it)
+        state.metrics.plannedSeconds = data.PlannedProductionTimeSeconds || data.plannedProductionTimeSeconds || 43200;
+        state.metrics.operatingSeconds = data.OperatingTimeSeconds || data.operatingTimeSeconds || 0;
+        state.metrics.downtimeSeconds = data.DowntimeSeconds || data.downtimeSeconds || 0;
+        state.metrics.restSeconds = data.RestBreakTimeSeconds || data.restBreakTimeSeconds || 0;
+        state.metrics.noLoadingSeconds = data.NoLoadingTimeSeconds || data.noLoadingTimeSeconds || 0;
+
+        state.metrics.shiftEnd = data.ShiftEnd ? new Date(data.ShiftEnd) : null;
+        state.metrics.isRunning = data.IsRunning || false;
+        state.metrics.hasActiveDowntime = data.HasActiveDowntime || false;
+        state.metrics.hasActiveRest = data.HasActiveRestBreak || false;
+        state.metrics.hasActiveNoLoading = data.HasActiveNoLoading || false;
+
+        console.log('📊 Metrics State Updated:', {
+            operating: state.metrics.operatingSeconds,
+            downtime: state.metrics.downtimeSeconds,
+            rest: state.metrics.restSeconds,
+            noLoading: state.metrics.noLoadingSeconds,
+            isRunning: state.metrics.isRunning,
+            hasDowntime: state.metrics.hasActiveDowntime,
+            hasRest: state.metrics.hasActiveRest,
+            hasNoLoading: state.metrics.hasActiveNoLoading
+        });
+
+        // Immediately update UI with new state
+        updateTimerDisplay();
+
+        // 2. OEE - Handle various case formats
+        const getVal = (p) => data[p] ?? data[p.toLowerCase()] ?? data[p.charAt(0).toLowerCase() + p.slice(1)] ?? 0;
+
+        setTxt('oee-value', (getVal('Oee')).toFixed(0) + '%');
+        setTxt('availability-value', (getVal('Availability')).toFixed(0) + '%');
+        setTxt('performance-value', (getVal('Performance')).toFixed(0) + '%');
+        setTxt('quality-value', (getVal('Quality')).toFixed(0) + '%');
+
+        // 3. Work Order Details
+        setTxt('current-qty', data.TotalGood ?? data.totalGood ?? 0);
+        setTxt('target-qty', data.TargetQuantity ?? data.targetQuantity ?? 0);
+        setTxt('total-good-wo', data.TotalGood ?? data.totalGood ?? 0);
+        setTxt('total-reject-wo', data.TotalReject ?? data.totalReject ?? 0);
+        setTxt('est-completion-wo', data.EstimatedCompletion || data.estimatedCompletion || '-');
+
+        // 4. Update Product Image if changed
+        const imageUrl = data.ProductImageUrl || data.productImageUrl;
+        if (imageUrl) {
+            const imgEl = document.querySelector('.wo-image-box img');
+            if (imgEl && imgEl.src !== imageUrl) {
+                console.log('🖼️ Syncing Product Image:', imageUrl);
+                imgEl.src = imageUrl;
+            }
+        }
+
+        // 5. Timer Sync
+        const lastChange = data.LastStatusChangeTime || data.lastStatusChangeTime;
+        if (lastChange) {
+            applyMetricsToTimer(lastChange);
+        }
+    }
+
+    function applyMetricsToTimer(isoString) {
+        if (!isoString) return;
+        const serverTime = new Date(isoString);
+        if (isNaN(serverTime)) return;
+
+        // Only update if difference is significant (> 2s) to avoid jumping
+        if (!state.lastChangeTimestamp || Math.abs(state.lastChangeTimestamp - serverTime) > 2000) {
+            console.log('🔄 Syncing Timer via Metrics:', isoString);
+            resetTimers(serverTime);
+        }
     }
 
     // --- SignalR ---
@@ -154,7 +282,13 @@ window.OeeLogic = (function () {
         });
 
         conn.on("OeeUpdated", (data) => {
-            if (data.machineId === config.machineId) fetchTimeMetrics();
+            console.log('🔔 OeeUpdated received:', data);
+            if (data.MachineId === config.machineId || data.machineId === config.machineId) {
+                if (data.LastStatusChangeTime) {
+                    applyMetricsToTimer(data.LastStatusChangeTime);
+                }
+                fetchTimeMetrics();
+            }
         });
 
         conn.start().then(() => {
@@ -350,12 +484,9 @@ window.OeeLogic = (function () {
         },
 
         updateTimerUI: function () {
-            // Updated: Re-enabled Item Production Timer functionality
-            const display = document.getElementById('durasi-produksi-display');
-            if (!display) {
-                console.warn('⚠️ durasi-produksi-display element not found!');
-                return;
-            }
+            // Target: item-production-timer (in _ProductionInput.cshtml)
+            const display = document.getElementById('item-production-timer');
+            if (!display) return;
 
             if (state.durasiProduksiStartTime) {
                 const now = getAdjustedServerTime();
@@ -370,13 +501,7 @@ window.OeeLogic = (function () {
             const ss = (s % 60).toString().padStart(2, '0');
             const timeString = `${hh}:${mm}:${ss}`;
 
-            // ✅ UPDATE: Gunakan textContent untuk span element
             display.textContent = timeString;
-
-            // Log setiap 10 detik untuk debugging (tidak terlalu spam)
-            if (s % 10 === 0) {
-                console.log(`⏱️ Timer update: ${timeString} (${s}s) - Display.textContent: ${display.textContent}`);
-            }
         },
 
         handleSubmit: function (e) {
@@ -438,8 +563,13 @@ window.OeeLogic = (function () {
 
                     // Close Modal
                     const modalEl = document.getElementById('modal-input-produksi-qty');
-                    const modal = bootstrap.Modal.getInstance(modalEl);
-                    if (modal) modal.hide();
+                    if (window.bootstrap) {
+                        let modal = bootstrap.Modal.getInstance(modalEl);
+                        if (!modal) {
+                            modal = new bootstrap.Modal(modalEl);
+                        }
+                        modal.hide();
+                    }
 
                     // Reset Logic
                     this.resetTimer();
@@ -504,16 +634,19 @@ window.OeeLogic = (function () {
                 if (result.success) {
                     showToast(`✅ Berhasil: ${goodQty} Good, ${rejectQty} NG`, 'success');
 
-                    // Reset fields
-                    goodInput.value = 1;
+                    // Reset fields to 0
+                    goodInput.value = 0;
                     rejectInput.value = 0;
                     remarkInput.value = '';
 
                     // Close Modal
                     const modalEl = document.getElementById('standaloneQtyModal');
                     if (window.bootstrap) {
-                        const modal = bootstrap.Modal.getInstance(modalEl);
-                        if (modal) modal.hide();
+                        let modal = bootstrap.Modal.getInstance(modalEl);
+                        if (!modal) {
+                            modal = new bootstrap.Modal(modalEl);
+                        }
+                        modal.hide();
                     }
 
                     // Trigger refresh
@@ -541,10 +674,21 @@ window.OeeLogic = (function () {
             document.getElementById('select-keterangan').value = '';
 
             const qtyInput = document.getElementById('input-qty');
-            if (qtyInput) qtyInput.value = '1';
+            if (qtyInput) qtyInput.value = '0';
+
+            const mGood = document.getElementById('input-modal-good');
+            if (mGood) mGood.value = '0';
+            const mNg = document.getElementById('input-modal-ng');
+            if (mNg) mNg.value = '0';
+            const mGood2 = document.getElementById('modal-good-qty');
+            if (mGood2) mGood2.value = '0';
+            const mNg2 = document.getElementById('modal-reject-qty');
+            if (mNg2) mNg2.value = '0';
 
             const modalKet = document.getElementById('input-modal-keterangan');
             if (modalKet) modalKet.value = '';
+            const modalKet2 = document.getElementById('modal-qty-keterangan');
+            if (modalKet2) modalKet2.value = '';
 
             // Reset Penipisan to OK
             const okRadio = document.querySelector('input[name="penipisan"][value="OK"]');
@@ -684,10 +828,96 @@ window.OeeLogic = (function () {
         }
     }
 
+    // --- Sub-Module: Machine Action Timer (Resume Logic) ---
+    const MachineTimer = {
+        interval: null,
+        startTime: null,
+        accumulatedSeconds: 0,
+
+        init: function () {
+            // Bind buttons
+            const btnRunning = document.getElementById('btn-running');
+            if (btnRunning) {
+                btnRunning.addEventListener('click', () => {
+                    console.log('▶️ Machine Timer Triggered: START/RESUME');
+                    this.startMachineTimer();
+                });
+            }
+
+            const btnStop = document.getElementById('btn-line-stop');
+            if (btnStop) {
+                btnStop.addEventListener('click', () => {
+                    console.log('⏹️ Machine Timer Triggered: PAUSE (Line Stop)');
+                    this.stopMachineTimer();
+                });
+            }
+
+            const btnRest = document.getElementById('btn-rest');
+            if (btnRest) {
+                btnRest.addEventListener('click', () => {
+                    console.log('⏹️ Machine Timer Triggered: PAUSE (Rest)');
+                    this.stopMachineTimer();
+                });
+            }
+
+            const btnNoLoading = document.getElementById('btn-no-loading');
+            if (btnNoLoading) {
+                btnNoLoading.addEventListener('click', () => {
+                    console.log('⏹️ Machine Timer Triggered: PAUSE (No Loading)');
+                    this.stopMachineTimer();
+                });
+            }
+        },
+
+        startMachineTimer: function () {
+            if (this.interval) clearInterval(this.interval);
+
+            // Resume: offset is current Time
+            this.startTime = getAdjustedServerTime();
+            console.log(`▶️ Timer starting. Accumulated: ${this.accumulatedSeconds}s`);
+
+            this.updateUI();
+            this.interval = setInterval(this.updateUI.bind(this), 1000);
+        },
+
+        stopMachineTimer: function () {
+            if (this.interval) clearInterval(this.interval);
+            this.interval = null;
+
+            if (this.startTime) {
+                const now = getAdjustedServerTime();
+                const sessionSeconds = Math.max(0, Math.floor((now - this.startTime) / 1000));
+                this.accumulatedSeconds += sessionSeconds;
+                this.startTime = null; // Reset session start
+            }
+            console.log(`⏸️ Timer paused. New Accumulated: ${this.accumulatedSeconds}s`);
+        },
+
+        updateUI: function () {
+            const display = document.getElementById('machine-running-timer');
+            if (!display) return;
+
+            let totalSeconds = this.accumulatedSeconds;
+
+            if (this.startTime) {
+                const now = getAdjustedServerTime();
+                const currentSession = Math.max(0, Math.floor((now - this.startTime) / 1000));
+                totalSeconds += currentSession;
+            }
+
+            const hh = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+            const mm = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+            const ss = (totalSeconds % 60).toString().padStart(2, '0');
+
+            display.value = `${hh}:${mm}:${ss}`;
+        }
+    };
+
     return {
         init: init,
         resetTimers: resetTimers,
-        fetchTimeMetrics: fetchTimeMetrics
+        fetchTimeMetrics: fetchTimeMetrics,
+        setLastChangeTimestamp: function (ts) { applyMetricsToTimer(ts); }
     };
 
 })();

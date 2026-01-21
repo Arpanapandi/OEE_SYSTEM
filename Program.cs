@@ -50,7 +50,7 @@ builder.Services.AddScoped<IOeeService, OeeService>();
 builder.Services.AddHttpClient<ProductionReporterService>();
 
 // Real-Time Background Service
-// builder.Services.AddHostedService<OeeRealTimeService>(); // Disabled temporary due to EventLog permission issue
+builder.Services.AddHostedService<OeeRealTimeService>();
 
 
 var app = builder.Build();
@@ -118,6 +118,26 @@ using (var scope = app.Services.CreateScope())
                 Console.WriteLine($"   Error: {createEx.Message}");
                 Console.WriteLine("═══════════════════════════════════════════════════════════");
             }
+        }
+
+        // DIAGNOSTIC STARTUP LOGGING
+        if (canConnect) 
+        {
+            Console.WriteLine("\n📊 --- DIAGNOSTIC DATA START ---");
+            var machines = db.Machines.ToList();
+            Console.WriteLine($"Found {machines.Count} Machines:");
+            foreach(var m in machines) 
+            {
+                Console.WriteLine($"   - [{m.Id}] '{m.Name}' (Status: {m.Status})");
+            }
+
+            var jobs = db.JobRuns.Include(j => j.WorkOrder).ToList();
+            Console.WriteLine($"Found {jobs.Count} JobRuns:");
+            foreach(var j in jobs)
+            {
+                Console.WriteLine($"   - Job #{j.Id} | Machine: '{j.MachineId}' | WO: {j.WorkOrder?.OrderNumber} | Start: {j.StartTime} | End: {j.EndTime}");
+            }
+            Console.WriteLine("📊 --- DIAGNOSTIC DATA END ---\n");
         }
 
         

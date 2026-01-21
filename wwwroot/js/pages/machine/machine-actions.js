@@ -9,10 +9,33 @@ function getMachineId() {
     return window.OeeConfig ? window.OeeConfig.machineId : null;
 }
 
+// Helper: Check Active Job
+function hasActiveJob() {
+    // Check Config first
+    if (window.OeeConfig && window.OeeConfig.hasActiveJob === true) return true;
+
+    // Check DOM Indicator (Work Order Number element presence)
+    const woEl = document.getElementById('wo-number-display');
+    if (woEl && woEl.textContent && woEl.textContent.trim() !== '-') return true;
+
+    return false;
+}
+
 // 1. Handle Running Click
 window.handleRunningClickDirect = async function (button) {
     console.log('🖱️ Running clicked');
     if (button.disabled) return;
+
+    // ✅ VALIDASI WORK ORDER
+    if (!hasActiveJob()) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Tidak Ada Work Order',
+            text: 'Silakan buat Work Order terlebih dahulu sebelum menjalankan mesin!',
+            confirmButtonText: 'OK'
+        });
+        return;
+    }
 
     // Ensure dependencies
     if (typeof window.updateMachineStatusUI !== 'function') {
@@ -32,12 +55,14 @@ window.handleRunningClickDirect = async function (button) {
         const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
         const formData = new FormData();
         formData.append('machineId', machineId);
+        if (token) {
+            formData.append('__RequestVerificationToken', token);
+        }
 
         const response = await fetch('/Operator/Start', {
             method: 'POST',
             body: formData,
             headers: {
-                'RequestVerificationToken': token || '',
                 'X-Requested-With': 'XMLHttpRequest'
             }
         });
@@ -46,8 +71,12 @@ window.handleRunningClickDirect = async function (button) {
 
         if (result.success) {
             // Success Logic
-            const now = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
-            if (window.OeeLogic) window.OeeLogic.resetTimers(now);
+            if (result.lastStatusChangeTime && window.OeeLogic && typeof window.OeeLogic.setLastChangeTimestamp === 'function') {
+                window.OeeLogic.setLastChangeTimestamp(result.lastStatusChangeTime);
+            } else {
+                const now = window.getAdjustedServerTime ? window.getAdjustedServerTime() : new Date();
+                if (window.OeeLogic) window.OeeLogic.resetTimers(now);
+            }
 
             // Update UI
             window.updateMachineStatusUI('Aktif', '');
@@ -76,6 +105,15 @@ document.addEventListener('DOMContentLoaded', function () {
     if (btnRest) {
         btnRest.addEventListener('click', async (e) => {
             e.preventDefault();
+            if (!hasActiveJob()) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Aksi Ditolak',
+                    text: 'Tidak ada Work Order aktif. Buat jadwal terlebih dahulu.'
+                });
+                return;
+            }
+
             const form = document.getElementById('rest-form');
             if (!form) return;
 
@@ -88,6 +126,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (formLineStop) {
         formLineStop.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (!hasActiveJob()) {
+                alert('Tidak ada Work Order aktif!'); // Modal might block swal, use alert as fallback or handle properly
+                return;
+            }
             const btn = document.getElementById('btn-line-stop'); // Main button
             await handleActionSubmit(formLineStop, '/Operator/LineStop', btn, 'Line Stop', 'lineStopModal');
         });
@@ -98,6 +140,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (formNoLoading) {
         formNoLoading.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (!hasActiveJob()) {
+                alert('Tidak ada Work Order aktif!');
+                return;
+            }
             const btn = document.getElementById('btn-no-loading');
             await handleActionSubmit(formNoLoading, '/Operator/NoLoading', btn, 'No Loading', 'noLoadingModal');
         });
@@ -158,6 +204,11 @@ async function handleActionSubmit(form, url, btnIndicator, actionName, modalId =
 
             // Update UI
             window.updateMachineStatusUI('Aktif', description);
+
+            // Sync Timer from response if available
+            if (result.lastStatusChangeTime && window.OeeLogic && typeof window.OeeLogic.setLastChangeTimestamp === 'function') {
+                window.OeeLogic.setLastChangeTimestamp(result.lastStatusChangeTime);
+            }
 
             // Hide Modal
             if (modalId) {

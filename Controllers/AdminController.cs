@@ -1598,6 +1598,7 @@ public class AdminController : Controller
         var workOrders = await _context.WorkOrders
             .Include(w => w.Product)
             .Include(w => w.Shift) // Include Shift untuk menampilkan nama shift
+        .Include(w => w.Machine) // Include Machine untuk menampilkan nama mesin
             .OrderBy(w => w.PlannedDate ?? DateTime.MaxValue) // Urutkan berdasarkan tanggal dari lama ke baru (null di akhir)
             .ThenBy(w => w.Id) // Jika tanggal sama, urutkan berdasarkan ID
             .ToListAsync();
@@ -1763,6 +1764,24 @@ public class AdminController : Controller
                     .ToDictionaryAsync(s => s.Id);
                 
                 // Step 3: Create WorkOrders dan JobRuns
+                // Step 3: Create WorkOrders dan JobRuns
+                
+                // Pastikan hanya ada satu Job aktif per mesin (tutup yang lama jika ada)
+                // Dipindahkan ke luar loop agar tidak menutup job yang baru dibuat dalam batch ini
+                var existingJobs = await _context.JobRuns
+                    .Where(j => j.MachineId == vm.MachineId && j.EndTime == null)
+                    .ToListAsync();
+
+                if (existingJobs.Any())
+                {
+                    foreach (var ej in existingJobs)
+                    {
+                        ej.EndTime = DateTime.Now;
+                        _context.JobRuns.Update(ej);
+                    }
+                    await _context.SaveChangesAsync();
+                }
+
                 foreach (var schedule in vm.Schedules)
                 {
                     // Create WorkOrder untuk setiap schedule
@@ -1772,7 +1791,8 @@ public class AdminController : Controller
                         TargetQuantity = schedule.TargetQuantity,
                         Status = WorkOrderStatus.InProgress, // Langsung InProgress karena akan di-assign
                         PlannedDate = schedule.PlannedDate, // Simpan planned date
-                        ShiftId = schedule.ShiftId // Simpan shift ID
+                        ShiftId = schedule.ShiftId, // Simpan shift ID
+                        MachineId = vm.MachineId // Penugasan mesin
                     };
                     
                     _context.WorkOrders.Add(workOrder);
@@ -1808,12 +1828,50 @@ public class AdminController : Controller
                     };
                     
                     _context.JobRuns.Add(jobRun);
+                    await _context.SaveChangesAsync(); // Save dulu untuk dapat JobRunId
+
+                    // ✅ TAMBAHKAN: Set awal status ke "No Loading" agar timer tidak langsung jalan (Running)
+                    // Cari ID Downtime untuk "No Loading" atau gunakan Flag IsNoLoading
+                    var noLoadingEvent = new DowntimeEvent
+                    {
+                        JobRunId = jobRun.Id,
+                        ReasonId = 1, // Dummy Reason ID, nanti akan ditimpa atau diabaikan oleh flag IsNoLoading
+                        StartTime = startTime,
+                        EndTime = null,
+                        IsNoLoading = true // Flag utama
+                    };
+
+                    // Pastikan Reason valid untuk No Loading (misalnya ID downtime default)
+                    // Kita cari reason sembarang karena IsNoLoading=true yang menentukan logic
+                    var anyReason = await _context.DowntimeReasons.FirstOrDefaultAsync();
+                    if (anyReason != null) 
+                    {
+                        noLoadingEvent.ReasonId = anyReason.Id;
+                        _context.DowntimeEvents.Add(noLoadingEvent);
+                    }
+                    else
+                    {
+                        // Fallback jika tidak ada reason (hampir tidak mungkin)
+                        // Buat reason dummy jika perlu atau skip
+                    }
+                    
+                    Console.WriteLine($"[DEBUG] Created JobRun for Machine: {vm.MachineId}, StartTime: {startTime}");
                     createdWorkOrders.Add(workOrder.OrderNumber);
                 }
                 
                 // Save semua perubahan sekaligus (OrderNumber updates dan JobRuns)
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+                
+                // Siarkan perubahan via SignalR untuk update real-time di Detail OEE
+                await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+                {
+                    Type = "WorkOrderCreated",
+                    MachineId = vm.MachineId,
+                    RefreshOeeMetrics = true,
+                    RefreshTimeMetrics = true,
+                    RefreshOperatorData = true
+                });
                 
                 var machineName = await _context.Machines
                     .Where(m => m.Id == vm.MachineId)
@@ -1901,6 +1959,15 @@ public class AdminController : Controller
         return Json(products);
     }
     
+    public async Task<IActionResult> GetMachinesByPlant(int plantId)
+    {
+        var machines = await _context.Machines
+            .Where(m => m.PlantId == plantId)
+            .Select(m => new { id = m.Id, name = m.Name, lineId = m.LineId })
+            .ToListAsync();
+        return Json(machines);
+    }
+
     public async Task<IActionResult> GetProductsByPlant(int plantId)
     {
         // Pastikan data selalu fresh dari database (no cache)
@@ -1926,6 +1993,17 @@ public class AdminController : Controller
             .Include(w => w.Shift)
             .FirstOrDefaultAsync(w => w.Id == id);
         if (workOrder == null) return NotFound();
+        
+        // Dapatkan PlantId dari mesin yang terpasang
+        int? currentPlantId = null;
+        if (!string.IsNullOrEmpty(workOrder.MachineId))
+        {
+            var machine = await _context.Machines.FindAsync(workOrder.MachineId);
+            currentPlantId = machine?.PlantId;
+        }
+
+        ViewData["PlantId"] = new SelectList(await _context.Plants.ToListAsync(), "Id", "Name", currentPlantId);
+        ViewData["MachineId"] = new SelectList(await _context.Machines.ToListAsync(), "Id", "Name", workOrder.MachineId);
         ViewData["ProductId"] = new SelectList(await _context.Products.ToListAsync(), "Id", "Name", workOrder.ProductId);
         ViewData["ShiftId"] = new SelectList(await _context.Shifts.ToListAsync(), "Id", "Name", workOrder.ShiftId);
         return View(workOrder);
@@ -1951,9 +2029,47 @@ public class AdminController : Controller
                 existingWorkOrder.Status = workOrder.Status;
                 existingWorkOrder.PlannedDate = workOrder.PlannedDate;
                 existingWorkOrder.ShiftId = workOrder.ShiftId;
+                existingWorkOrder.MachineId = workOrder.MachineId;
+                
+                // Update MachineId di JobRun terkait (jika ada)
+                var relatedJobRuns = await _context.JobRuns
+                    .Where(j => j.WorkOrderId == id)
+                    .ToListAsync();
+                
+                if (existingWorkOrder.MachineId != workOrder.MachineId && !string.IsNullOrEmpty(workOrder.MachineId))
+                {
+                    // Jika mesin berubah, tutup job aktif lain di mesin tujuan
+                    var otherActiveJobs = await _context.JobRuns
+                        .Where(j => j.MachineId == workOrder.MachineId && j.EndTime == null && j.WorkOrderId != id)
+                        .ToListAsync();
+                    
+                    foreach (var aj in otherActiveJobs)
+                    {
+                        aj.EndTime = DateTime.Now;
+                        _context.JobRuns.Update(aj);
+                    }
+                }
+
+                foreach (var jr in relatedJobRuns)
+                {
+                    jr.MachineId = workOrder.MachineId!;
+                }
                 
                 _context.Update(existingWorkOrder);
                 await _context.SaveChangesAsync();
+                
+                // Siarkan perubahan via SignalR
+                if (!string.IsNullOrEmpty(workOrder.MachineId))
+                {
+                    await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+                    {
+                        Type = "WorkOrderUpdated",
+                        MachineId = workOrder.MachineId,
+                        RefreshOeeMetrics = true,
+                        RefreshTimeMetrics = true,
+                        RefreshOperatorData = true
+                    });
+                }
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -1962,6 +2078,15 @@ public class AdminController : Controller
             }
             return RedirectToAction(nameof(WorkOrders));
         }
+        // Repopulate dropdowns on failure
+        int? currentPlantId = null;
+        if (!string.IsNullOrEmpty(workOrder.MachineId))
+        {
+            var machine = await _context.Machines.FindAsync(workOrder.MachineId);
+            currentPlantId = machine?.PlantId;
+        }
+        ViewData["PlantId"] = new SelectList(await _context.Plants.ToListAsync(), "Id", "Name", currentPlantId);
+        ViewData["MachineId"] = new SelectList(await _context.Machines.ToListAsync(), "Id", "Name", workOrder.MachineId);
         ViewData["ProductId"] = new SelectList(await _context.Products.ToListAsync(), "Id", "Name", workOrder.ProductId);
         ViewData["ShiftId"] = new SelectList(await _context.Shifts.ToListAsync(), "Id", "Name", workOrder.ShiftId);
         return View(workOrder);
@@ -1981,11 +2106,60 @@ public class AdminController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteWorkOrderConfirmed(int id)
     {
-        var workOrder = await _context.WorkOrders.FindAsync(id);
+        var workOrder = await _context.WorkOrders
+            .Include(w => w.JobRuns)
+                .ThenInclude(j => j.DowntimeEvents)
+            .Include(w => w.JobRuns)
+                .ThenInclude(j => j.ProductionCounts)
+            .FirstOrDefaultAsync(w => w.Id == id);
+
         if (workOrder != null)
         {
+            // 1. Hapus Entity terkait secara manual jika Cascade Delete tidak aktif di DB
+            if (workOrder.JobRuns != null && workOrder.JobRuns.Any())
+            {
+                foreach (var job in workOrder.JobRuns)
+                {
+                    // Hapus Downtime Events
+                    if (job.DowntimeEvents != null && job.DowntimeEvents.Any())
+                    {
+                        _context.DowntimeEvents.RemoveRange(job.DowntimeEvents);
+                    }
+
+                    // Hapus Production Counts
+                    if (job.ProductionCounts != null && job.ProductionCounts.Any())
+                    {
+                        _context.ProductionCounts.RemoveRange(job.ProductionCounts);
+                    }
+
+                    // ✅ Hapus SCW Events terkait JobRun (PENTING untuk menghindari FK Error)
+                    var scwEvents = await _context.ScwEvents.Where(s => s.JobRunId == job.Id).ToListAsync();
+                    if (scwEvents.Any())
+                    {
+                        _context.ScwEvents.RemoveRange(scwEvents);
+                    }
+                }
+                
+                // Hapus JobRuns
+                _context.JobRuns.RemoveRange(workOrder.JobRuns);
+            }
+
+            // 2. Hapus Work Order
             _context.WorkOrders.Remove(workOrder);
             await _context.SaveChangesAsync();
+            
+            // 3. Broadcast Update via SignalR (Jika Work Order terkait mesin)
+            if (!string.IsNullOrEmpty(workOrder.MachineId))
+            {
+                await _hubContext.Clients.All.SendAsync("OeeUpdated", new
+                {
+                    Type = "WorkOrderDeleted",
+                    MachineId = workOrder.MachineId,
+                    RefreshOeeMetrics = true,
+                    RefreshTimeMetrics = true,
+                    RefreshOperatorData = true
+                });
+            }
         }
         return RedirectToAction(nameof(WorkOrders));
     }
@@ -2387,13 +2561,15 @@ public class AdminController : Controller
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine("[AdminController] GetManPowersSafe called."); // Added log
             return await _context.ManPowers
                 .Where(m => m.IsActive)
                 .OrderBy(m => m.Value)
                 .ToListAsync();
         }
-        catch
+        catch (Exception ex) // Changed to catch specific exception for logging
         {
+            System.Diagnostics.Debug.WriteLine($"[AdminController] Error in GetManPowersSafe: {ex.Message}"); // Added log
             // Jika tabel belum ada, return empty list
             return new List<ManPower>();
         }

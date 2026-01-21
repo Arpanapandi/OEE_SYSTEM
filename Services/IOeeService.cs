@@ -75,8 +75,8 @@ public class TimeMetricsResult
     public string PlannedProductionTime { get; set; } = "00:00:00";
     public double OperatingTimeSeconds { get; set; }
     public string OperatingTime { get; set; } = "00:00:00";
-    public double DowntimeTotalSeconds { get; set; }
-    public string DowntimeTotal { get; set; } = "00:00:00";
+    public double DowntimeSeconds { get; set; }
+    public string Downtime { get; set; } = "00:00:00";
     public double RestBreakTimeSeconds { get; set; }
     public string RestBreakTime { get; set; } = "00:00:00";
     public double NoLoadingTimeSeconds { get; set; }
@@ -90,8 +90,10 @@ public class TimeMetricsResult
     
     public bool HasActiveJob { get; set; }
     public string? ActiveJobStartTime { get; set; }
+    public bool IsRunning { get; set; }
     public bool HasActiveDowntime { get; set; }
     public bool HasActiveRestBreak { get; set; }
+    public bool HasActiveNoLoading { get; set; }
     public string? LastStatusChangeTime { get; set; }
     public int? SinceLastChangeSeconds { get; set; }
     public string? ActiveDowntimeStartTime { get; set; }
@@ -101,11 +103,17 @@ public class TimeMetricsResult
     public double Performance { get; set; }
     public double Quality { get; set; }
     
-    public int GoodCount { get; set; }
-    public int RejectCount { get; set; }
+    public int TotalGood { get; set; }
+    public int TotalReject { get; set; }
     public int TotalCount { get; set; }
+    public int TargetQuantity { get; set; }
     
+    public string? MachineId { get; set; }
     public string MachineStatus { get; set; } = string.Empty;
+    public string? ProductName { get; set; }
+    public string? WorkOrderNumber { get; set; }
+    public string? ProductImageUrl { get; set; }
+    public string? EstimatedCompletion { get; set; }
     
     public int? DandoriDurationSeconds { get; set; }
     public string? DandoriStartTime { get; set; }

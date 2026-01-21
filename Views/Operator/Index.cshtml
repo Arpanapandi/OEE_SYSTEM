@@ -591,24 +591,26 @@
             if (totalGoodEl) {
                 const oldValue = parseInt(totalGoodEl.textContent) || 0;
                 const newValue = data.TotalGood || 0;
-                totalGoodEl.textContent = newValue;
-                
-                // Animate change
-                if (newValue > oldValue) {
-                    totalGoodEl.classList.add('text-success');
-                    setTimeout(() => totalGoodEl.classList.remove('text-success'), 1000);
+                if (oldValue !== newValue) {
+                    totalGoodEl.textContent = newValue;
+                    // Animate change
+                    if (newValue > oldValue) {
+                        totalGoodEl.classList.add('text-success');
+                        setTimeout(() => totalGoodEl.classList.remove('text-success'), 1000);
+                    }
                 }
             }
             
             if (totalRejectEl) {
                 const oldValue = parseInt(totalRejectEl.textContent) || 0;
                 const newValue = data.TotalReject || 0;
-                totalRejectEl.textContent = newValue;
-                
-                // Animate change
-                if (newValue > oldValue) {
-                    totalRejectEl.classList.add('text-danger');
-                    setTimeout(() => totalRejectEl.classList.remove('text-danger'), 1000);
+                if (oldValue !== newValue) {
+                    totalRejectEl.textContent = newValue;
+                    // Animate change
+                    if (newValue > oldValue) {
+                        totalRejectEl.classList.add('text-danger');
+                        setTimeout(() => totalRejectEl.classList.remove('text-danger'), 1000);
+                    }
                 }
             }
         }
@@ -616,27 +618,45 @@
         // Update progress bar
         function updateProgressBar(data) {
             const progressBar = document.getElementById('progress-bar');
-            const progressPercent = document.getElementById('progress-percent');
-            const progressText = document.getElementById('progress-text');
+            const progressPercentEl = document.getElementById('progress-percent');
+            const progressTextEl = document.getElementById('progress-text');
             const estimatedCompletion = document.getElementById('estimated-completion');
             
-            if (progressBar && progressPercent && progressText) {
+            if (progressBar && progressPercentEl && progressTextEl) {
                 const percent = data.ProgressPercent || 0;
-                progressBar.style.width = percent + '%';
-                progressBar.setAttribute('aria-valuenow', percent);
-                progressPercent.textContent = percent.toFixed(1) + '%';
-                progressText.textContent = `${data.TotalGood || 0} / ${data.TargetQuantity || 0}`;
+                const percentFull = percent + '%';
+                const percentFormatted = percent.toFixed(1) + '%';
+                const text = `${data.TotalGood || 0} / ${data.TargetQuantity || 0}`;
+
+                if (progressBar.style.width !== percentFull) {
+                    progressBar.style.width = percentFull;
+                    progressBar.setAttribute('aria-valuenow', percent);
+                }
+                
+                if (progressPercentEl.textContent !== percentFormatted) {
+                    progressPercentEl.textContent = percentFormatted;
+                }
+                
+                if (progressTextEl.textContent !== text) {
+                    progressTextEl.textContent = text;
+                }
                 
                 // Change color based on progress
                 if (percent >= 100) {
-                    progressBar.classList.remove('bg-success', 'bg-warning');
-                    progressBar.classList.add('bg-info');
+                    if (!progressBar.classList.contains('bg-info')) {
+                        progressBar.classList.remove('bg-success', 'bg-warning');
+                        progressBar.classList.add('bg-info');
+                    }
                 } else if (percent >= 80) {
-                    progressBar.classList.remove('bg-success', 'bg-info');
-                    progressBar.classList.add('bg-warning');
+                    if (!progressBar.classList.contains('bg-warning')) {
+                        progressBar.classList.remove('bg-success', 'bg-info');
+                        progressBar.classList.add('bg-warning');
+                    }
                 } else {
-                    progressBar.classList.remove('bg-warning', 'bg-info');
-                    progressBar.classList.add('bg-success');
+                    if (!progressBar.classList.contains('bg-success')) {
+                        progressBar.classList.remove('bg-warning', 'bg-info');
+                        progressBar.classList.add('bg-success');
+                    }
                 }
             }
             

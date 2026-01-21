@@ -51,9 +51,9 @@
                     <div class="col-12">
                         <label class="form-label fw-bold">Nomor Lot (Part Number)</label>
                         <div class="input-group">
-                            <input type="text" class="form-control form-control-glass" id="input-nomor-lot" placeholder="Scan Part Number..." readonly>
+                            <input type="text" class="form-control form-control-glass" id="input-nomor-lot" placeholder="Input Data Nomor Lot" readonly>
                             <button class="btn btn-outline-primary" type="button" id="btn-scan-nomor-lot">
-                                <i class="fa-solid fa-camera"></i> Scan
+                                <i class="fa-solid fa-camera"></i>
                             </button>
                             <button class="btn btn-outline-secondary" type="button" id="btn-edit-nomor-lot">
                                 <i class="fa-solid fa-pencil"></i>
@@ -67,7 +67,7 @@
                     <div class="col-6">
                         <label class="form-label fw-bold">Lot BO</label>
                         <div class="input-group">
-                            <input type="text" class="form-control form-control-glass" id="input-lot-bo" placeholder="Scan Lot BO..." readonly>
+                            <input type="text" class="form-control form-control-glass" id="input-lot-bo" placeholder="Input Data Lot Bo" readonly>
                             <button class="btn btn-outline-primary" type="button" id="btn-scan-lot-bo">
                                 <i class="fa-solid fa-camera"></i>
                             </button>
@@ -79,7 +79,7 @@
                     <div class="col-6">
                         <label class="form-label fw-bold">Compound</label>
                         <div class="input-group">
-                            <input type="text" class="form-control form-control-glass" id="input-nama-compound" placeholder="Scan Compound..." readonly>
+                            <input type="text" class="form-control form-control-glass" id="input-nama-compound" placeholder="Input Data Compound" readonly>
                             <button class="btn btn-outline-primary" type="button" id="btn-scan-nama-compound">
                                 <i class="fa-solid fa-camera"></i>
                             </button>
@@ -90,16 +90,7 @@
                     </div>
                 </div>
 
-                <!-- Berat Act & Penipisan -->
                 <div class="row g-2 mb-2">
-                    <div class="col-6">
-                        <label class="form-label fw-bold">Berat Act (Kg)</label>
-                        <div class="input-group">
-                            <input type="number" step="0.01" class="form-control form-control-glass text-end" id="input-berat-act" placeholder="0.00">
-                             <button class="btn btn-outline-secondary" type="button" id="btn-decrement-berat-act"><i class="fa-solid fa-minus"></i></button>
-                            <button class="btn btn-outline-secondary" type="button" id="btn-increment-berat-act"><i class="fa-solid fa-plus"></i></button>
-                        </div>
-                    </div>
                     <div class="col-6">
                          <label class="form-label fw-bold">Penipisan</label>
                          <div class="btn-group w-100" role="group" id="penipisan-group">
@@ -108,6 +99,14 @@
                             
                             <input type="radio" class="btn-check" name="penipisan" id="penipisan-ng" value="NG">
                             <label class="btn btn-outline-danger" for="penipisan-ng">NG</label>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Berat Act (Kg)</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" class="form-control form-control-glass text-center" id="input-berat-act" placeholder="0.00">
+                            <button class="btn btn-outline-secondary" type="button" id="btn-decrement-berat-act"><i class="fa-solid fa-minus"></i></button>
+                            <button class="btn btn-outline-secondary" type="button" id="btn-increment-berat-act"><i class="fa-solid fa-plus"></i></button>
                         </div>
                     </div>
                 </div>
@@ -144,10 +143,10 @@
                 <!-- Action Buttons -->
                 <div class="d-flex justify-content-end mb-3 gap-2" id="submit-container">
                      <!-- Reset Button added here per recent changes -->
-                     <button type="button" class="btn btn-outline-danger" id="btn-reset-durasi">
+                     <button type="button" class="btn btn-outline-danger py-1" id="btn-reset-durasi" style="height: 40px;">
                         <i class="fa-solid fa-stop-circle me-1"></i>Reset
                     </button>
-                    <button type="button" class="btn btn-primary flex-grow-1" id="btn-submit-produksi">
+                    <button type="button" class="btn btn-primary flex-grow-1 py-1" id="btn-submit-produksi" style="height: 40px;">
                         <i class="fa-solid fa-paper-plane me-2"></i>Submit Data
                     </button>
                 </div>
@@ -171,7 +170,7 @@
                 </div>
 
                 <!-- Quantity Button -->
-                <button type="button" class="btn btn-primary w-100 mb-3" data-bs-toggle="modal" data-bs-target="#addQtyModal">
+                <button type="button" class="btn btn-primary w-100 mb-3 py-1 fw-bold" data-bs-toggle="modal" data-bs-target="#addQtyModal" style="height: 40px;">
                     <i class="fa-solid fa-plus-circle me-1"></i> QUANTITY
                 </button>
                 

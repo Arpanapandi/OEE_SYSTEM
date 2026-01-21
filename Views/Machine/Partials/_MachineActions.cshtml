@@ -37,20 +37,20 @@
                             @Html.AntiForgeryToken()
                             <button type="button" 
                                     id="btn-running" 
-                                    class="btn w-100 btn-success machine-action-btn py-2 d-flex align-items-center justify-content-center shadow-sm"
+                                    class="btn w-100 btn-success machine-action-btn py-1 d-flex align-items-center justify-content-center shadow-sm"
                                     data-machine-id="@Model.MachineId"
-                                    style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;"
+                                    style="height: 40px; font-size: 1rem; letter-spacing: 1px; border-width: 0; font-weight: 450;"
                                     onclick="if(typeof handleRunningClickDirect === 'function') { handleRunningClickDirect(this); } return false;">
-                                <i class="fa-solid fa-play me-2 fs-5"></i>RUNNING
+                                <i class="fa-solid fa-play me-2 fs-6"></i>RUNNING
                             </button>
 
                              <!-- Line Stop Button -->
                             <button type="button" 
                                     id="btn-line-stop" 
-                                    class="btn w-100 btn-danger machine-action-btn py-2 d-flex align-items-center justify-content-center shadow-sm"
-                                    style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;"
+                                    class="btn w-100 btn-danger machine-action-btn py-1 d-flex align-items-center justify-content-center shadow-sm"
+                                    style="height: 40px; font-size: 1rem; letter-spacing: 1px; border-width: 0; font-weight: 450;"
                                     onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('lineStopModal')); m.show(); }">
-                                <i class="fa-solid fa-octagon-minus me-2 fs-5"></i>LINE STOP
+                                <i class="fa-solid fa-octagon-minus me-2 fs-6"></i>LINE STOP
                             </button>
                         </div>
                     </div>
@@ -68,9 +68,9 @@
                                     <input type="hidden" name="returnUrl" value="@Context.Request.Path" />
                                     <button type="button" 
                                             id="btn-rest" 
-                                            class="btn w-100 btn-warning machine-action-btn py-2 d-flex align-items-center justify-content-center text-dark shadow-sm"
-                                            style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;" >
-                                        <i class="fa-solid fa-mug-hot me-2 fs-5"></i>REST BREAK
+                                            class="btn w-100 btn-warning machine-action-btn py-1 d-flex align-items-center justify-content-center text-dark shadow-sm"
+                                            style="height: 40px; font-size: 1rem; letter-spacing: 1px; border-width: 0; font-weight: 450;" >
+                                        <i class="fa-solid fa-mug-hot me-2 fs-6"></i>REST BREAK
                                     </button>
                                 </form>
                             }
@@ -78,10 +78,10 @@
                              <!-- No Loading Button -->
                             <button type="button" 
                                     id="btn-no-loading" 
-                                    class="btn w-100 btn-secondary machine-action-btn py-2 d-flex align-items-center justify-content-center shadow-sm"
-                                    style="height: 60px; font-size: 1.1rem; letter-spacing: 1px; border-width: 0;"
+                                    class="btn w-100 btn-secondary machine-action-btn py-1 d-flex align-items-center justify-content-center shadow-sm"
+                                    style="height: 40px; font-size: 1rem; letter-spacing: 1px; border-width: 0; font-weight: 450;"
                                     onclick="if(typeof window.bootstrap !== 'undefined') { const m = new bootstrap.Modal(document.getElementById('noLoadingModal')); m.show(); }">
-                                <i class="fa-solid fa-door-closed me-2 fs-5"></i>NO LOADING
+                                <i class="fa-solid fa-door-closed me-2 fs-6"></i>NO LOADING
                             </button>
                         </div>
                     </div>
@@ -93,10 +93,10 @@
                     <div class="small text-secondary mb-0 text-uppercase fw-bold opacity-75" style="letter-spacing: 3px; font-size: 0.7rem;">TOTAL RUNNING TIME</div>
                     <input type="text" 
                            class="form-control border-0 text-center fw-bold bg-transparent p-0" 
-                           id="durasi-produksi-display" 
+                           id="machine-running-timer" 
                            value="00:00:00"
                            readonly
-                           style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 3.5rem; color: #0dcaf0; font-weight: 700; background: transparent; letter-spacing: 2px; line-height: 1; text-shadow: 0 0 30px rgba(13, 202, 240, 0.4);">
+                           style="font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 2rem; color: #0dcaf0; font-weight: 300; background: transparent; letter-spacing: 2px; line-height: 1; text-shadow: 0 0 20px rgba(13, 202, 240, 0.3);">
                 </div>
             </div>
         </div>

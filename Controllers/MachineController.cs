@@ -206,7 +206,7 @@ public class MachineController : Controller
 
         // ✅ PERBAIKAN: Gunakan AsNoTracking() untuk menghindari error saat mapping property Dandori yang belum ada
         var machine = await _context.Machines
-            .AsNoTracking()
+            // .AsNoTracking() // Dihapus agar bisa Load ManPower
             .Include(m => m.JobRuns)
                 .ThenInclude(j => j.WorkOrder!)
                     .ThenInclude(w => w.Product)
@@ -242,9 +242,21 @@ public class MachineController : Controller
             return NotFound();
         }
 
+        // DEBUG LOGGING
+        Console.WriteLine($"[DEBUG] Machine: {machine?.Name} (ID: {id})");
+        Console.WriteLine($"[DEBUG] Now: {now}");
+        Console.WriteLine($"[DEBUG] Total JobRuns: {machine.JobRuns.Count}");
+        foreach(var j in machine.JobRuns) {
+            Console.WriteLine($"[DEBUG] Job: ID={j.Id}, WO={j.WorkOrderId}, Start={j.StartTime}, End={j.EndTime ?? (object)"NULL"}");
+        }
+
         var activeJob = machine.JobRuns
+            // .Where(j => j.StartTime <= now)
             .OrderByDescending(j => j.StartTime)
+            .ThenByDescending(j => j.Id)
             .FirstOrDefault(j => j.EndTime == null);
+        
+        Console.WriteLine($"[DEBUG] ActiveJob Found: {activeJob?.Id ?? (object)"NONE"}");
 
         bool hasOpenDowntime = activeJob != null &&
                                activeJob.DowntimeEvents.Any(d => d.EndTime == null);
@@ -310,6 +322,17 @@ public class MachineController : Controller
 
         // Rest Break Time for Display (Schedule Loss)
         TimeSpan restBreakTime = plannedDowntime; 
+        
+        // --- LOGIC BARU UNTUK DISPLAY TIME METRICS (TICK UP) ---
+        // Hitung durasi shift yang sudah berlalu (Elapsed)
+        var elapsedNow = effectiveNow > shiftWindow.End ? shiftWindow.End : effectiveNow;
+        TimeSpan elapsedShiftTime = elapsedNow - shiftWindow.Start;
+        if (elapsedShiftTime < TimeSpan.Zero) elapsedShiftTime = TimeSpan.Zero;
+
+        // Actual Accumulated Operating Time = Elapsed - All Losses
+        // Ini agar bar Operating Time "Merayap" naik (Tick Up) bukan Count Down
+        TimeSpan actualAccumulatedOperatingTime = elapsedShiftTime - (noLoadingTime + plannedDowntime + unplannedDowntime);
+        if (actualAccumulatedOperatingTime < TimeSpan.Zero) actualAccumulatedOperatingTime = TimeSpan.Zero; 
 
         // 4. Production Counts & Cycle Time
         var allCounts = shiftJobRuns
@@ -364,8 +387,8 @@ public class MachineController : Controller
             Availability = oeeResult.Availability,
             Performance = oeeResult.Performance,
             Quality = oeeResult.Quality,
-            PlannedProductionTime = plannedProductionTime,
-            OperatingTime = operatingTime,
+            PlannedProductionTime = plannedProductionTime, // Tetap Full Shift (12h) sesuai request
+            OperatingTime = actualAccumulatedOperatingTime, // Tick Up (Actual)
             DowntimeTotal = downtimeTotal, // Unplanned Downtime
             RestBreakTime = restBreakTime,
             NoLoadingTime = noLoadingTime,

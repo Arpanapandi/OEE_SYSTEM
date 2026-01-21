@@ -48,7 +48,9 @@ public class OperatorController : Controller
         }
 
         var activeJob = machine.JobRuns
+            // .Where(j => j.StartTime <= now)
             .OrderByDescending(j => j.StartTime)
+            .ThenByDescending(j => j.Id)
             .FirstOrDefault(j => j.EndTime == null);
 
         var allCounts = activeJob?.ProductionCounts ?? Array.Empty<ProductionCount>();
@@ -135,16 +137,26 @@ public class OperatorController : Controller
         // ✅ VALIDASI: Cek Man Power (optional untuk Start, tapi recommended)
         // Man Power bisa di-set nanti saat submit production data
         
-        // Cek apakah sudah ada job aktif
-        var existingJob = await _context.JobRuns
-            .Include(j => j.DowntimeEvents)
-                .ThenInclude(d => d.Reason)
-            .Include(j => j.Machine)
-            .Include(j => j.WorkOrder)
-                .ThenInclude(w => w!.Product)
-            .Where(j => j.MachineId == machineId)
+        // ✅ STRICT POLICY: Close ALL Stale Active Jobs first
+        // This prevents "Ghost Jobs" from accumulating duration
+        var staleJobs = await _context.JobRuns
+            .Where(j => j.MachineId == machineId && j.EndTime == null)
             .OrderByDescending(j => j.StartTime)
-            .FirstOrDefaultAsync(j => j.EndTime == null);
+            .ToListAsync();
+            
+        // Jika ada job, ambil yang paling terbaru sebagai candidate resume.
+        // Sisanya (job lama yg nyangkut) TUTUP PAKSA.
+        var existingJob = staleJobs.FirstOrDefault();
+        
+        if (staleJobs.Count > 1)
+        {
+            foreach (var stale in staleJobs.Skip(1))
+            {
+                stale.EndTime = nowLocal; // Force close ghost jobs
+                Console.WriteLine($"🚫 Force Closing Ghost Job ID: {stale.Id}");
+            }
+            await _context.SaveChangesAsync();
+        }
 
         if (existingJob != null)
         {
@@ -786,346 +798,45 @@ public class OperatorController : Controller
         return RedirectToAction("OeeDetail", "Machine", new { id = machineId });
     }
 
-    private static TimeSpan GetOverlap(DateTime start, DateTime end, DateTime windowStart, DateTime windowEnd)
-    {
-        var overlapStart = start < windowStart ? windowStart : start;
-        var overlapEnd = end > windowEnd ? windowEnd : end;
-        return overlapEnd > overlapStart ? overlapEnd - overlapStart : TimeSpan.Zero;
-    }
 
-    private static (DateTime Start, DateTime End, DateTime ShiftDate, string Code, string Key) ResolveShiftWindow(DateTime now, DateTime? shiftDate, string? shiftCode)
-    {
-        var shiftTemplates = new List<(string Code, TimeSpan Start, TimeSpan End)>
-        {
-            ("A", new TimeSpan(6, 0, 0), new TimeSpan(14, 0, 0)),
-            ("B", new TimeSpan(14, 0, 0), new TimeSpan(22, 0, 0)),
-            ("C", new TimeSpan(22, 0, 0), new TimeSpan(6, 0, 0))
-        };
 
-        var code = string.IsNullOrWhiteSpace(shiftCode)
-            ? null
-            : shiftCode!.Trim().ToUpperInvariant();
 
-        // Tentukan kode shift jika tidak dikirim
-        if (code == null)
-        {
-            var tod = now.TimeOfDay;
-            if (tod >= shiftTemplates[0].Start && tod < shiftTemplates[0].End)
-            {
-                code = "A";
-            }
-            else if (tod >= shiftTemplates[1].Start && tod < shiftTemplates[1].End)
-            {
-                code = "B";
-            }
-            else
-            {
-                code = "C";
-            }
-        }
-
-        var template = shiftTemplates.FirstOrDefault(s => s.Code == code);
-        if (template == default)
-        {
-            template = shiftTemplates[0];
-            code = template.Code;
-        }
-
-        var baseDate = shiftDate?.Date ?? now.Date;
-
-        // Jika tidak ada shiftDate dan shift C berjalan lewat tengah malam, tarik ke hari sebelumnya
-        if (!shiftDate.HasValue && code == "C" && now.TimeOfDay < template.End)
-        {
-            baseDate = baseDate.AddDays(-1);
-        }
-
-        var start = baseDate.Add(template.Start);
-        var end = template.End > template.Start
-            ? baseDate.Add(template.End)
-            : baseDate.AddDays(1).Add(template.End);
-
-        var key = $"{baseDate:yyyy-MM-dd}|{code}";
-        return (start, end, baseDate, code!, key);
-    }
 
     [HttpGet]
     public async Task<IActionResult> GetOperatorData(string machineId)
     {
-        // ✅ PERBAIKAN: Validasi machineId
         if (string.IsNullOrEmpty(machineId))
         {
             return Json(new { error = "machineId is required" });
         }
         
-        // ✅ PERBAIKAN: Log untuk debugging
-        System.Diagnostics.Debug.WriteLine($"GetOperatorData called with machineId: '{machineId}'");
-        
         var now = DateTime.Now;
-
-        // ✅ PERBAIKAN: Gunakan AsNoTracking() untuk memastikan data fresh dari database
-        var machine = await _context.Machines
-            .AsNoTracking()
-            .Include(m => m.JobRuns)
-                .ThenInclude(j => j.WorkOrder)
-                    .ThenInclude(w => w!.Product)
-            .Include(m => m.JobRuns)
-                .ThenInclude(j => j.ProductionCounts)
-            .Include(m => m.JobRuns)
-                .ThenInclude(j => j.DowntimeEvents)
-                    .ThenInclude(d => d.Reason)
-            .FirstOrDefaultAsync(m => m.Id == machineId);
-
-        if (machine == null)
+        var metrics = await _oeeService.GetTimeMetricsAsync(machineId);
+        
+        if (metrics == null || !metrics.HasActiveJob)
         {
-            // ✅ PERBAIKAN: Return JSON error instead of NotFound untuk AJAX call
-            return Json(new { 
-                error = $"Machine with ID '{machineId}' not found",
-                machineId = machineId 
+            // Jika tidak ada job aktif, coba ambil info dasar mesin
+            var machineOnly = await _context.Machines.AsNoTracking().FirstOrDefaultAsync(m => m.Id == machineId);
+            return Json(new {
+                MachineId = machineId,
+                MachineName = machineOnly?.Name,
+                HasActiveJob = false,
+                TotalGood = 0,
+                TotalReject = 0,
+                TargetQuantity = 0,
+                OeeValue = "0.0%",
+                AvailabilityValue = "0.0%",
+                PerformanceValue = "0.0%",
+                QualityValue = "0.0%",
+                Status = machineOnly?.Status.ToString() == "Aktif" ? "AKTIF" : "TIDAK AKTIF"
             });
         }
 
-        var activeJob = machine.JobRuns
-            .OrderByDescending(j => j.StartTime)
-            .FirstOrDefault(j => j.EndTime == null);
-
-        var allCounts = activeJob?.ProductionCounts ?? Array.Empty<ProductionCount>();
-
-        var openDowntime = activeJob?.DowntimeEvents
-            .OrderByDescending(d => d.StartTime)
-            .FirstOrDefault(d => d.EndTime == null);
-
-        // ✅ PERBAIKAN: Hitung LastStatusChangeTime yang sinkron dengan Operating Time untuk OEE
-        // - Jika ada downtime aktif (REST/LINE STOP) -> pakai StartTime downtime (RESET ke 00:00:00)
-        // - Jika sedang RUNNING (tidak ada downtime aktif) -> hitung dari StartTime job dikurangi total downtime
-        DateTime lastStatusChangeTime;
-        int sinceLastChangeSeconds;
-
-        if (openDowntime != null)
-        {
-            // Sedang REST / LINE STOP: RESET durasi ke 00:00:00 (mulai hitung dari awal downtime)
-            lastStatusChangeTime = openDowntime.StartTime;
-            sinceLastChangeSeconds = (int)(now - openDowntime.StartTime).TotalSeconds;
-        }
-        else if (activeJob != null)
-        {
-            // Sedang RUNNING: Hitung durasi yang sinkron dengan Operating Time (untuk OEE)
-            // ✅ PERBAIKAN: Gunakan LastStatusChangeTime jika ada (lebih akurat)
-            // Jika tidak ada, hitung dari StartTime dikurangi downtime
-            
-            if (activeJob.LastStatusChangeTime.HasValue)
-            {
-                // ✅ PERBAIKAN: Gunakan LastStatusChangeTime sebagai start time untuk durasi running
-                // Ini memastikan durasi bisa start kapan saja, tidak terpaku dengan shift start
-                lastStatusChangeTime = activeJob.LastStatusChangeTime.Value;
-                sinceLastChangeSeconds = Math.Max(0, (int)(now - lastStatusChangeTime).TotalSeconds);
-            }
-            else
-            {
-                // Fallback: Hitung dari StartTime dikurangi downtime (untuk backward compatibility)
-            var jobDuration = (now - activeJob.StartTime).TotalSeconds;
-            
-            // Hitung total Unplanned downtime yang sudah selesai di job ini
-            var totalUnplannedDowntimeSeconds = activeJob.DowntimeEvents
-                .Where(d => d.EndTime.HasValue && d.Reason?.Category == "Unplanned")
-                .Sum(d => d.DurationSeconds > 0 
-                    ? d.DurationSeconds 
-                    : (d.EndTime!.Value - d.StartTime).TotalSeconds);
-            
-            // Operating Time murni = JobRun duration - Unplanned Downtime duration (sinkron dengan perhitungan OEE)
-            var operatingTimeSeconds = jobDuration - totalUnplannedDowntimeSeconds;
-            sinceLastChangeSeconds = Math.Max(0, (int)operatingTimeSeconds);
-            
-            // LastStatusChangeTime untuk display (backward compatibility)
-            lastStatusChangeTime = now.AddSeconds(-sinceLastChangeSeconds);
-            }
-        }
-        else
-        {
-            // Tidak ada job aktif: fallback
-            lastStatusChangeTime = machine.JobRuns
-                .OrderByDescending(j => j.StartTime)
-                .FirstOrDefault()?.StartTime ?? now;
-            sinceLastChangeSeconds = 0;
-        }
-
-        // Keep lastChangeTime untuk backward compatibility
-        DateTime lastChangeTime = lastStatusChangeTime;
-
-        var totalGood = allCounts.Sum(c => c.GoodCount);
-        var totalReject = allCounts.Sum(c => c.RejectCount);
-        var targetQuantity = activeJob?.WorkOrder?.TargetQuantity ?? 0;
-        var progressPercent = targetQuantity > 0
-            ? Math.Min(100, (double)totalGood / targetQuantity * 100)
-            : 0;
-
-        // Calculate estimated completion time
-        string? estimatedCompletion = null;
-        if (targetQuantity > 0 && totalGood > 0 && activeJob != null && activeJob.WorkOrder?.Product != null)
-        {
-            var remaining = targetQuantity - totalGood;
-            if (remaining > 0)
-            {
-                var standarCycleTime = activeJob.WorkOrder.Product.StandarCycleTime;
-                var elapsedTime = (now - activeJob.StartTime).TotalSeconds;
-                var currentRate = elapsedTime > 0 ? totalGood / elapsedTime : 0; // units per second
-                
-                if (currentRate > 0)
-                {
-                    var estimatedSeconds = remaining / currentRate;
-                    var estimatedCompletionTime = now.AddSeconds(estimatedSeconds);
-                    estimatedCompletion = estimatedCompletionTime.ToString("HH:mm");
-                }
-            }
-        }
-
-        // sinceLastChangeSeconds sudah dihitung di atas
-
-        // ✅ PERBAIKAN: Tampilkan status sesuai dengan Machine.Status dari Admin (AKTIF atau TIDAK AKTIF)
-        // Machine.Status adalah sumber kebenaran dari Admin Machines panel
-        string displayStatus = machine.Status == MachineStatus.Aktif ? "AKTIF" : "TIDAK AKTIF";
+        // Calculate Progress (UI specific calculation not in result class if needed, but let's just return result)
+        // JS now handles data.OEE, data.Availability, data.TotalGood, data.Downtime, etc.
+        // All these now map 1:1 with TimeMetricsResult properties.
         
-        // ✅ PERBAIKAN: Log untuk debugging - pastikan MachineStatus dikembalikan dengan benar
-        System.Diagnostics.Debug.WriteLine($"GetOperatorData - MachineId: '{machineId}', MachineStatus: '{machine.Status}', MachineStatus.ToString(): '{machine.Status.ToString()}'");
-
-        // ========== CALCULATE TIME METRICS ==========
-        var shiftWindow = ResolveShiftWindow(now, null, null);
-        var effectiveNow = now < shiftWindow.End ? now : shiftWindow.End;
-        
-        var shiftJobRuns = machine.JobRuns
-            .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
-            .ToList();
-
-        // 1. Total Shift Time
-        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
-
-        // 2. Pisahkan Planned dan Unplanned Downtime
-        TimeSpan plannedDowntime = TimeSpan.Zero;
-        TimeSpan unplannedDowntime = TimeSpan.Zero;
-
-        foreach (var jr in shiftJobRuns)
-        {
-            foreach (var d in jr.DowntimeEvents)
-            {
-                var dEnd = d.EndTime ?? effectiveNow;
-                var overlap = GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
-                
-                // Pisahkan berdasarkan kategori
-                if (d.Reason?.Category == "Unplanned")
-                {
-                    unplannedDowntime += overlap;
-                }
-                else
-                {
-                    // Planned: Rest Break, Setup, dll
-                    plannedDowntime += overlap;
-                }
-            }
-        }
-
-        // 3. Planned Production Time = Shift Time - Planned Downtime
-        TimeSpan plannedProductionTime = totalShiftTime - plannedDowntime;
-        if (plannedProductionTime.TotalSeconds < 0)
-        {
-            plannedProductionTime = TimeSpan.Zero;
-        }
-
-        // Jika belum ada data, gunakan durasi shift
-        if (plannedProductionTime.TotalSeconds == 0 && shiftJobRuns.Count == 0)
-        {
-            plannedProductionTime = totalShiftTime;
-        }
-
-        // 4. Operating Time = Planned Production Time - Unplanned Downtime
-        TimeSpan operatingTime = plannedProductionTime - unplannedDowntime;
-        if (operatingTime.TotalSeconds < 0)
-        {
-            operatingTime = TimeSpan.Zero;
-        }
-
-        // 5. Total Downtime untuk display = Planned + Unplanned
-        TimeSpan downtimeTotal = plannedDowntime + unplannedDowntime;
-
-        // ✅ PERBAIKAN: Pastikan MachineStatus selalu di-return dengan explicit variable
-        var machineStatusString = machine.Status.ToString(); // 'Aktif' atau 'TidakAktif'
-        
-        // ✅ PERBAIKAN: Log untuk debugging
-        System.Diagnostics.Debug.WriteLine($"GetOperatorData RETURN - MachineId: '{machineId}', MachineStatus: '{machineStatusString}'");
-
-        // ✅ TAMBAHKAN: Get Dandori status untuk GetOperatorData
-        DateTime? dandoriStartTime = null;
-        DateTime? dandoriEndTime = null;
-        int? dandoriDurationSeconds = null;
-        bool isDandoriRunning = false;
-        
-        if (activeJob != null)
-        {
-            try
-            {
-                dandoriStartTime = activeJob.DandoriStartTime;
-                dandoriEndTime = activeJob.DandoriEndTime;
-                dandoriDurationSeconds = activeJob.DandoriDurationSeconds;
-                isDandoriRunning = dandoriStartTime.HasValue && !dandoriEndTime.HasValue;
-            }
-            catch
-            {
-                // Jika kolom belum ada, gunakan default
-            }
-        }
-
-        return Json(new
-        {
-            // Production Data
-            TotalGood = totalGood,
-            TotalReject = totalReject,
-            TotalCount = totalGood + totalReject,
-            TargetQuantity = targetQuantity,
-            ProgressPercent = Math.Round(progressPercent, 1),
-            
-            // Status & Timing
-            SinceLastChangeSeconds = sinceLastChangeSeconds,
-            SinceLastChange = (now - lastChangeTime).ToString(@"hh\:mm\:ss"),
-            LastStatusChangeTime = lastStatusChangeTime.ToString("O"), // ✅ ISO 8601 format untuk sinkronisasi timer
-            
-            // ✅ TAMBAHKAN: Dandori Status
-            DandoriStartTime = dandoriStartTime?.ToString("O"),
-            DandoriEndTime = dandoriEndTime?.ToString("O"),
-            DandoriDurationSeconds = dandoriDurationSeconds,
-            IsDandoriRunning = isDandoriRunning,
-            
-            // Job & Downtime Status
-            HasActiveJob = activeJob != null,
-            HasActiveDowntime = openDowntime != null,
-            ActiveDowntimeDescription = openDowntime?.Reason?.Description,
-            
-            // ✅ PERBAIKAN: MachineStatus SELALU di-return (sumber kebenaran dari Admin)
-            MachineStatus = machineStatusString, // 'Aktif' atau 'TidakAktif'
-            Status = displayStatus, // 'AKTIF' atau 'TIDAK AKTIF' untuk display
-            
-            // Product Info
-            EstimatedCompletion = estimatedCompletion,
-            ProductName = activeJob?.WorkOrder?.Product?.Name,
-            WorkOrderNumber = activeJob?.WorkOrder?.OrderNumber,
-            ProductImageUrl = activeJob?.WorkOrder?.Product?.ImageUrl,
-            
-            // Time Metrics
-            PlannedProductionTimeSeconds = plannedProductionTime.TotalSeconds,
-            OperatingTimeSeconds = operatingTime.TotalSeconds,
-            DowntimeTotalSeconds = downtimeTotal.TotalSeconds,
-            
-            // ✅ TAMBAHKAN: Recent Downtimes untuk Refresh History
-            RecentDowntimes = machine.JobRuns
-                .SelectMany(j => j.DowntimeEvents)
-                .OrderByDescending(d => d.StartTime)
-                .Take(10)
-                .Select(d => new {
-                    ReasonDescription = d.Reason?.Description,
-                    ReasonCategory = d.Reason?.Category,
-                    StartTime = d.StartTime.ToString("O"),
-                    EndTime = d.EndTime?.ToString("O"),
-                    DurationSeconds = d.DurationSeconds,
-                    IsClosed = d.EndTime.HasValue
-                })
-        });
+        return Json(metrics);
     }
 
     // ✅ EVENT-DRIVEN: Start Dandori (saat operator mulai persiapan)

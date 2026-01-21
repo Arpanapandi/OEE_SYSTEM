@@ -24,6 +24,10 @@ public class WorkOrder
     public Shift? Shift { get; set; }
 
     public ICollection<JobRun> JobRuns { get; set; } = new List<JobRun>();
+    
+    // Machine assignment
+    public string? MachineId { get; set; }
+    public Machine? Machine { get; set; }
 }
 
 

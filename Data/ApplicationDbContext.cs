@@ -35,8 +35,8 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Set default schema
-        modelBuilder.HasDefaultSchema("produksi");
+        // Set default schema (Commented for SQLite compatibility)
+        // modelBuilder.HasDefaultSchema("produksi");
 
         // Set table prefix tb_lwpmixing_ for all tables
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
@@ -256,6 +256,17 @@ public class ApplicationDbContext : DbContext
             .Property(e => e.MachineId)
             .HasMaxLength(4)
             .IsRequired();
+
+        modelBuilder.Entity<WorkOrder>()
+            .Property(w => w.MachineId)
+            .HasMaxLength(4)
+            .IsRequired(false);
+
+        modelBuilder.Entity<WorkOrder>()
+            .HasOne(w => w.Machine)
+            .WithMany()
+            .HasForeignKey(w => w.MachineId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // ========== DATA DUMMY PLANT & MACHINE ==========
         // Plant wajib ada karena Machine memiliki FK PlantId

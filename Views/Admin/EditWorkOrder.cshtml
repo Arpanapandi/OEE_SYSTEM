@@ -22,8 +22,23 @@
             </div>
 
             <div class="mb-3">
+                <label class="form-label">Plant</label>
+                <select id="plantSelect" class="form-select" asp-items="ViewBag.PlantId">
+                    <option value="">-- Select Plant --</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="MachineId" class="form-label">Mesin</label>
+                <select asp-for="MachineId" id="machineSelect" class="form-select" asp-items="ViewBag.MachineId">
+                    <option value="">-- Select Mesin --</option>
+                </select>
+                <span asp-validation-for="MachineId" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
                 <label asp-for="ProductId" class="form-label">Product</label>
-                <select asp-for="ProductId" class="form-select" asp-items="ViewBag.ProductId">
+                <select asp-for="ProductId" id="productSelect" class="form-select" asp-items="ViewBag.ProductId">
                     <option value="">-- Select Product --</option>
                 </select>
                 <span asp-validation-for="ProductId" class="text-danger"></span>
@@ -67,5 +82,50 @@
 
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const plantSelect = document.getElementById('plantSelect');
+            const machineSelect = document.getElementById('machineSelect');
+            const productSelect = document.getElementById('productSelect');
+
+            plantSelect.addEventListener('change', function() {
+                const plantId = this.value;
+                if (!plantId) {
+                    machineSelect.innerHTML = '<option value="">-- Select Mesin --</option>';
+                    return;
+                }
+
+                // Load Machines
+                fetch(`/Admin/GetMachinesByPlant?plantId=${plantId}`)
+                    .then(r => r.json())
+                    .then(machines => {
+                        const currentValue = machineSelect.value;
+                        machineSelect.innerHTML = '<option value="">-- Select Mesin --</option>';
+                        machines.forEach(m => {
+                            const opt = document.createElement('option');
+                            opt.value = m.id;
+                            opt.textContent = `${m.name} (${m.lineId})`;
+                            if (m.id == currentValue) opt.selected = true;
+                            machineSelect.appendChild(opt);
+                        });
+                    });
+                
+                // Load Products
+                fetch(`/Admin/GetProductsByPlant?plantId=${plantId}`)
+                    .then(r => r.json())
+                    .then(products => {
+                        const currentValue = productSelect.value;
+                        productSelect.innerHTML = '<option value="">-- Select Product --</option>';
+                        products.forEach(p => {
+                            const opt = document.createElement('option');
+                            opt.value = p.productId;
+                            opt.textContent = `${p.name} (${p.materialCode})`;
+                            if (p.productId == currentValue) opt.selected = true;
+                            productSelect.appendChild(opt);
+                        });
+                    });
+            });
+        });
+    </script>
 }
 

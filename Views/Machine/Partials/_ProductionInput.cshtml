@@ -11,11 +11,11 @@
                 
                 <!-- 1. Nomor Lot -->
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Nomor Lot (Part Number)</label>
+                    <label class="form-label fw-bold">Nomor Lot</label>
                     <div class="input-group">
-                        <input type="text" class="form-control form-control-glass prod-input" id="input-nomor-lot" placeholder="Scan Part Number..." maxlength="12">
+                        <input type="text" class="form-control form-control-glass prod-input" id="input-nomor-lot" placeholder="Input Data Nomor Lot" maxlength="12">
                         <button class="btn btn-outline-primary" type="button" id="btn-scan-nomor-lot">
-                             <i class="fa-solid fa-camera"></i> Scan
+                             <i class="fa-solid fa-camera"></i>
                         </button>
                         <button class="btn btn-outline-secondary" type="button" id="btn-edit-nomor-lot">
                              <i class="fa-solid fa-pencil"></i>
@@ -27,11 +27,11 @@
                 <div class="mb-3">
                     <label class="form-label fw-bold">Lot BO</label>
                     <div class="input-group">
-                         <input type="text" class="form-control form-control-glass prod-input" id="input-lot-bo" placeholder="Scan Lot BO..." maxlength="12">
+                        <input type="text" class="form-control form-control-glass prod-input" id="input-lot-bo" placeholder="Input Data Lot BO" maxlength="12">
                          <button class="btn btn-outline-primary" type="button" id="btn-scan-lot-bo">
                             <i class="fa-solid fa-camera"></i>
                         </button>
-                        <button class="btn btn-outline-secondary" type="button" id="btn-edit-lot-bo">
+                         <button class="btn btn-outline-secondary" type="button" id="btn-edit-lot-bo">
                             <i class="fa-solid fa-pencil"></i>
                         </button>
                     </div>
@@ -41,7 +41,7 @@
                 <div class="mb-3">
                      <label class="form-label fw-bold">Nama Compound</label>
                     <div class="input-group">
-                        <input type="text" class="form-control form-control-glass prod-input" id="input-nama-compound" placeholder="Scan Compound...">
+                        <input type="text" class="form-control form-control-glass prod-input" id="input-nama-compound" placeholder="Input Data Compound">
                         <button class="btn btn-outline-primary" type="button" id="btn-scan-nama-compound">
                              <i class="fa-solid fa-camera"></i>
                         </button>
@@ -55,7 +55,7 @@
                 <div class="mb-3">
                      <label class="form-label fw-bold">Berat Act (Kg)</label>
                     <div class="input-group">
-                        <input type="number" step="0.01" class="form-control form-control-glass prod-input text-end" id="input-berat-act" placeholder="0.00">
+                        <input type="number" step="0.01" class="form-control form-control-glass prod-input text-center" id="input-berat-act" placeholder="0.00">
                          <button class="btn btn-outline-secondary" type="button" id="btn-decrement-berat-act"><i class="fa-solid fa-minus"></i></button>
                         <button class="btn btn-outline-secondary" type="button" id="btn-increment-berat-act"><i class="fa-solid fa-plus"></i></button>
                     </div>
@@ -99,7 +99,7 @@
                 </div>
 
                 <!-- 7. Submit Button -->
-                 <button type="button" class="btn btn-primary w-100 py-3 mb-4 fw-bold shadow-sm" id="btn-submit-produksi" onclick="window.handleProductionSubmit()" style="font-size: 1.1rem;">
+                  <button type="button" class="btn btn-primary w-100 py-1 mb-3 fw-bold shadow-sm" id="btn-submit-produksi" onclick="window.handleProductionSubmit()" style="font-size: 1rem; height: 40px;">
                     <i class="fa-solid fa-paper-plane me-2"></i>SUBMIT DATA
                 </button>
 
@@ -117,7 +117,7 @@
                             <i class="fa-regular fa-clock"></i>
                         </span>
                         <div class="form-control form-control-glass text-center fw-bold d-flex align-items-center justify-content-center" style="font-family: 'Consolas', monospace; font-size: 1.5rem; letter-spacing: 2px;">
-                            <span id="durasi-produksi-display">00:00:00</span>
+                            <span id="item-production-timer">00:00:00</span>
                         </div>
                         <button class="btn btn-outline-danger" type="button" id="btn-reset-durasi" title="Reset Timer">
                              <i class="fa-solid fa-rotate-left"></i> Reset
@@ -127,11 +127,11 @@
 
                 <!-- 9. Quantity Section (Standalone - untuk input hasil produksi) -->
                 <div class="pt-3 border-top border-secondary border-opacity-25 mb-2" id="quantity-container">
-                    <button type="button" class="btn btn-success w-100 py-3 fw-bold shadow-sm d-flex align-items-center justify-content-center" 
+                    <button type="button" class="btn btn-success w-100 py-1 fw-bold shadow-sm d-flex align-items-center justify-content-center" 
                             id="btn-open-qty-modal"
                             onclick="if(window.bootstrap) { const m = new bootstrap.Modal(document.getElementById('standaloneQtyModal')); m.show(); }"
-                            style="font-size: 1.1rem; letter-spacing: 1px;">
-                        <i class="fa-solid fa-box-open me-2 fs-5"></i>INPUT QUANTITY (Hasil Produksi)
+                            style="font-size: 1rem; letter-spacing: 1px; height: 40px;">
+                        <i class="fa-solid fa-box-open me-2 fs-6"></i>QUANTITY (Hasil Produksi)
                     </button>
                 </div>
 
