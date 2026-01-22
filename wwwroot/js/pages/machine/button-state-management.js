@@ -1,11 +1,15 @@
 /**
  * button-state-management.js
- * Handles UI state updates based on machine status.
+ * Handles UI state updates based on machine CurrentState.
  * Controls enable/disable state of buttons and visual indicators.
+ * 
+ * ✅ PRODUCTION-READY: State-based button management
  */
 
-window.updateMachineStatusUI = function (status, downtimeDescription) {
-    console.log('🔄 updateMachineStatusUI:', status, downtimeDescription);
+// ✅ Global function untuk update UI berdasarkan CurrentState
+window.updateMachineStatusUI = function (status, downtimeDescription, currentState) {
+    console.log('🔄 updateMachineStatusUI:', { status, downtimeDescription, currentState });
+
     const statusBadgeEl = document.getElementById('machine-status-badge');
     const downtimeDescEl = document.getElementById('downtime-description');
     const machineStatusInfoEl = document.getElementById('machine-status-info');
@@ -42,28 +46,125 @@ window.updateMachineStatusUI = function (status, downtimeDescription) {
         navbarStatusDot.style.background = isAktif ? '#28a745' : '#ffc107';
     }
 
-    // 5. Update Button States
-    updateActionButtonsState(status, downtimeDescription);
+    // 5. ✅ UPDATE BUTTON STATES BASED ON CURRENT STATE
+    updateActionButtonsState(currentState || 'STOPPED');
 };
 
-function updateActionButtonsState(status, downtimeDescription) {
+// ✅ CORE FUNCTION: State-based button management
+function updateActionButtonsState(currentState) {
+    console.log('🎛️ updateActionButtonsState:', currentState);
+
     const btnRunning = document.getElementById('btn-running');
     const btnRest = document.getElementById('btn-rest');
     const btnLineStop = document.getElementById('btn-line-stop');
     const btnNoLoading = document.getElementById('btn-no-loading');
 
-    const isRunning = status === 'Aktif';
-    const isResting = downtimeDescription && downtimeDescription.toLowerCase().includes('rest');
-    const isNoLoading = downtimeDescription && downtimeDescription.toLowerCase().includes('no loading');
+    // Validate state
+    const validStates = ['RUNNING', 'REST_BREAK', 'LINE_STOP', 'NO_LOADING', 'STOPPED'];
+    if (!validStates.includes(currentState)) {
+        console.warn('⚠️ Invalid state:', currentState, '- defaulting to STOPPED');
+        currentState = 'STOPPED';
+    }
 
-    // Example Logic: 
-    // - If Running: Disable Running, Enable others
-    // - If Rest/LineStop/NoLoading: Enable Running, Disable current action?
-    // This depends on specific business rules, implementing generic toggle for now.
+    // ✅ STATE MACHINE LOGIC
+    switch (currentState) {
+        case 'RUNNING':
+            // Mesin sedang produksi
+            if (btnRunning) {
+                btnRunning.disabled = true;
+                btnRunning.classList.add('btn-secondary');
+                btnRunning.classList.remove('btn-success');
+            }
+            if (btnRest) btnRest.disabled = false;
+            if (btnLineStop) btnLineStop.disabled = false;
+            if (btnNoLoading) btnNoLoading.disabled = false;
 
-    if (btnRunning) {
-        // Running button enabled if NOT running, or if we want to allow 're-start' (usually disabled if running)
-        // btnRunning.disabled = isRunning && !isResting && !isNoLoading; 
-        // Actually, usually we always allow clicking running to "Resume" from downtime
+            // Enable production input
+            enableProductionInput(true);
+            break;
+
+        case 'REST_BREAK':
+            // Mesin istirahat (planned)
+            if (btnRunning) {
+                btnRunning.disabled = false;
+                btnRunning.classList.remove('btn-secondary');
+                btnRunning.classList.add('btn-success');
+            }
+            if (btnRest) btnRest.disabled = true;
+            if (btnLineStop) btnLineStop.disabled = false;
+            if (btnNoLoading) btnNoLoading.disabled = false;
+
+            // Disable production input
+            enableProductionInput(false);
+            break;
+
+        case 'LINE_STOP':
+            // Mesin downtime (unplanned)
+            if (btnRunning) {
+                btnRunning.disabled = false;
+                btnRunning.classList.remove('btn-secondary');
+                btnRunning.classList.add('btn-success');
+            }
+            if (btnRest) btnRest.disabled = false;
+            if (btnLineStop) btnLineStop.disabled = true;
+            if (btnNoLoading) btnNoLoading.disabled = false;
+
+            // Disable production input
+            enableProductionInput(false);
+            break;
+
+        case 'NO_LOADING':
+            // Mesin no loading (planned)
+            if (btnRunning) {
+                btnRunning.disabled = false;
+                btnRunning.classList.remove('btn-secondary');
+                btnRunning.classList.add('btn-success');
+            }
+            if (btnRest) btnRest.disabled = false;
+            if (btnLineStop) btnLineStop.disabled = false;
+            if (btnNoLoading) btnNoLoading.disabled = true;
+
+            // Disable production input
+            enableProductionInput(false);
+            break;
+
+        case 'STOPPED':
+        default:
+            // Mesin belum start atau sudah selesai
+            if (btnRunning) {
+                btnRunning.disabled = false;
+                btnRunning.classList.remove('btn-secondary');
+                btnRunning.classList.add('btn-success');
+            }
+            if (btnRest) btnRest.disabled = true;
+            if (btnLineStop) btnLineStop.disabled = true;
+            if (btnNoLoading) btnNoLoading.disabled = true;
+
+            // Disable production input
+            enableProductionInput(false);
+            break;
     }
 }
+
+// ✅ Helper: Enable/Disable production input based on state
+function enableProductionInput(enabled) {
+    const productionInputs = document.querySelectorAll('#production-form input, #production-form select, #production-form button');
+    productionInputs.forEach(input => {
+        if (input.id === 'btn-submit-produksi') {
+            input.disabled = !enabled;
+        }
+    });
+
+    // Visual feedback
+    const productionCard = document.getElementById('production-input-card');
+    if (productionCard) {
+        if (enabled) {
+            productionCard.classList.remove('opacity-50');
+        } else {
+            productionCard.classList.add('opacity-50');
+        }
+    }
+}
+
+// ✅ Export untuk digunakan di module lain
+window.updateActionButtonsState = updateActionButtonsState;

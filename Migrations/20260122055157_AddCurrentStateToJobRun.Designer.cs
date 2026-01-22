@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using OeeSystem.Data;
 
@@ -10,9 +11,11 @@ using OeeSystem.Data;
 namespace OeeSystem.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260122055157_AddCurrentStateToJobRun")]
+    partial class AddCurrentStateToJobRun
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
@@ -548,104 +551,6 @@ namespace OeeSystem.Migrations
                     b.ToTable("tb_lwpmixing_Shifts");
                 });
 
-            modelBuilder.Entity("OeeSystem.Models.ShiftSnapshot", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("DowntimeSeconds")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("FinalAvailability")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("FinalOee")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("FinalPerformance")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("FinalQuality")
-                        .HasColumnType("REAL");
-
-                    b.Property<bool>("IsLocked")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("LockedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("LockedByUserId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("MachineId")
-                        .IsRequired()
-                        .HasMaxLength(4)
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("NoLoadingTimeSeconds")
-                        .HasColumnType("REAL");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("OperatingTimeSeconds")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("PlannedProductionTimeSeconds")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("RestBreakTimeSeconds")
-                        .HasColumnType("REAL");
-
-                    b.Property<DateTime>("ShiftDate")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ShiftId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ShiftKey")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("TargetQuantity")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalGood")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TotalReject")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UnlockReason")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("UnlockedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("UnlockedByUserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LockedByUserId");
-
-                    b.HasIndex("ShiftId");
-
-                    b.HasIndex("UnlockedByUserId");
-
-                    b.HasIndex("MachineId", "ShiftId", "ShiftDate")
-                        .IsUnique();
-
-                    b.ToTable("tb_lwpmixing_ShiftSnapshots");
-                });
-
             modelBuilder.Entity("OeeSystem.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -915,39 +820,6 @@ namespace OeeSystem.Migrations
                         .IsRequired();
 
                     b.Navigation("Scw4MType");
-                });
-
-            modelBuilder.Entity("OeeSystem.Models.ShiftSnapshot", b =>
-                {
-                    b.HasOne("OeeSystem.Models.User", "LockedBy")
-                        .WithMany()
-                        .HasForeignKey("LockedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("OeeSystem.Models.Machine", "Machine")
-                        .WithMany()
-                        .HasForeignKey("MachineId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("OeeSystem.Models.Shift", "Shift")
-                        .WithMany()
-                        .HasForeignKey("ShiftId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("OeeSystem.Models.User", "UnlockedBy")
-                        .WithMany()
-                        .HasForeignKey("UnlockedByUserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("LockedBy");
-
-                    b.Navigation("Machine");
-
-                    b.Navigation("Shift");
-
-                    b.Navigation("UnlockedBy");
                 });
 
             modelBuilder.Entity("OeeSystem.Models.WorkOrder", b =>

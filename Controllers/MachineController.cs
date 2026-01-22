@@ -243,14 +243,14 @@ public class MachineController : Controller
         }
 
         // DEBUG LOGGING
-        Console.WriteLine($"[DEBUG] Machine: {machine?.Name} (ID: {id})");
+        Console.WriteLine($"[DEBUG] Machine: {machine.Name} (ID: {id})");
         Console.WriteLine($"[DEBUG] Now: {now}");
-        Console.WriteLine($"[DEBUG] Total JobRuns: {machine.JobRuns.Count}");
-        foreach(var j in machine.JobRuns) {
+        Console.WriteLine($"[DEBUG] Total JobRuns: {machine.JobRuns?.Count ?? 0}");
+        foreach(var j in machine.JobRuns ?? Enumerable.Empty<JobRun>()) {
             Console.WriteLine($"[DEBUG] Job: ID={j.Id}, WO={j.WorkOrderId}, Start={j.StartTime}, End={j.EndTime ?? (object)"NULL"}");
         }
 
-        var activeJob = machine.JobRuns
+        var activeJob = (machine.JobRuns ?? Enumerable.Empty<JobRun>())
             // .Where(j => j.StartTime <= now)
             .OrderByDescending(j => j.StartTime)
             .ThenByDescending(j => j.Id)
@@ -263,109 +263,17 @@ public class MachineController : Controller
 
         var status = _oeeService.GetRealTimeStatus(machine, activeJob, hasOpenDowntime);
 
-        // ========== PERHITUNGAN OEE PER MESIN BERDASAR SHIFT ==========
-        var shiftJobRuns = machine.JobRuns
+        // ========== DATA GATHERING FOR DETAILED LISTS ==========
+        var shiftJobRuns = (machine.JobRuns ?? Enumerable.Empty<JobRun>())
             .Where(j => j.StartTime < shiftWindow.End && (j.EndTime ?? effectiveNow) > shiftWindow.Start)
             .ToList();
 
-        // 1. Total Shift Time
-        TimeSpan totalShiftTime = shiftWindow.End - shiftWindow.Start;
+        var metrics = await _oeeService.GetTimeMetricsAsync(id, selectedShift?.Id, shiftDateForWindow);
+        int goodCount = metrics.TotalGood;
 
-        // 2. Identify Downtimes & No Loading
-        TimeSpan plannedDowntime = TimeSpan.Zero;   // Rest Break
-        TimeSpan unplannedDowntime = TimeSpan.Zero; // Line Stop / Breakdown
-        TimeSpan noLoadingTime = TimeSpan.Zero;     // No Loading (Idle)
-        
-        bool hasActiveRestBreak = false;
+        // Standar cycle time (needed for some UI logic below)
+        double standarCycleTime = activeJob?.WorkOrder?.Product?.StandarCycleTime ?? 0;
 
-        foreach (var jr in shiftJobRuns)
-        {
-            foreach (var d in jr.DowntimeEvents)
-            {
-                var dEnd = d.EndTime ?? effectiveNow;
-                var overlap = GetOverlap(d.StartTime, dEnd, shiftWindow.Start, shiftWindow.End);
-                
-                if (d.IsNoLoading)
-                {
-                    noLoadingTime += overlap;
-                }
-                else if (d.Reason?.Category == "Unplanned")
-                {
-                    unplannedDowntime += overlap;
-                }
-                else
-                {
-                    // Planned: Rest Break, Setup, etc.
-                    plannedDowntime += overlap;
-                    
-                    // Check active rest break
-                    if (d.EndTime == null && (d.Reason?.Description?.Contains("Rest", StringComparison.OrdinalIgnoreCase) == true))
-                    {
-                        hasActiveRestBreak = true;
-                    }
-                }
-            }
-        }
-
-        // 3. OEE Definitions (Standard)
-        // Loading Time (Planned Production Time) = Total Shift - Schedule Loss
-        // Schedule Loss = No Loading + Planned Downtime
-        TimeSpan plannedProductionTime = totalShiftTime - (noLoadingTime + plannedDowntime);
-        if (plannedProductionTime < TimeSpan.Zero) plannedProductionTime = TimeSpan.Zero;
-
-        // Operating Time = Loading Time - Unplanned Downtime (Availability Loss)
-        TimeSpan operatingTime = plannedProductionTime - unplannedDowntime;
-        if (operatingTime < TimeSpan.Zero) operatingTime = TimeSpan.Zero;
-
-        // Display Variable: Downtime Total (usually refers to Unplanned/Line Stop in this context)
-        TimeSpan downtimeTotal = unplannedDowntime; 
-
-        // Rest Break Time for Display (Schedule Loss)
-        TimeSpan restBreakTime = plannedDowntime; 
-        
-        // --- LOGIC BARU UNTUK DISPLAY TIME METRICS (TICK UP) ---
-        // Hitung durasi shift yang sudah berlalu (Elapsed)
-        var elapsedNow = effectiveNow > shiftWindow.End ? shiftWindow.End : effectiveNow;
-        TimeSpan elapsedShiftTime = elapsedNow - shiftWindow.Start;
-        if (elapsedShiftTime < TimeSpan.Zero) elapsedShiftTime = TimeSpan.Zero;
-
-        // Actual Accumulated Operating Time = Elapsed - All Losses
-        // Ini agar bar Operating Time "Merayap" naik (Tick Up) bukan Count Down
-        TimeSpan actualAccumulatedOperatingTime = elapsedShiftTime - (noLoadingTime + plannedDowntime + unplannedDowntime);
-        if (actualAccumulatedOperatingTime < TimeSpan.Zero) actualAccumulatedOperatingTime = TimeSpan.Zero; 
-
-        // 4. Production Counts & Cycle Time
-        var allCounts = shiftJobRuns
-            .SelectMany(j => j.ProductionCounts
-                .Where(p => p.Timestamp >= shiftWindow.Start && p.Timestamp <= shiftWindow.End))
-            .ToList();
-
-        int totalCount = allCounts.Sum(c => c.GoodCount + c.RejectCount);
-        int goodCount = allCounts.Sum(c => c.GoodCount);
-        int rejectCount = allCounts.Sum(c => c.RejectCount);
-
-        // Standar cycle time
-        double standarCycleTime = 0;
-        if (activeJob?.WorkOrder?.Product != null)
-        {
-            standarCycleTime = activeJob.WorkOrder.Product.StandarCycleTime;
-        }
-
-        // Nett Operating Time = Cycle Time × Total Produced
-        TimeSpan nettOperatingTime = TimeSpan.Zero;
-        if (standarCycleTime > 0 && totalCount > 0)
-        {
-            var nettOperatingSeconds = standarCycleTime * totalCount;
-            nettOperatingTime = TimeSpan.FromSeconds(nettOperatingSeconds);
-        }
-
-        // 5. Calculate OEE
-        var oeeResult = _oeeService.CalculateOee(
-            plannedProductionTime,      // Loading Time (Basis for A)
-            unplannedDowntime,          // Availability Loss (Reduces A)
-            totalCount,
-            goodCount,
-            standarCycleTime > 0 ? standarCycleTime : 1);
 
         // 6. Build ViewModel
         var vm = new MachineOeeViewModel
@@ -373,31 +281,35 @@ public class MachineController : Controller
             MachineId = machine.Id,
             MachineName = machine.Name,
             LineId = machine.LineId,
-            ShiftCode = shiftWindow.Code,
-            ShiftName = selectedShift?.Name ?? shiftWindow.Code,
+            ShiftCode = metrics.ShiftCode,
+            ShiftName = metrics.ShiftCode, // Menggunakan kode yang sama jika tidak ada mapping nama
             ShiftId = selectedShift?.Id,
-            ShiftDate = shiftWindow.ShiftDate,
-            ShiftKey = shiftWindow.Key,
-            ShiftStart = shiftWindow.Start,
-            ShiftEnd = shiftWindow.End,
-            Status = status,
+            ShiftDate = metrics.ShiftDate,
+            ShiftKey = metrics.ShiftKey,
+            ShiftStart = metrics.ShiftStart,
+            ShiftEnd = metrics.ShiftEnd,
+            Status = metrics.IsRunning ? MachineStatus.Aktif : MachineStatus.TidakAktif,
             StandarCycleTime = standarCycleTime,
             ImageUrl = machine.ImageUrl,
-            Oee = oeeResult.Oee,
-            Availability = oeeResult.Availability,
-            Performance = oeeResult.Performance,
-            Quality = oeeResult.Quality,
-            PlannedProductionTime = plannedProductionTime, // Tetap Full Shift (12h) sesuai request
-            OperatingTime = actualAccumulatedOperatingTime, // Tick Up (Actual)
-            DowntimeTotal = downtimeTotal, // Unplanned Downtime
-            RestBreakTime = restBreakTime,
-            NoLoadingTime = noLoadingTime,
-            NettOperatingTime = nettOperatingTime,
-            TotalCount = totalCount,
-            GoodCount = goodCount,
-            RejectCount = rejectCount,
-            HasActiveRestBreak = hasActiveRestBreak,
-            IsNoLoading = activeJob?.DowntimeEvents.Any(d => d.EndTime == null && d.IsNoLoading) ?? false
+            Oee = metrics.Oee,
+            Availability = metrics.Availability,
+            Performance = metrics.Performance,
+            Quality = metrics.Quality,
+            PlannedProductionTime = TimeSpan.FromSeconds(metrics.PlannedProductionTimeSeconds),
+            OperatingTime = TimeSpan.FromSeconds(metrics.OperatingTimeSeconds),
+            DowntimeTotal = TimeSpan.FromSeconds(metrics.DowntimeSeconds),
+            RestBreakTime = TimeSpan.FromSeconds(metrics.RestBreakTimeSeconds),
+            NoLoadingTime = TimeSpan.FromSeconds(metrics.NoLoadingTimeSeconds),
+            NettOperatingTime = TimeSpan.FromSeconds(metrics.NettOperatingTimeSeconds),
+            TotalCount = metrics.TotalCount,
+            GoodCount = metrics.TotalGood,
+            RejectCount = metrics.TotalReject,
+            HasActiveJob = metrics.HasActiveJob,
+            HasActiveDowntime = metrics.HasActiveDowntime,
+            HasActiveRestBreak = metrics.HasActiveRestBreak,
+            IsNoLoading = metrics.HasActiveNoLoading,
+            MachineStatus = machine.Status,
+            CurrentState = activeJob?.CurrentState ?? "STOPPED" // ✅ NEW
         };
 
         // Active Job Info
@@ -584,14 +496,14 @@ public class MachineController : Controller
         // Chart Data
         vm.ChartData = new ChartDataViewModel
         {
-            RunTimeMinutes = operatingTime.TotalMinutes,
-            IdleTimeMinutes = downtimeTotal.TotalMinutes,
-            OffTimeMinutes = (totalShiftTime - operatingTime - downtimeTotal).TotalMinutes,
+            RunTimeMinutes = metrics.OperatingTimeSeconds / 60.0,
+            IdleTimeMinutes = (metrics.DowntimeSeconds + metrics.RestBreakTimeSeconds) / 60.0,
+            OffTimeMinutes = (metrics.PlannedProductionTimeSeconds - metrics.OperatingTimeSeconds - metrics.DowntimeSeconds) / 60.0,
             
-            Oee = oeeResult.Oee,
-            Availability = oeeResult.Availability,
-            Performance = oeeResult.Performance,
-            Quality = oeeResult.Quality,
+            Oee = metrics.Oee,
+            Availability = metrics.Availability,
+            Performance = metrics.Performance,
+            Quality = metrics.Quality,
             
             WeeklyTrend = new List<WeeklyTrendData>() 
         };
@@ -713,7 +625,7 @@ public class MachineController : Controller
             var dayStart = date;
             var dayEnd = date.AddDays(1);
 
-            var dayJobRuns = machine.JobRuns
+            var dayJobRuns = (machine.JobRuns ?? Enumerable.Empty<JobRun>())
                 .Where(j => j.StartTime < dayEnd && (j.EndTime ?? effectiveNow) > dayStart)
                 .ToList();
 

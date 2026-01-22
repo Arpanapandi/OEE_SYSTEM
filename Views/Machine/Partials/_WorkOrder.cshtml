@@ -135,23 +135,24 @@
 <div class="row">
     <div class="col-12">
         <div class="wo-card-custom">
-            @if (Model.ActiveJob != null)
-            {
+            <!-- Active WO Content -->
+            <div id="wo-active-content" style="@(Model.ActiveJob != null ? "" : "display: none;")">
                 <div class="wo-product-row">
                     <!-- Product Image -->
                     <div class="wo-image-box">
-                        <img src="@(string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl) ? "/images/placeholder-product.png" : Model.ActiveJob.ProductImageUrl)" 
-                             alt="@Model.ActiveJob.ProductName" 
+                        <img id="wo-product-image" 
+                             src="@(Model.ActiveJob != null && !string.IsNullOrEmpty(Model.ActiveJob.ProductImageUrl) ? Model.ActiveJob.ProductImageUrl : "/images/placeholder-product.png")" 
+                             alt="@(Model.ActiveJob?.ProductName ?? "Product")" 
                              onerror="this.onerror=null;this.src='/images/placeholder-product.png';">
                     </div>
                     
                     <!-- WO Details -->
                     <div class="wo-info-main">
-                        <div class="wo-product-name">@Model.ActiveJob.ProductName</div>
-                        <div class="wo-number-display" id="wo-number-display">@Model.ActiveJob.WorkOrderNumber</div>
+                        <div class="wo-product-name" id="wo-product-name-display">@(Model.ActiveJob?.ProductName ?? "-")</div>
+                        <div class="wo-number-display" id="wo-number-display">@(Model.ActiveJob?.WorkOrderNumber ?? "-")</div>
                         
                         <div class="wo-progress-value">
-                            <span id="current-qty">@Model.ActiveJob.CurrentQuantity</span> / <span id="target-qty">@Model.ActiveJob.TargetQuantity</span>
+                            <span id="current-qty">@(Model.ActiveJob?.CurrentQuantity ?? 0)</span> / <span id="target-qty">@(Model.ActiveJob?.TargetQuantity ?? 0)</span>
                         </div>
                         
                         <div class="wo-est-badge">
@@ -161,7 +162,7 @@
                 </div>
 
                 <div class="wo-target-status">
-                    On Target (Sets 0 Target)
+                    On Target
                 </div>
 
                 <!-- Action Button Counters -->
@@ -173,15 +174,16 @@
                         REJECT: <span class="ms-1" id="total-reject-wo">@Model.RejectCount</span>
                     </div>
                 </div>
-            }
-            else
-            {
+            </div>
+
+            <!-- Empty WO Content -->
+            <div id="wo-empty-content" style="@(Model.ActiveJob == null ? "" : "display: none;")">
                 <div class="text-center text-secondary py-5">
                     <i class="fa-solid fa-clipboard-question fa-3x mb-3 opacity-50"></i>
                     <h3>No Active Work Order</h3>
-                    <p>Silakan mulai Job baru untuk menampilkan detail WO.</p>
+                    <p>Silakan buat Work Order di Panel Admin untuk memulai produksi.</p>
                 </div>
-            }
+            </div>
         </div>
     </div>
 </div>

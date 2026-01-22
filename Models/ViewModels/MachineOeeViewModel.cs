@@ -58,6 +58,9 @@ public class MachineOeeViewModel
     public string? ActiveDowntimeDescription { get; set; }
     public MachineStatus MachineStatus { get; set; } // Status dari Admin (Aktif/TidakAktif)
 
+    // ✅ NEW: Current State dari JobRun (RUNNING, REST_BREAK, LINE_STOP, NO_LOADING, STOPPED)
+    public string CurrentState { get; set; } = "STOPPED";
+
     // Forms Data
     public List<ManPower> ManPowerList { get; set; } = new();
     public int? ActiveManPowerId { get; set; }

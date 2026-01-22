@@ -23,9 +23,9 @@ namespace OeeSystem.Controllers
                 .Select(j => new { 
                     j.Id, 
                     j.MachineId, 
-                    MachineName = j.Machine.Name, 
+                    MachineName = j.Machine != null ? j.Machine.Name : "N/A", 
                     j.WorkOrderId, 
-                    WorkOrderNumber = j.WorkOrder.OrderNumber,
+                    WorkOrderNumber = j.WorkOrder != null ? j.WorkOrder.OrderNumber : "N/A",
                     j.StartTime, 
                     j.EndTime 
                 })

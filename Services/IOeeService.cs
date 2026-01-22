@@ -41,6 +41,12 @@ public interface IOeeService
     /// Menutup otomatis JobRun dan DowntimeEvent yang melewati batas shift.
     /// </summary>
     Task AutoCloseShiftJobsAsync();
+    
+    /// <summary>
+    /// Menutup paksa semua JobRun yang masih terbuka (EndTime == null) selain yang paling baru
+    /// untuk memastikan hanya ada satu job aktif per mesin.
+    /// </summary>
+    Task EnsureOnlyOneActiveJobAsync(string machineId);
 
     /// <summary>
     /// Menghitung durasi detail sebuah JobRun (Running, Downtime, NetOperating) secara real-time.
@@ -52,6 +58,11 @@ public interface IOeeService
     /// Helper untuk mendapatkan window shift saat ini berdasarkan waktu server.
     /// </summary>
     Task<(DateTime Start, DateTime End, Shift Shift)> GetCurrentShiftWindowAsync();
+
+    /// <summary>
+    /// Mengambil metrik untuk semua mesin untuk tampilan dashboard.
+    /// </summary>
+    Task<List<TimeMetricsResult>> GetDashboardMetricsAsync(int? shiftId = null, int? plantId = null, string? machineId = null);
 }
 
 public record JobDurationMetrics(
@@ -113,7 +124,11 @@ public class TimeMetricsResult
     public string? ProductName { get; set; }
     public string? WorkOrderNumber { get; set; }
     public string? ProductImageUrl { get; set; }
+    public string? MachineImageUrl { get; set; }
     public string? EstimatedCompletion { get; set; }
+    
+    // ✅ NEW: Current State dari JobRun
+    public string CurrentState { get; set; } = "STOPPED";
     
     public int? DandoriDurationSeconds { get; set; }
     public string? DandoriStartTime { get; set; }

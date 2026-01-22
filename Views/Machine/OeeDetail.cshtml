@@ -75,8 +75,10 @@
             machineId: '@Html.Raw(Model.MachineId)',
             shiftKey: '@Html.Raw(Model.ShiftKey)',
             machineStatus: '@Html.Raw(Model.MachineStatus)',
+            currentState: '@Html.Raw(Model.CurrentState)', // ✅ NEW
             lastStatusChange: '@Html.Raw(Model.LastStatusChangeTimeIso)',
-            serverTime: '@ViewData["ServerTime"]'
+            serverTime: '@ViewData["ServerTime"]',
+            hasActiveJob: @(Model.ActiveJob != null ? "true" : "false")
         };
 
         document.addEventListener('DOMContentLoaded', function() {

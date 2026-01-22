@@ -432,191 +432,56 @@ public class HomeController : Controller
             // Biarkan ImageUrl dari query utama digunakan
         }
 
+        // ✅ PERBAIKAN TOTAL: Gunakan OeeService untuk konsistensi data
+        var machineMetrics = await _oeeService.GetDashboardMetricsAsync(selectedShift?.Id, plantId, machineId);
+        
         var machineCards = new List<MachineCardViewModel>();
+        double totalPlannedSeconds = 0;
+        double totalDownSeconds = 0;
+        double totalGoodCount = 0;
+        double totalCountSum = 0;
+        double weightedPerformanceSum = 0;
+        double weightedQualitySum = 0;
+        double totalOperatingSeconds = 0;
 
-        // ✅ PERBAIKAN: Hitung Planned dan Unplanned Downtime dari semua mesin
-        TimeSpan totalShiftTime = shiftEnd - shiftStart;
-        TimeSpan totalPlannedDowntime = TimeSpan.Zero;
-        TimeSpan totalUnplannedDowntime = TimeSpan.Zero;
-        TimeSpan operatingTime = TimeSpan.Zero;
-        int totalCount = 0;
-        int goodCount = 0;
-        double avgStandarCycle = 0;
-        int standarCycleCount = 0;
-
-        foreach (var machine in machines)
+        foreach (var metrics in machineMetrics)
         {
-            // Filter JobRuns berdasarkan periode shift
-            var shiftJobRuns = machine.JobRuns
-                .Where(j => (j.StartTime >= shiftStart && j.StartTime <= shiftEnd) ||
-                           (j.EndTime.HasValue && j.EndTime >= shiftStart && j.EndTime <= shiftEnd) ||
-                           (j.StartTime <= shiftStart && (j.EndTime ?? now) >= shiftEnd))
-                .ToList();
-
-            var activeJob = shiftJobRuns
-                .Where(j => j.StartTime <= now)
-                .OrderByDescending(j => j.StartTime)
-                .ThenByDescending(j => j.Id)
-                .FirstOrDefault(j => j.EndTime == null);
-
-            bool hasOpenDowntime = activeJob != null &&
-                                   activeJob.DowntimeEvents.Any(d => d.EndTime == null);
-
-            var status = _oeeService.GetRealTimeStatus(machine, activeJob, hasOpenDowntime);
-
-            var currentProduct = activeJob?.WorkOrder?.Product;
-            var currentWo = activeJob?.WorkOrder;
-            
-            // SELALU gunakan gambar mesin dari Admin Panel → Machines (kolom Image)
-            // Gambar produk di Dashboard harus sama dengan gambar mesin yang ada di Admin Panel
-            string? productImageUrl = null;
-            
-            // Prioritas 1: Gunakan gambar mesin saat ini (langsung dari machine.ImageUrl)
-            // ImageUrl sudah di-ensure ter-load di loop sebelumnya dari database
-            if (!string.IsNullOrWhiteSpace(machine.ImageUrl))
-            {
-                productImageUrl = machine.ImageUrl.Trim();
-                System.Diagnostics.Debug.WriteLine($"Using machine ImageUrl for {machine.Id}: '{productImageUrl}'");
-            }
-            
-            // Fallback: Jika mesin tidak punya gambar, cari dari mesin lain yang terhubung dengan produk ini
-            if (string.IsNullOrEmpty(productImageUrl) && currentProduct != null)
-            {
-                try
-                {
-                    var productMachine = await _context.ProductMachines
-                        .AsNoTracking()
-                        .Include(pm => pm.Machine)
-                        .Where(pm => pm.ProductId == currentProduct.Id && !string.IsNullOrEmpty(pm.Machine!.ImageUrl))
-                        .Select(pm => pm.Machine!.ImageUrl)
-                        .FirstOrDefaultAsync();
-                    
-                    if (!string.IsNullOrWhiteSpace(productMachine))
-                    {
-                        productImageUrl = productMachine.Trim();
-                        System.Diagnostics.Debug.WriteLine($"Using product machine ImageUrl: '{productImageUrl}'");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log error tapi jangan stop proses
-                    System.Diagnostics.Debug.WriteLine($"Warning: Could not load product machine image: {ex.Message}");
-                }
-            }
-            
-            // Debug: Log final ImageUrl yang akan digunakan
-            System.Diagnostics.Debug.WriteLine($"Final ProductImageUrl for machine {machine.Id}: '{productImageUrl ?? "NULL"}'");
-
-            // Filter ProductionCounts berdasarkan periode shift
-            var allCounts = shiftJobRuns
-                .SelectMany(j => j.ProductionCounts)
-                .Where(c => c.Timestamp >= shiftStart && c.Timestamp <= shiftEnd)
-                .ToList();
-
-            int mTotal = allCounts.Sum(c => c.GoodCount + c.RejectCount);
-            int mGood = allCounts.Sum(c => c.GoodCount);
-
-            totalCount += mTotal;
-            goodCount += mGood;
-
-            // ✅ PERBAIKAN: Pisahkan Planned dan Unplanned Downtime, lalu hitung Operating Time
-            foreach (var jr in shiftJobRuns)
-            {
-                // Potong JobRun sesuai periode shift
-                var jrStart = jr.StartTime > shiftStart ? jr.StartTime : shiftStart;
-                var jrEnd = (jr.EndTime ?? now) < shiftEnd ? (jr.EndTime ?? now) : shiftEnd;
-                
-                if (jrStart >= jrEnd) continue;
-                
-                var jrDuration = jrEnd - jrStart;
-
-                // ✅ PERBAIKAN: Pisahkan Planned dan Unplanned Downtime
-                var jrPlannedDowntimeSeconds = jr.DowntimeEvents
-                    .Where(d => d.Reason != null && d.Reason.Category != "Unplanned")
-                    .Where(d => d.StartTime < jrEnd && (d.EndTime ?? now) > jrStart)
-                    .Sum(d =>
-                    {
-                        var dStart = d.StartTime > jrStart ? d.StartTime : jrStart;
-                        var dEnd = (d.EndTime ?? now) < jrEnd ? (d.EndTime ?? now) : jrEnd;
-                        return (dEnd - dStart).TotalSeconds;
-                    });
-
-                var jrUnplannedDowntimeSeconds = jr.DowntimeEvents
-                    .Where(d => d.Reason != null && d.Reason.Category == "Unplanned")
-                    .Where(d => d.StartTime < jrEnd && (d.EndTime ?? now) > jrStart)
-                    .Sum(d =>
-                    {
-                        var dStart = d.StartTime > jrStart ? d.StartTime : jrStart;
-                        var dEnd = (d.EndTime ?? now) < jrEnd ? (d.EndTime ?? now) : jrEnd;
-                        return (dEnd - dStart).TotalSeconds;
-                    });
-
-                // Accumulate total Planned dan Unplanned Downtime
-                totalPlannedDowntime += TimeSpan.FromSeconds(jrPlannedDowntimeSeconds);
-                totalUnplannedDowntime += TimeSpan.FromSeconds(jrUnplannedDowntimeSeconds);
-
-                // Operating Time = JobRun duration - Unplanned Downtime (Planned tidak mengurangi Operating Time)
-                var netSeconds = Math.Max(0, jrDuration.TotalSeconds - jrUnplannedDowntimeSeconds);
-                operatingTime += TimeSpan.FromSeconds(netSeconds);
-            }
-
-            // Standar cycle time diambil dari produk yang sedang jalan (jika ada)
-            var currentStandarCycle = currentProduct?.StandarCycleTime ?? 0;
-            if (currentStandarCycle > 0)
-            {
-                avgStandarCycle += currentStandarCycle;
-                standarCycleCount++;
-            }
-
             machineCards.Add(new MachineCardViewModel
             {
-                MachineId = machine.Id,
-                MachineName = machine.Name,
-                LineId = machine.LineId,
-                Status = status,
-                ProductName = currentProduct?.Name,
-                ProductImageUrl = productImageUrl,
-                WorkOrderNumber = currentWo?.OrderNumber
+                MachineId = metrics.MachineId ?? "",
+                MachineName = machines.FirstOrDefault(m => m.Id == metrics.MachineId)?.Name ?? "Unknown",
+                LineId = machines.FirstOrDefault(m => m.Id == metrics.MachineId)?.LineId ?? "",
+                Status = metrics.IsRunning ? MachineStatus.Aktif : MachineStatus.TidakAktif,
+                ProductName = metrics.ProductName,
+                ProductImageUrl = metrics.ProductImageUrl,
+                MachineImageUrl = metrics.MachineImageUrl ?? machines.FirstOrDefault(m => m.Id == metrics.MachineId)?.ImageUrl,
+                WorkOrderNumber = metrics.WorkOrderNumber
             });
+
+            totalPlannedSeconds += metrics.PlannedProductionTimeSeconds;
+            totalDownSeconds += metrics.DowntimeSeconds;
+            totalGoodCount += metrics.TotalGood;
+            totalCountSum += metrics.TotalCount;
+            totalOperatingSeconds += metrics.OperatingTimeSeconds;
+            
+            // Untuk rata-rata tertimbang
+            weightedPerformanceSum += metrics.Performance * metrics.OperatingTimeSeconds;
+            weightedQualitySum += metrics.Quality * metrics.TotalCount;
         }
 
-        if (standarCycleCount > 0)
-        {
-            avgStandarCycle /= standarCycleCount;
-        }
+        // Hitung rata-rata OEE Dashboard (Weighted Average)
+        double avgAvailability = totalPlannedSeconds > 0 ? (totalPlannedSeconds - totalDownSeconds) / totalPlannedSeconds * 100 : 0;
+        double avgPerformance = totalOperatingSeconds > 0 ? weightedPerformanceSum / totalOperatingSeconds : 0;
+        double avgQuality = totalCountSum > 0 ? weightedQualitySum / totalCountSum : 100;
+        double avgOee = (avgAvailability / 100) * (avgPerformance / 100) * (avgQuality / 100) * 100;
 
-        // ✅ FORMULA SESUAI GAMBAR: Total Downtime = Planned + Unplanned
-        TimeSpan totalDowntime = totalPlannedDowntime + totalUnplannedDowntime;
-
-        // ✅ FORMULA SESUAI GAMBAR: Operating Time = Loading Time - Down Time
-        // Loading Time = Total Shift Time
-        // Down Time = Total Downtime (Planned + Unplanned)
-        TimeSpan operatingTimeNew = totalShiftTime - totalDowntime;
-        if (operatingTimeNew.TotalSeconds < 0)
-        {
-            operatingTimeNew = TimeSpan.Zero;
-        }
-
-        // ✅ PERBAIKAN: Planned Production Time tetap dihitung untuk display (tidak digunakan di formula OEE)
-        TimeSpan plannedProductionTime = totalShiftTime - totalPlannedDowntime;
-        if (plannedProductionTime.TotalSeconds < 0)
-        {
-            plannedProductionTime = TimeSpan.Zero;
-        }
-
-        // Jika belum ada data, gunakan durasi shift sebagai default
-        if (plannedProductionTime.TotalSeconds == 0 && machines.Count == 0)
-        {
-            plannedProductionTime = totalShiftTime;
-        }
-
-        // ✅ FORMULA SESUAI GAMBAR: Hitung OEE dengan Loading Time dan Down Time
-        var oeeResult = _oeeService.CalculateOee(
-            totalShiftTime,      // Loading Time
-            totalDowntime,        // Down Time (Planned + Unplanned)
-            totalCount,
-            goodCount,
-            avgStandarCycle <= 0 ? 1 : avgStandarCycle);
+        // ✅ FORMULA DASHBOARD: Gunakan nilai agregat yang akurat
+        var oeeResult = new OeeResult(
+            Math.Round(avgAvailability, 2),
+            Math.Round(avgPerformance, 2),
+            Math.Round(avgQuality, 2),
+            Math.Round(avgOee, 2)
+        );
 
         // Generate Machine State Timeline untuk setiap mesin
         var machineStateTimelines = new List<MachineStateTimelineViewModel>();

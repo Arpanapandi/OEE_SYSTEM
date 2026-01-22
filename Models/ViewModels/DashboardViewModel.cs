@@ -10,6 +10,7 @@ public class MachineCardViewModel
     public MachineStatus Status { get; set; }
     public string? ProductName { get; set; }
     public string? ProductImageUrl { get; set; }
+    public string? MachineImageUrl { get; set; }
     public string? WorkOrderNumber { get; set; }
 }
 

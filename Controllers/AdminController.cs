@@ -2050,6 +2050,20 @@ public class AdminController : Controller
                     }
                 }
 
+                if (workOrder.PlannedDate.HasValue && (existingWorkOrder.PlannedDate != workOrder.PlannedDate || existingWorkOrder.ShiftId != workOrder.ShiftId))
+                {
+                    var shift = await _context.Shifts.FindAsync(workOrder.ShiftId);
+                    if (shift != null)
+                    {
+                        DateTime newStartTime = workOrder.PlannedDate.Value.Date + shift.StartTime;
+                        foreach (var jr in relatedJobRuns)
+                        {
+                            jr.StartTime = newStartTime;
+                            _context.Update(jr);
+                        }
+                    }
+                }
+
                 foreach (var jr in relatedJobRuns)
                 {
                     jr.MachineId = workOrder.MachineId!;

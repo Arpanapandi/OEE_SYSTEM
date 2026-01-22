@@ -249,16 +249,22 @@ public class OeeService : IOeeService
             }
         }
 
-        // FORMULA IMPLEMENTATION (AS PER USER REQUEST v2.1 CORRECTED)
-        // 1. Planned Production: Stay at full shift duration (e.g. 12:00:00)
-        TimeSpan plannedProductionTime = totalShiftTime;
+        // 1. Planned Production: Full shift duration (for display)
+        TimeSpan shiftDuration = totalShiftTime;
         
-        // 2. Operating Time: Total Job Duration (Accumulated) - Line Stop (Downtime)
-        // REVISI TOTAL: User meminta konsistensi dengan "Durasi Running Sekarang".
-        // Maka kita HANYA menghitung durasi dari JobRun TERBARU (Latest), mengabaikan job lama di shift ini.
+        // 2. Loading Time (Basis for Availability): 
+        // loadingTimeFull: Durasi shift penuh dikurangi rencana downtime (untuk display Planned Production)
+        TimeSpan loadingTimeFull = totalShiftTime - (restBreakTime + noLoadingTime);
+        if (loadingTimeFull.TotalSeconds < 0) loadingTimeFull = TimeSpan.Zero;
+
+        // loadingTimeSoFar: Waktu produksi yang direncanakan HINGGA SAAT INI (untuk perhitungan OEE Real-time)
+        TimeSpan loadingTimeSoFar = (effectiveNow - shiftStart) - (restBreakTime + noLoadingTime);
+        if (loadingTimeSoFar.TotalSeconds < 0) loadingTimeSoFar = TimeSpan.Zero;
+
+        // 3. Operating Time: Total Job Duration (Accumulated) - Line Stop (Downtime)
+        // ... (logika job terbaru tetap sama) ...
         TimeSpan totalJobDuration = TimeSpan.Zero;
         
-        // Ambil job terbaru di shift ini, aktif maupun sudah selesai
         var latestShiftJob = shiftJobRuns.OrderByDescending(j => j.StartTime).FirstOrDefault();
         
         if (latestShiftJob != null)
@@ -268,7 +274,6 @@ public class OeeService : IOeeService
              if (jrEnd > jrStart) totalJobDuration = (jrEnd - jrStart);
         }
 
-        // Hitung downtime HANYA untuk job terbaru ini agar konsisten
         TimeSpan relevantLineStop = TimeSpan.Zero;
         if (latestShiftJob != null)
         {
@@ -287,16 +292,11 @@ public class OeeService : IOeeService
              }
         }
 
-        // Override LineStopTime global dengan relevantLineStop khusus job ini (untuk visualisasi Operating Time)
-        // Catatan: Jika ingin OEE tetap akurat secara Shift, kita harus pisahkan 'ShiftOEE' dan 'DisplayTimer'.
-        // Tapi untuk sekarang ikuti permintaan user untuk sinkronisasi visual.
         TimeSpan operatingTime = totalJobDuration - relevantLineStop;
         if (operatingTime.TotalSeconds < 0) operatingTime = TimeSpan.Zero;
 
-        // Determine if machine is "Running" (Active job exists, no line stop, and within shift)
         bool isRunning = (activeJob != null && activeJob.EndTime == null && !hasActiveLineStop && now < shiftEnd);
 
-        // OEE Calculations
         var allCounts = shiftJobRuns
             .SelectMany(j => j.ProductionCounts
                 .Where(p => p.Timestamp >= shiftStart && p.Timestamp <= shiftEnd))
@@ -304,15 +304,14 @@ public class OeeService : IOeeService
 
         int totalCount = allCounts.Sum(c => c.GoodCount + c.RejectCount);
         int goodCount = allCounts.Sum(c => c.GoodCount);
-        int rejectCount = allCounts.Sum(c => c.RejectCount);
 
         double standarCycleTime = activeJob?.WorkOrder?.Product?.StandarCycleTime ?? 0;
         TimeSpan nettOperatingTime = (standarCycleTime > 0 && totalCount > 0) 
             ? TimeSpan.FromSeconds(standarCycleTime * totalCount) 
             : TimeSpan.Zero;
 
-        // Use standard industri: Loading Time = Planned Production, Down Time = Line Stop
-        var oeeResult = CalculateOee(plannedProductionTime, lineStopTime, totalCount, goodCount, standarCycleTime > 0 ? standarCycleTime : 1);
+        // ✅ PERBAIKAN: Gunakan loadingTimeSoFar untuk OEE agar nilai tidak 0 di awal shift
+        var oeeResult = CalculateOee(loadingTimeSoFar, lineStopTime, totalCount, goodCount, standarCycleTime > 0 ? standarCycleTime : 1);
 
         // Timer Sync Info
         DateTime? lastStatusChangeTime = null;
@@ -381,8 +380,8 @@ public class OeeService : IOeeService
             ShiftDate = shiftDateForWindow,
             ShiftStart = shiftStart,
             ShiftEnd = shiftEnd,
-            PlannedProductionTimeSeconds = Math.Floor(plannedProductionTime.TotalSeconds),
-            PlannedProductionTime = plannedProductionTime.ToString(@"hh\:mm\:ss"),
+            PlannedProductionTimeSeconds = Math.Floor(loadingTimeFull.TotalSeconds), // Gunakan loadingTimeFull (Shift - Planned Downtime)
+            PlannedProductionTime = loadingTimeFull.ToString(@"hh\:mm\:ss"),
             OperatingTimeSeconds = Math.Floor(operatingTime.TotalSeconds),
             OperatingTime = operatingTime.ToString(@"hh\:mm\:ss"),
             DowntimeSeconds = Math.Floor(lineStopTime.TotalSeconds),
@@ -393,8 +392,8 @@ public class OeeService : IOeeService
             NoLoadingTime = noLoadingTime.ToString(@"hh\:mm\:ss"),
             NettOperatingTimeSeconds = Math.Floor(nettOperatingTime.TotalSeconds),
             NettOperatingTime = nettOperatingTime.ToString(@"hh\:mm\:ss"),
-            OperatingPercent = plannedProductionTime.TotalSeconds > 0 ? Math.Round(operatingTime.TotalSeconds / plannedProductionTime.TotalSeconds * 100, 1) : 0,
-            DowntimePercent = plannedProductionTime.TotalSeconds > 0 ? Math.Round(lineStopTime.TotalSeconds / plannedProductionTime.TotalSeconds * 100, 1) : 0,
+            OperatingPercent = shiftDuration.TotalSeconds > 0 ? Math.Round(operatingTime.TotalSeconds / shiftDuration.TotalSeconds * 100, 1) : 0,
+            DowntimePercent = shiftDuration.TotalSeconds > 0 ? Math.Round(lineStopTime.TotalSeconds / shiftDuration.TotalSeconds * 100, 1) : 0,
             NoLoadingPercent = totalShiftTime.TotalSeconds > 0 ? Math.Round(noLoadingTime.TotalSeconds / totalShiftTime.TotalSeconds * 100, 1) : 0,
             HasActiveJob = activeJob != null,
             ActiveJobStartTime = activeJob?.StartTime.ToString("O"),
@@ -410,14 +409,16 @@ public class OeeService : IOeeService
             Performance = oeeResult.Performance,
             Quality = oeeResult.Quality,
             TotalGood = goodCount,
-            TotalReject = rejectCount,
+            TotalReject = totalCount - goodCount, // Hitung inline
             TotalCount = totalCount,
             TargetQuantity = activeJob?.WorkOrder?.TargetQuantity ?? 0,
             MachineStatus = machine.Status.ToString(),
             ProductName = activeJob?.WorkOrder?.Product?.Name,
             WorkOrderNumber = activeJob?.WorkOrder?.OrderNumber,
             ProductImageUrl = activeJob?.WorkOrder?.Product?.ImageUrl,
+            MachineImageUrl = machine?.ImageUrl, // Tambahkan Machine Image
             EstimatedCompletion = estimatedCompletion,
+            CurrentState = activeJob?.CurrentState ?? "STOPPED", // ✅ NEW
             DandoriDurationSeconds = dandoriDurationSeconds,
             DandoriStartTime = dandoriStart?.ToString("O"),
             DandoriEndTime = dandoriEnd?.ToString("O")
@@ -665,6 +666,61 @@ public class OeeService : IOeeService
         if (operatingTime.TotalSeconds < 0) operatingTime = TimeSpan.Zero;
 
         return new JobDurationMetrics(totalDuration, totalNonRunningTime, totalDowntime, operatingTime, currentDowntime, isRunning);
+    }
+
+    public async Task EnsureOnlyOneActiveJobAsync(string machineId)
+    {
+        var nowLocal = DateTime.Now;
+        
+        // Cari semua JobRun yang masih aktif (EndTime == null) untuk mesin ini
+        var activeJobs = await _context.JobRuns
+            .Where(j => j.MachineId == machineId && j.EndTime == null)
+            .OrderByDescending(j => j.StartTime)
+            .ToListAsync();
+            
+        if (activeJobs.Count > 1)
+        {
+            // Sisakan yang paling baru (index 0), tutup sisanya
+            foreach (var stale in activeJobs.Skip(1))
+            {
+                stale.EndTime = nowLocal;
+                
+                // Tutup juga downtime yang masih open jika ada
+                var openDowntimes = await _context.DowntimeEvents
+                    .Where(d => d.JobRunId == stale.Id && d.EndTime == null)
+                    .ToListAsync();
+                
+                foreach (var d in openDowntimes)
+                {
+                    d.EndTime = nowLocal;
+                    d.DurationSeconds = (nowLocal - d.StartTime).TotalSeconds;
+                }
+            }
+            
+            await _context.SaveChangesAsync();
+            Console.WriteLine($"✅ EnsureOnlyOneActiveJobAsync: Force closed {activeJobs.Count - 1} ghost jobs for Machine {machineId}");
+        }
+    }
+
+    public async Task<List<TimeMetricsResult>> GetDashboardMetricsAsync(int? shiftId = null, int? plantId = null, string? machineId = null)
+    {
+        // 1. Ambil daftar mesin sesuai filter
+        var query = _context.Machines.AsNoTracking();
+        if (plantId.HasValue) query = query.Where(m => m.PlantId == plantId.Value);
+        if (!string.IsNullOrEmpty(machineId)) query = query.Where(m => m.Id == machineId);
+        
+        var machines = await query.ToListAsync();
+        var results = new List<TimeMetricsResult>();
+
+        // 2. Ambil metrik untuk setiap mesin
+        // Note: GetTimeMetricsAsync sudah menangani shift detection
+        foreach (var m in machines)
+        {
+            var metrics = await GetTimeMetricsAsync(m.Id, shiftId);
+            results.Add(metrics);
+        }
+
+        return results;
     }
 }
 

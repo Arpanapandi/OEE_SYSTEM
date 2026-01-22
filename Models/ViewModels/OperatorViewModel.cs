@@ -25,6 +25,10 @@ public class OperatorViewModel
     // Machine Status dari Admin (Aktif/Tidak Aktif)
     public MachineStatus MachineStatus { get; set; } = MachineStatus.TidakAktif;
 
+    // ✅ NEW: Current State dari JobRun (RUNNING, REST_BREAK, LINE_STOP, NO_LOADING, STOPPED)
+    public string CurrentState { get; set; } = "STOPPED";
+    public DateTime? LastStatusChangeTime { get; set; }
+
     public List<DowntimeReason> LineStopReasons { get; set; } = new();
     public DowntimeReason? RestReason { get; set; }
     public List<NgType> NgTypes { get; set; } = new();

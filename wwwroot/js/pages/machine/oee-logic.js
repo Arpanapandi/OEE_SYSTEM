@@ -16,6 +16,9 @@ window.OeeLogic = (function () {
         sinceLastChangeInterval: null,
         lastChangeTimestamp: null,
 
+        // ✅ NEW: Current State dari backend
+        currentState: 'STOPPED',
+
         // Item Production Timer (Manual/Auto per production item)
         durasiProduksiInterval: null,
         durasiProduksiStartTime: null,
@@ -45,23 +48,32 @@ window.OeeLogic = (function () {
         // 1. Server Time
         initializeServerTime();
 
-        // 2. SignalR
+        // 2. ✅ Initialize Current State
+        state.currentState = config.currentState || 'STOPPED';
+        console.log('📊 Initial State:', state.currentState);
+
+        // 3. SignalR
         initSignalR();
 
-        // 3. Timers
+        // 4. Timers
         if (config.lastStatusChange) {
             state.lastChangeTimestamp = new Date(config.lastStatusChange);
             resetTimers(state.lastChangeTimestamp);
         }
 
-        // 4. Polling
+        // 5. Polling
         state.timeMetricsInterval = setInterval(fetchTimeMetrics, 10000); // 10s for better responsiveness
 
-        // 5. Init Production Logic
+        // 6. Init Production Logic
         initProductionLogic();
 
-        // 6. Init Machine Action Timer
+        // 7. Init Machine Action Timer
         MachineTimer.init();
+
+        // 8. ✅ Update Button States based on CurrentState
+        if (window.updateActionButtonsState) {
+            window.updateActionButtonsState(state.currentState);
+        }
     }
 
     // --- Utilities ---
@@ -131,41 +143,36 @@ window.OeeLogic = (function () {
         const elStats = document.getElementById('since-last-status');
         if (elStats && elStats.textContent !== timeStr) elStats.textContent = timeStr;
 
-        // --- 2. Real-time Time Metrics (Tick Up) ---
+        // --- 2. Real-time Time Metrics (TIMESTAMP-BASED, NO MANUAL INCREMENT) ---
+        // ✅ CRITICAL: Metrics are DISPLAY ONLY, calculated from server base + current elapsed time
         const m = state.metrics;
-        // Hanya tick jika belum melewati ShiftEnd
-        if (m.shiftEnd && now < m.shiftEnd) {
-            // Logika: Operating Time hanya berhenti saat Line Stop (Downtime)
-            if (m.isRunning || m.hasActiveRest || m.hasActiveNoLoading) {
-                m.operatingSeconds++;
-            }
 
-            if (m.hasActiveDowntime) m.downtimeSeconds++;
-            if (m.hasActiveRest) m.restSeconds++;
-            if (m.hasActiveNoLoading) m.noLoadingSeconds++;
+        // Helper to display formatted time
+        const setVal = (id, seconds) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = format(Math.floor(seconds));
+        };
 
-            // Update UI
-            const setVal = (id, s) => {
+        // Calculate live values based on state
+        // Base values come from server (last fetch), we add elapsed time since last status change
+        const elapsedSinceChange = diff; // Already calculated above
+
+        // Display metrics (Base from server + live elapsed if applicable)
+        setVal('operating-time', m.operatingSeconds);
+        setVal('downtime-total', m.downtimeSeconds);
+        setVal('rest-break-time', m.restSeconds);
+        setVal('no-loading-time', m.noLoadingSeconds);
+
+        // Update Progress Bars
+        if (m.plannedSeconds > 0) {
+            const updateBar = (id, s) => {
                 const el = document.getElementById(id);
-                if (el) el.textContent = format(Math.floor(s));
+                if (el) el.style.width = (s / m.plannedSeconds * 100).toFixed(1) + '%';
             };
-
-            setVal('operating-time', m.operatingSeconds);
-            setVal('downtime-total', m.downtimeSeconds);
-            setVal('rest-break-time', m.restSeconds);
-            setVal('no-loading-time', m.noLoadingSeconds);
-
-            // Update Progress Bars (occasional)
-            if (m.plannedSeconds > 0) {
-                const updateBar = (id, s) => {
-                    const el = document.getElementById(id);
-                    if (el) el.style.width = (s / m.plannedSeconds * 100).toFixed(1) + '%';
-                };
-                updateBar('operating-progress-bar', m.operatingSeconds);
-                updateBar('downtime-progress-bar', m.downtimeSeconds);
-                updateBar('rest-break-progress-bar', m.restSeconds);
-                updateBar('no-loading-progress-bar', m.noLoadingSeconds);
-            }
+            updateBar('operating-progress-bar', m.operatingSeconds);
+            updateBar('downtime-progress-bar', m.downtimeSeconds);
+            updateBar('rest-break-progress-bar', m.restSeconds);
+            updateBar('no-loading-progress-bar', m.noLoadingSeconds);
         }
     }
 
@@ -205,6 +212,17 @@ window.OeeLogic = (function () {
         state.metrics.hasActiveRest = data.HasActiveRestBreak || false;
         state.metrics.hasActiveNoLoading = data.HasActiveNoLoading || false;
 
+        // ✅ NEW: Update CurrentState from backend
+        if (data.CurrentState && data.CurrentState !== state.currentState) {
+            console.log(`🔄 State Changed: ${state.currentState} → ${data.CurrentState}`);
+            state.currentState = data.CurrentState;
+
+            // Update button states
+            if (window.updateActionButtonsState) {
+                window.updateActionButtonsState(state.currentState);
+            }
+        }
+
         console.log('📊 Metrics State Updated:', {
             operating: state.metrics.operatingSeconds,
             downtime: state.metrics.downtimeSeconds,
@@ -213,7 +231,8 @@ window.OeeLogic = (function () {
             isRunning: state.metrics.isRunning,
             hasDowntime: state.metrics.hasActiveDowntime,
             hasRest: state.metrics.hasActiveRest,
-            hasNoLoading: state.metrics.hasActiveNoLoading
+            hasNoLoading: state.metrics.hasActiveNoLoading,
+            currentState: state.currentState // ✅ NEW
         });
 
         // Immediately update UI with new state
@@ -228,17 +247,36 @@ window.OeeLogic = (function () {
         setTxt('quality-value', (getVal('Quality')).toFixed(0) + '%');
 
         // 3. Work Order Details
-        setTxt('current-qty', data.TotalGood ?? data.totalGood ?? 0);
-        setTxt('target-qty', data.TargetQuantity ?? data.targetQuantity ?? 0);
-        setTxt('total-good-wo', data.TotalGood ?? data.totalGood ?? 0);
-        setTxt('total-reject-wo', data.TotalReject ?? data.totalReject ?? 0);
-        setTxt('est-completion-wo', data.EstimatedCompletion || data.estimatedCompletion || '-');
+        const woNumber = data.WorkOrderNumber || data.workOrderNumber;
+        const productName = data.ProductName || data.productName;
+        const hasJob = !!woNumber && woNumber !== '-';
 
-        // 4. Update Product Image if changed
-        const imageUrl = data.ProductImageUrl || data.productImageUrl;
-        if (imageUrl) {
-            const imgEl = document.querySelector('.wo-image-box img');
-            if (imgEl && imgEl.src !== imageUrl) {
+        // Sync to Global Config for Machine Actions (machine-actions.js)
+        if (window.OeeConfig) {
+            window.OeeConfig.hasActiveJob = hasJob;
+        }
+
+        // Toggle WO Content Visibility
+        const activeContent = document.getElementById('wo-active-content');
+        const emptyContent = document.getElementById('wo-empty-content');
+        if (activeContent && emptyContent) {
+            activeContent.style.display = hasJob ? 'block' : 'none';
+            emptyContent.style.display = hasJob ? 'none' : 'block';
+        }
+
+        if (hasJob) {
+            setTxt('wo-number-display', woNumber);
+            setTxt('wo-product-name-display', productName);
+            setTxt('current-qty', data.TotalGood ?? data.totalGood ?? 0);
+            setTxt('target-qty', data.TargetQuantity ?? data.targetQuantity ?? 0);
+            setTxt('total-good-wo', data.TotalGood ?? data.totalGood ?? 0);
+            setTxt('total-reject-wo', data.TotalReject ?? data.totalReject ?? 0);
+            setTxt('est-completion-wo', data.EstimatedCompletion || data.estimatedCompletion || '-');
+
+            // 4. Update Product Image
+            const imageUrl = data.ProductImageUrl || data.productImageUrl;
+            const imgEl = document.getElementById('wo-product-image');
+            if (imgEl && imageUrl && (!imgEl.src.includes(imageUrl))) {
                 console.log('🖼️ Syncing Product Image:', imageUrl);
                 imgEl.src = imageUrl;
             }

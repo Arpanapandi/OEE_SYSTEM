@@ -16,6 +16,10 @@ public class JobRun
     // ✅ PERBAIKAN: Waktu terakhir status mesin berubah (untuk kalkulasi OEE duration)
     public DateTime? LastStatusChangeTime { get; set; }
 
+    // ✅ NEW: SINGLE SOURCE OF TRUTH - State mesin saat ini
+    // Value: "RUNNING", "REST_BREAK", "LINE_STOP", "NO_LOADING", "STOPPED"
+    public string CurrentState { get; set; } = "STOPPED";
+
     public int OperatorId { get; set; }
     public User? Operator { get; set; }
 
