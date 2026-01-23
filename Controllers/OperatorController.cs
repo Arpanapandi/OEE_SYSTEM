@@ -116,7 +116,18 @@ public class OperatorController : Controller
             ActiveDowntimeDescription = openDowntime?.Reason?.Description,
             SinceLastChange = sinceLastChange,
             MachineStatus = machine.Status, // Status dari Admin (Aktif/Tidak Aktif)
-            CurrentState = activeJob?.CurrentState ?? "STOPPED", // ✅ NEW
+            
+            
+            // ✅ STRICT STATE LOGIC:
+            // 1. If Job == null -> STOPPED
+            // 2. If Open Downtime exists -> Check Reason (Rest/NoLoading/LineStop)
+            // 3. If No Open Downtime -> RUNNING
+            CurrentState = activeJob == null ? "STOPPED" : 
+                           (openDowntime != null ? 
+                                (openDowntime.IsRestBreak ? "REST_BREAK" : 
+                                 openDowntime.IsNoLoading ? "NO_LOADING" : "LINE_STOP") 
+                           : "RUNNING"),
+                           
             LastStatusChangeTime = activeJob?.LastStatusChangeTime, // ✅ NEW
             LineStopReasons = lineStops,
             RestReason = restReason,
@@ -134,6 +145,36 @@ public class OperatorController : Controller
 
         // ✅ STRICT POLICY: Ensure ONLY one active JobRun exists for this machine
         await _oeeService.EnsureOnlyOneActiveJobAsync(machineId);
+
+        // ✅ CHECK IDEMPOTENCY: Is machine already RUNNING?
+        // Reuse the same logic to determine current state
+        var activeJob = await _context.JobRuns
+             .Include(j => j.DowntimeEvents)
+             .ThenInclude(d => d.Reason)
+             .OrderByDescending(j => j.StartTime)
+             .FirstOrDefaultAsync(j => j.MachineId == machineId && j.EndTime == null);
+
+        if (activeJob != null)
+        {
+            var openDowntime = activeJob.DowntimeEvents.FirstOrDefault(d => d.EndTime == null);
+            if (openDowntime == null)
+            {
+                // Machine is ALREADY in RUNNING state (Active Job + No Open Downtime)
+                // Return success immediately to prevent Timer Reset
+                 if (isAjax)
+                 {
+                     return Json(new
+                     {
+                         success = true,
+                         message = "Machine is already running",
+                         lastStatusChangeTime = activeJob.LastStatusChangeTime?.ToString("O"), // Use existing time
+                         machineStatus = "Aktif",
+                         currentState = "RUNNING"
+                     });
+                 }
+                 return RedirectToAction(nameof(Index), new { machineId });
+            }
+        }
 
         // ✅ CORE LOGIC: Use centralized state management
         var result = await ChangeMachineState(machineId, "RUNNING", null, manPowerId);
@@ -810,7 +851,7 @@ public class OperatorController : Controller
                 .Include(j => j.Machine)
                 .Include(j => j.WorkOrder)
                     .ThenInclude(w => w!.Product)
-                .Where(j => j.MachineId == machineId && j.EndTime == null)
+                .Where(j => j.MachineId == machineId && j.EndTime == null && j.StartTime <= now.AddHours(12)) // Filter future jobs
                 .OrderByDescending(j => j.StartTime)
                 .FirstOrDefaultAsync();
 

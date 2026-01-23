@@ -52,77 +52,81 @@ window.updateMachineStatusUI = function (status, downtimeDescription, currentSta
 
 // ✅ CORE FUNCTION: State-based button management
 function updateActionButtonsState(currentState) {
-    console.log('🎛️ updateActionButtonsState:', currentState);
+    console.log('🎛️ updateActionButtonsState input:', currentState);
 
     const btnRunning = document.getElementById('btn-running');
     const btnRest = document.getElementById('btn-rest');
     const btnLineStop = document.getElementById('btn-line-stop');
     const btnNoLoading = document.getElementById('btn-no-loading');
 
-    // Validate state
-    const validStates = ['RUNNING', 'REST_BREAK', 'LINE_STOP', 'NO_LOADING', 'STOPPED'];
-    if (!validStates.includes(currentState)) {
-        console.warn('⚠️ Invalid state:', currentState, '- defaulting to STOPPED');
-        currentState = 'STOPPED';
+    // Strict Normalization
+    const validStates = ['RUNNING', 'REST_BREAK', 'LINE_STOP', 'NO_LOADING'];
+    let effectiveState = validStates.includes(currentState) ? currentState : 'STOPPED';
+    console.log('   -> Effective State:', effectiveState);
+
+    // Update Global Config for other scripts
+    if (window.OeeConfig) {
+        window.OeeConfig.currentState = effectiveState;
     }
 
-    // ✅ STATE MACHINE LOGIC
-    switch (currentState) {
+    // Helper to set but state
+    const setBtn = (btn, enabled, activeStyle = false) => {
+        if (!btn) return;
+        btn.disabled = !enabled;
+        if (enabled) {
+            btn.classList.remove('btn-secondary');
+            if (activeStyle) btn.classList.add('btn-success');
+        } else {
+            // Disabled style
+            // Usually Bootstrap handles disabled appearance, but we can enforce secondary if needed
+            // btn.classList.add('btn-secondary'); 
+            // btn.classList.remove('btn-success');
+        }
+    };
+
+    // ✅ STATE MACHINE LOGIC (Strict 4-State + Stopped)
+    switch (effectiveState) {
         case 'RUNNING':
-            // Mesin sedang produksi
-            if (btnRunning) {
-                btnRunning.disabled = true;
-                btnRunning.classList.add('btn-secondary');
-                btnRunning.classList.remove('btn-success');
-            }
-            if (btnRest) btnRest.disabled = false;
-            if (btnLineStop) btnLineStop.disabled = false;
-            if (btnNoLoading) btnNoLoading.disabled = false;
+            // Running: CANNOT click Run. CAN click Stops.
+            setBtn(btnRunning, false); // Disabled
+            if (btnRunning) { btnRunning.classList.add('btn-secondary'); btnRunning.classList.remove('btn-success'); }
+
+            setBtn(btnRest, true);
+            setBtn(btnLineStop, true);
+            setBtn(btnNoLoading, true);
 
             // Enable production input
             enableProductionInput(true);
             break;
 
         case 'REST_BREAK':
-            // Mesin istirahat (planned)
-            if (btnRunning) {
-                btnRunning.disabled = false;
-                btnRunning.classList.remove('btn-secondary');
-                btnRunning.classList.add('btn-success');
-            }
-            if (btnRest) btnRest.disabled = true;
-            if (btnLineStop) btnLineStop.disabled = false;
-            if (btnNoLoading) btnNoLoading.disabled = false;
+            // Rest: CAN click Run (Resume). CAN switch to other stops (LineStop/NoLoading). CANNOT click Rest again.
+            setBtn(btnRunning, true, true); // Active (Resume)
+            setBtn(btnRest, false); // Disabled (Already Active)
+            setBtn(btnLineStop, true);
+            setBtn(btnNoLoading, true);
 
             // Disable production input
             enableProductionInput(false);
             break;
 
         case 'LINE_STOP':
-            // Mesin downtime (unplanned)
-            if (btnRunning) {
-                btnRunning.disabled = false;
-                btnRunning.classList.remove('btn-secondary');
-                btnRunning.classList.add('btn-success');
-            }
-            if (btnRest) btnRest.disabled = false;
-            if (btnLineStop) btnLineStop.disabled = true;
-            if (btnNoLoading) btnNoLoading.disabled = false;
+            // LineStop: CAN click Run (Resume). CAN switch to other stops. CANNOT click LineStop again.
+            setBtn(btnRunning, true, true); // Active (Resume)
+            setBtn(btnRest, true); // Can switch? Usually Yes.
+            setBtn(btnLineStop, false); // Disabled (Already Active)
+            setBtn(btnNoLoading, true);
 
             // Disable production input
             enableProductionInput(false);
             break;
 
         case 'NO_LOADING':
-            // Mesin no loading (planned)
-            if (btnRunning) {
-                btnRunning.disabled = false;
-                btnRunning.classList.remove('btn-secondary');
-                btnRunning.classList.add('btn-success');
-            }
-            if (btnRest) btnRest.disabled = false;
-            if (btnLineStop) btnLineStop.disabled = false;
-            if (btnNoLoading) btnNoLoading.disabled = true;
+            // NoLoading: CAN click Run (Resume). CAN switch to other stops. CANNOT click NoLoading again.
+            setBtn(btnRunning, true, true); // Active (Resume)
+            setBtn(btnRest, true);
+            setBtn(btnLineStop, true);
+            setBtn(btnNoLoading, false); // Disabled (Already Active)
 
             // Disable production input
             enableProductionInput(false);
@@ -130,15 +134,19 @@ function updateActionButtonsState(currentState) {
 
         case 'STOPPED':
         default:
-            // Mesin belum start atau sudah selesai
-            if (btnRunning) {
-                btnRunning.disabled = false;
-                btnRunning.classList.remove('btn-secondary');
-                btnRunning.classList.add('btn-success');
-            }
-            if (btnRest) btnRest.disabled = true;
-            if (btnLineStop) btnLineStop.disabled = true;
-            if (btnNoLoading) btnNoLoading.disabled = true;
+            // Stopped: CAN click Run (Start). CANNOT click Stops (Conceptually, must Run first? Or strict user rule?)
+            // User: "Button disabled yang menyebabkan jadi tidak pindah status" -> This implies if Stopped, buttons might be disabled wrongly?
+            // Usually, Initial State allows Start. Actions like Rest/Stop usually require an active job (which Running creates).
+            // However, Start creates the Job.
+
+            setBtn(btnRunning, true, true); // Active (Start)
+
+            // Logic: Can we do Rest/Stop if not running? 
+            // Backend requires active job. If Stopped means No Active Job, these fail.
+            // So Disabled is correct.
+            setBtn(btnRest, false);
+            setBtn(btnLineStop, false);
+            setBtn(btnNoLoading, false);
 
             // Disable production input
             enableProductionInput(false);

@@ -252,6 +252,7 @@ public class MachineController : Controller
 
         var activeJob = (machine.JobRuns ?? Enumerable.Empty<JobRun>())
             // .Where(j => j.StartTime <= now)
+            .Where(j => j.StartTime <= now.AddHours(12)) // Filter future jobs (prevent masking by next month's plan)
             .OrderByDescending(j => j.StartTime)
             .ThenByDescending(j => j.Id)
             .FirstOrDefault(j => j.EndTime == null);
@@ -260,6 +261,11 @@ public class MachineController : Controller
 
         bool hasOpenDowntime = activeJob != null &&
                                activeJob.DowntimeEvents.Any(d => d.EndTime == null);
+
+        // ✅ MOVED UP: Required for CurrentState calculation in VM
+        var openDowntimeForStatus = activeJob?.DowntimeEvents
+            .OrderByDescending(d => d.StartTime)
+            .FirstOrDefault(d => d.EndTime == null);
 
         var status = _oeeService.GetRealTimeStatus(machine, activeJob, hasOpenDowntime);
 
@@ -309,7 +315,12 @@ public class MachineController : Controller
             HasActiveRestBreak = metrics.HasActiveRestBreak,
             IsNoLoading = metrics.HasActiveNoLoading,
             MachineStatus = machine.Status,
-            CurrentState = activeJob?.CurrentState ?? "STOPPED" // ✅ NEW
+            // ✅ ALIGNMENT: Calculate CurrentState dynamically (consistent with OeeService & OperatorController)
+            CurrentState = activeJob == null ? "STOPPED" : 
+                           (hasOpenDowntime && openDowntimeForStatus != null ? 
+                                (openDowntimeForStatus.IsRestBreak ? "REST_BREAK" : 
+                                 openDowntimeForStatus.IsNoLoading ? "NO_LOADING" : "LINE_STOP") 
+                           : "RUNNING")
         };
 
         // Active Job Info
@@ -607,9 +618,7 @@ public class MachineController : Controller
         // Status untuk action buttons
         vm.HasActiveJob = activeJob != null;
         vm.HasActiveDowntime = hasOpenDowntime;
-        var openDowntimeForStatus = activeJob?.DowntimeEvents
-            .OrderByDescending(d => d.StartTime)
-            .FirstOrDefault(d => d.EndTime == null);
+        // openDowntimeForStatus declared above
         vm.ActiveDowntimeDescription = openDowntimeForStatus?.Reason?.Description;
         vm.MachineStatus = machine.Status; // Status dari Admin (Aktif/TidakAktif)
 

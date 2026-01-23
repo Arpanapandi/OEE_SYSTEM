@@ -16,6 +16,9 @@ window.OeeLogic = (function () {
         sinceLastChangeInterval: null,
         lastChangeTimestamp: null,
 
+        // Timestamp when metrics were last fetched (for client-side ticking)
+        metricsTimestamp: null,
+
         // ✅ NEW: Current State dari backend
         currentState: 'STOPPED',
 
@@ -143,9 +146,21 @@ window.OeeLogic = (function () {
         const elStats = document.getElementById('since-last-status');
         if (elStats && elStats.textContent !== timeStr) elStats.textContent = timeStr;
 
-        // --- 2. Real-time Time Metrics (TIMESTAMP-BASED, NO MANUAL INCREMENT) ---
-        // ✅ CRITICAL: Metrics are DISPLAY ONLY, calculated from server base + current elapsed time
+        // --- 2. Real-time Time Metrics (Client-Side Ticking) ---
         const m = state.metrics;
+
+        // Calculate elapsed time (seconds) since last metric fetch
+        // Use client time `Date.now()` for constant ticking, assuming metricsTimestamp is also client time
+        let elapsedTick = 0;
+        if (state.metricsTimestamp) {
+            elapsedTick = Math.max(0, (Date.now() - state.metricsTimestamp) / 1000);
+        }
+
+        // Apply ticking based on state
+        const liveOperating = m.operatingSeconds + (m.isRunning ? elapsedTick : 0);
+        const liveDowntime = m.downtimeSeconds + (m.hasActiveDowntime ? elapsedTick : 0);
+        const liveRest = m.restSeconds + (m.hasActiveRest ? elapsedTick : 0);
+        const liveNoLoading = m.noLoadingSeconds + (m.hasActiveNoLoading ? elapsedTick : 0);
 
         // Helper to display formatted time
         const setVal = (id, seconds) => {
@@ -153,26 +168,22 @@ window.OeeLogic = (function () {
             if (el) el.textContent = format(Math.floor(seconds));
         };
 
-        // Calculate live values based on state
-        // Base values come from server (last fetch), we add elapsed time since last status change
-        const elapsedSinceChange = diff; // Already calculated above
+        // Display Metrics
+        setVal('operating-time', liveOperating);
+        setVal('downtime-total', liveDowntime);
+        setVal('rest-break-time', liveRest);
+        setVal('no-loading-time', liveNoLoading);
 
-        // Display metrics (Base from server + live elapsed if applicable)
-        setVal('operating-time', m.operatingSeconds);
-        setVal('downtime-total', m.downtimeSeconds);
-        setVal('rest-break-time', m.restSeconds);
-        setVal('no-loading-time', m.noLoadingSeconds);
-
-        // Update Progress Bars
+        // Update Progress Bars (Use live values)
         if (m.plannedSeconds > 0) {
             const updateBar = (id, s) => {
                 const el = document.getElementById(id);
                 if (el) el.style.width = (s / m.plannedSeconds * 100).toFixed(1) + '%';
             };
-            updateBar('operating-progress-bar', m.operatingSeconds);
-            updateBar('downtime-progress-bar', m.downtimeSeconds);
-            updateBar('rest-break-progress-bar', m.restSeconds);
-            updateBar('no-loading-progress-bar', m.noLoadingSeconds);
+            updateBar('operating-progress-bar', liveOperating);
+            updateBar('downtime-progress-bar', liveDowntime);
+            updateBar('rest-break-progress-bar', liveRest);
+            updateBar('no-loading-progress-bar', liveNoLoading);
         }
     }
 
@@ -188,6 +199,9 @@ window.OeeLogic = (function () {
     function applyMetrics(data) {
         if (!data) return;
 
+        // Capture client timestamp for ticking sync
+        state.metricsTimestamp = Date.now();
+
         // 1. Time Cards - Try both PascalCase and camelCase
         const setTxt = (id, val) => {
             const el = document.getElementById(id);
@@ -199,7 +213,7 @@ window.OeeLogic = (function () {
         // Update Planned Production (static value)
         setTxt('planned-production-time', data.PlannedProductionTime || data.plannedProductionTime || '-');
 
-        // Update State for Real-time Ticking (DO NOT update UI directly - let updateTimerDisplay handle it)
+        // Update State for Real-time Ticking
         state.metrics.plannedSeconds = data.PlannedProductionTimeSeconds || data.plannedProductionTimeSeconds || 43200;
         state.metrics.operatingSeconds = data.OperatingTimeSeconds || data.operatingTimeSeconds || 0;
         state.metrics.downtimeSeconds = data.DowntimeSeconds || data.downtimeSeconds || 0;
@@ -212,10 +226,11 @@ window.OeeLogic = (function () {
         state.metrics.hasActiveRest = data.HasActiveRestBreak || false;
         state.metrics.hasActiveNoLoading = data.HasActiveNoLoading || false;
 
-        // ✅ NEW: Update CurrentState from backend
-        if (data.CurrentState && data.CurrentState !== state.currentState) {
-            console.log(`🔄 State Changed: ${state.currentState} → ${data.CurrentState}`);
-            state.currentState = data.CurrentState;
+        // ✅ NEW: Update CurrentState from backend (Handle both PascalCase and camelCase)
+        const incomingState = data.CurrentState || data.currentState;
+        if (incomingState && incomingState !== state.currentState) {
+            console.log(`🔄 State Changed: ${state.currentState} → ${incomingState}`);
+            state.currentState = incomingState;
 
             // Update button states
             if (window.updateActionButtonsState) {

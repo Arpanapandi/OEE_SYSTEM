@@ -2050,6 +2050,93 @@ public class AdminController : Controller
                     }
                 }
 
+                // ✅ LOGIC BARU: Sinkronisasi Status WorkOrder dengan JobRun
+                // Jika Status diubah kembali ke InProgress/Planned, pastikan ada JobRun aktif
+                if (workOrder.Status == WorkOrderStatus.InProgress || workOrder.Status == WorkOrderStatus.Planned)
+                {
+                    // 1. Cek apakah ada active job untuk WO ini
+                    var myActiveJob = await _context.JobRuns
+                        .Where(j => j.WorkOrderId == id && j.EndTime == null)
+                        .FirstOrDefaultAsync();
+
+                    if (myActiveJob == null)
+                    {
+                        // Tidak ada job aktif, coba cari job terakhir untuk di-reopen
+                        var lastJob = await _context.JobRuns
+                            .Where(j => j.WorkOrderId == id)
+                            .OrderByDescending(j => j.StartTime)
+                            .FirstOrDefaultAsync();
+
+                        if (lastJob != null && lastJob.MachineId == workOrder.MachineId)
+                        {
+                            // Re-open job terakhir jika mesin sama
+                            lastJob.EndTime = null; 
+                            _context.Update(lastJob);
+                        }
+                        else
+                        {
+                            // Create new JobRun jika tidak ada history atau mesin berubah
+                            var newJob = new JobRun
+                            {
+                                WorkOrderId = id,
+                                MachineId = workOrder.MachineId!, // Pastikan MachineId tidak null di form
+                                StartTime = workOrder.PlannedDate.HasValue 
+                                    ? workOrder.PlannedDate.Value.Date + (await _context.Shifts.FindAsync(workOrder.ShiftId) ?? new Shift()).StartTime
+                                    : DateTime.Now,
+                                EndTime = null,
+                                OperatorId = 1, // Default operator system atau perlu input user
+                                CurrentState = "STOPPED" // Start as stopped/no loading
+                            };
+                            _context.JobRuns.Add(newJob);
+                            
+                            // Tambahkan initial downtime event (No Loading) agar tidak langsung running
+                            var noLoadingEvent = new DowntimeEvent
+                            {
+                                JobRun = newJob,
+                                ReasonId = 1, // Temporary, will replace
+                                StartTime = newJob.StartTime,
+                                EndTime = null,
+                                IsNoLoading = true
+                            };
+
+                            // Look up a valid reason to prevent FK error
+                            var anyReason = await _context.DowntimeReasons.FirstOrDefaultAsync();
+                            if (anyReason != null)
+                            {
+                                noLoadingEvent.ReasonId = anyReason.Id;
+                                _context.DowntimeEvents.Add(noLoadingEvent);
+                            }
+                        }
+
+                        // CRITICAL: Tutup job lain di mesin yang sama agar tidak ada double active job
+                        if (!string.IsNullOrEmpty(workOrder.MachineId))
+                        {
+                            var jobsToClose = await _context.JobRuns
+                                .Where(j => j.MachineId == workOrder.MachineId && j.EndTime == null && j.WorkOrderId != id)
+                                .ToListAsync();
+                            
+                            foreach (var j in jobsToClose)
+                            {
+                                j.EndTime = DateTime.Now;
+                                _context.Update(j);
+                            }
+                        }
+                    }
+                }
+                else if (workOrder.Status == WorkOrderStatus.Completed)
+                {
+                    // Jika status Completed, pastikan semua JobRun ditutup
+                    var openJobs = await _context.JobRuns
+                        .Where(j => j.WorkOrderId == id && j.EndTime == null)
+                        .ToListAsync();
+                    
+                    foreach (var job in openJobs)
+                    {
+                        job.EndTime = DateTime.Now;
+                        _context.Update(job);
+                    }
+                }
+
                 if (workOrder.PlannedDate.HasValue && (existingWorkOrder.PlannedDate != workOrder.PlannedDate || existingWorkOrder.ShiftId != workOrder.ShiftId))
                 {
                     var shift = await _context.Shifts.FindAsync(workOrder.ShiftId);

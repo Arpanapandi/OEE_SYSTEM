@@ -37,6 +37,13 @@ window.handleRunningClickDirect = async function (button) {
         return;
     }
 
+    // ✅ STRICT STATE GUARD: Prevent reset if already running
+    // Backend also handles this (Idempotency), but Frontend check gives instant feedback
+    if (window.OeeConfig && window.OeeConfig.currentState === 'RUNNING') {
+        console.warn('⚠️ Machine is already RUNNING. Action ignored.');
+        return; // Do nothing
+    }
+
     // Ensure dependencies
     if (typeof window.updateMachineStatusUI !== 'function') {
         console.error('updateMachineStatusUI missing'); return;
@@ -80,6 +87,9 @@ window.handleRunningClickDirect = async function (button) {
 
             // Update UI
             window.updateMachineStatusUI('Aktif', '');
+
+            // Update local state explicitly
+            if (window.OeeConfig) window.OeeConfig.currentState = 'RUNNING';
 
             // Refresh Data
             if (window.OeeLogic && typeof window.OeeLogic.fetchTimeMetrics === 'function') {

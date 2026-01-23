@@ -179,6 +179,7 @@ public class OeeService : IOeeService
         if (machine == null) return new TimeMetricsResult();
 
         var activeJob = machine.JobRuns
+            .Where(j => j.StartTime <= now.AddHours(12)) // Filter future jobs
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefault(j => j.EndTime == null);
 
@@ -261,38 +262,11 @@ public class OeeService : IOeeService
         TimeSpan loadingTimeSoFar = (effectiveNow - shiftStart) - (restBreakTime + noLoadingTime);
         if (loadingTimeSoFar.TotalSeconds < 0) loadingTimeSoFar = TimeSpan.Zero;
 
-        // 3. Operating Time: Total Job Duration (Accumulated) - Line Stop (Downtime)
-        // ... (logika job terbaru tetap sama) ...
-        TimeSpan totalJobDuration = TimeSpan.Zero;
+        // 3. Operating Time: Calculated from Shift Loading Time - Shift Downtime (Line Stop)
+        // This ensures consistency with the OEE Availability Calculation.
+        // Formula: Operating Time = Loading Time (So Far) - Total Line Stop (So Far)
         
-        var latestShiftJob = shiftJobRuns.OrderByDescending(j => j.StartTime).FirstOrDefault();
-        
-        if (latestShiftJob != null)
-        {
-             var jrStart = latestShiftJob.StartTime < shiftStart ? shiftStart : latestShiftJob.StartTime;
-             var jrEnd = (latestShiftJob.EndTime ?? effectiveNow) > shiftEnd ? shiftEnd : (latestShiftJob.EndTime ?? effectiveNow);
-             if (jrEnd > jrStart) totalJobDuration = (jrEnd - jrStart);
-        }
-
-        TimeSpan relevantLineStop = TimeSpan.Zero;
-        if (latestShiftJob != null)
-        {
-             foreach (var d in latestShiftJob.DowntimeEvents)
-             {
-                 var jrStart = latestShiftJob.StartTime < shiftStart ? shiftStart : latestShiftJob.StartTime;
-                 var jrEnd = (latestShiftJob.EndTime ?? effectiveNow) > shiftEnd ? shiftEnd : (latestShiftJob.EndTime ?? effectiveNow);
-                 
-                 var dStart = d.StartTime < jrStart ? jrStart : d.StartTime;
-                 var dEnd = (d.EndTime ?? effectiveNow) > jrEnd ? jrEnd : (d.EndTime ?? effectiveNow);
-                 
-                 if (dStart < dEnd && (d.IsLineStop || d.Reason?.Category == "Unplanned"))
-                 {
-                     relevantLineStop += (dEnd - dStart);
-                 }
-             }
-        }
-
-        TimeSpan operatingTime = totalJobDuration - relevantLineStop;
+        TimeSpan operatingTime = loadingTimeSoFar - lineStopTime;
         if (operatingTime.TotalSeconds < 0) operatingTime = TimeSpan.Zero;
 
         bool isRunning = (activeJob != null && activeJob.EndTime == null && !hasActiveLineStop && now < shiftEnd);
@@ -418,7 +392,15 @@ public class OeeService : IOeeService
             ProductImageUrl = activeJob?.WorkOrder?.Product?.ImageUrl,
             MachineImageUrl = machine?.ImageUrl, // Tambahkan Machine Image
             EstimatedCompletion = estimatedCompletion,
-            CurrentState = activeJob?.CurrentState ?? "STOPPED", // ✅ NEW
+            
+            // ✅ ALIGNMENT: Calculate CurrentState dynamically to match OperatorController logic
+            // This ensures strict consistency between initial load and polling updates
+            CurrentState = activeJob == null ? "STOPPED" : 
+                           (activeDowntime != null ? 
+                                (activeDowntime.IsRestBreak ? "REST_BREAK" : 
+                                 activeDowntime.IsNoLoading ? "NO_LOADING" : "LINE_STOP") 
+                           : "RUNNING"),
+                           
             DandoriDurationSeconds = dandoriDurationSeconds,
             DandoriStartTime = dandoriStart?.ToString("O"),
             DandoriEndTime = dandoriEnd?.ToString("O")
@@ -674,7 +656,7 @@ public class OeeService : IOeeService
         
         // Cari semua JobRun yang masih aktif (EndTime == null) untuk mesin ini
         var activeJobs = await _context.JobRuns
-            .Where(j => j.MachineId == machineId && j.EndTime == null)
+            .Where(j => j.MachineId == machineId && j.EndTime == null && j.StartTime <= nowLocal.AddHours(12)) // Only consider current/past jobs
             .OrderByDescending(j => j.StartTime)
             .ToListAsync();
             
